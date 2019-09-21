@@ -103,4 +103,4 @@ Also delete all the whitespace after the entry
     (save-buffer)))
 
 
-(provide 'live/writer)
+(provide 'live-writer)

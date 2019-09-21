@@ -1,6 +1,6 @@
 ;; -*- lexical-binding: t; -*-
 (require 'json)
-(require 'live/writer "live-writer")
+(require 'live-writer)
 
 
 (defconst lv-server-port 8000)
@@ -60,8 +60,7 @@
   "Initialize the JS world"
   (ws-websocket-send
    lv-websocket
-   (format "this.jsIndent = %s; this.jsIndentStr = ' '.repeat(this.jsIndent);"
-	   lv-root-obj-indent)))
+   (format "this.initOnConnect({jsIndent: %s})" lv-root-obj-indent)))
 
 
 (defun lv-web-socket-handler (payload)
@@ -75,7 +74,10 @@
       ("response"
        (let ((response (alist-get :response json)))
     	 (if lv-pending-callback
-    	     (funcall lv-pending-callback response)
+    	     (let ((cb lv-pending-callback))
+	       (setf lv-pending-callback nil)
+	       (message "Response is: %s" response)
+	       (funcall cb response))
     	   (error "From JS arrived response that Lisp was not waiting: %s"
     		  response))))
       ("save-key"
@@ -103,11 +105,9 @@
 
 (defun lv-stop ()
   (interactive)
-  (if lv-server
-      (progn
-	(ws-stop lv-server)
-	(setf lv-server nil))
-    (message "The server is not started")))
+  (when lv-server
+    (ws-stop lv-server)
+    (setf lv-server nil)))
 
 
 ;; (lv-start)
@@ -135,4 +135,9 @@
 ;;   this.getValue(this.saveKey, 0);
 ;; ")
 
-(provide 'live/server)
+(defun live-server-unload-function ()
+  (lv-stop))
+
+
+(provide 'live-server)
+

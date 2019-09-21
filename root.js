@@ -16,6 +16,11 @@ window.root = {
       this.resetSocket();
    },
 
+   initOnConnect: function (options) {
+      this.jsIndent = options.jsIndent;
+      this.jsIndentStr = ' '.repeat(this.jsIndent);
+   },
+
    onSocketOpen: function (msg) {
       this.send({
          type: 'msg',
@@ -59,7 +64,7 @@ window.root = {
 
    pieces: [],
    
-   sdump: function (obj, nesting=1) {
+   sdump: function (obj, nesting=0) {
       if (typeof obj === 'function') {
          this.sdumpFunc(obj, nesting);
       }
@@ -143,7 +148,7 @@ window.root = {
       );
    },
 
-   serialize: function (obj, nesting=1) {
+   serialize: function (obj, nesting=0) {
       this.sdump(obj, nesting);
       let res = this.pieces.join('');
       this.pieces.length = 0;
@@ -161,13 +166,19 @@ window.root = {
       });
    },
    
-   getValue: function (value, nesting=1) {
-      this.send({
-         type: 'get-value',
-         value: this.serialize(value, nesting)
-      });
-   },
+   sendAllEntries: function () {
+      let result = [];
+      for (let [key, value] of Object.entries(this)) {
+         if (this.nontrackedKeys.includes(key)) {
+            continue;
+         }
 
+         result.push([key, this.serialize(value, 0)]);
+      }
+
+      this.sendResponse(result);
+   },
+   
    saveKey: function (key) {
       this.send({
          type: 'save-key',
