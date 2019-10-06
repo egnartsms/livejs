@@ -51,7 +51,7 @@ window.root = {
          });
       }
 
-      try {
+      try { 
          func.call(this);
       }
       catch (e) {
@@ -128,7 +128,6 @@ window.root = {
          this.pieces.push('null');
          return;
       }
-      
       this.pieces.push('{');
       for (let key in obj) {
          this.pieces.push(
