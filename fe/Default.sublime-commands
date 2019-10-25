@@ -1,0 +1,13 @@
+[
+    {
+        "caption": "LiveJS: start/stop the server",
+        "command": "toggle_server"
+    },
+    {
+        "caption": "Say Hi",
+        "command": "insert_it",
+        "args": {
+            "text": "Hi!\n"
+        }
+    }
+]
