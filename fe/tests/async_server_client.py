@@ -1,7 +1,5 @@
+"""Helpers: async Socket server and client, needed to test the Eventloop"""
 import socket
-
-# from socketserver import ThreadingTCPServer
-# from http.server import SimpleHTTPRequestHandler
 
 from live.eventloop import get_event_loop, FdRead, FdWrite, is_fd
 
@@ -132,35 +130,3 @@ def recv_n_responses(sock, n):
             raise RuntimeError("Server response ended prematurely")
 
     return res
-
-
-# class LiveJsServer(ThreadingTCPServer):
-#     allow_reuse_address = True
-
-#     def __init__(self, server_address, backend_root):
-#         super().__init__(server_address, LiveJsRequestHandler)
-#         self.backend_root = backend_root
-
-
-# class LiveJsRequestHandler(SimpleHTTPRequestHandler):
-#     def do_GET(self):
-#         if self.path == '/':
-#             path = os.path.join(self.server.backend_root, 'page.html')
-#         else:
-#             path = os.path.join(self.server.backend_root, self.path[1:])
-
-#         if not os.path.exists(path):
-#             self.send_error(404, "File not found")
-#             return
-
-#         ctype = self.guess_type(path)
-#         with open(path, 'rb') as f:
-#             self.send_response(200)
-#             self.send_header("Content-type", ctype)
-#             fs = os.fstat(f.fileno())
-#             self.send_header("Content-Length", str(fs[6]))
-#             self.send_header("Last-Modified", self.date_time_string(fs.st_mtime))
-#             self.end_headers()
-#             self.copyfile(f, self.wfile)
-
-#         self.close_connection = False

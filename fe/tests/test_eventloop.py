@@ -20,21 +20,17 @@ def server():
         return re.sub('-([a-z])', lambda mo: mo.group(1).upper(), word)
 
     evt_up = threading.Event()
-    eventloop = EventLoop(stop_when_empty=True)
-    co_server = serve(8001, kebab_to_camel, evt_up)
-    eventloop.add_coroutine(co_server)
-    thread = threading.Thread(target=eventloop.run)
-    thread.start()
+    eventloop = EventLoop()
+    eventloop.add_coroutine(serve(8001, kebab_to_camel, evt_up), 'server')
+    eventloop.run_in_new_thread()
 
     evt_up.wait()
 
     try:
         yield
     finally:
-        eventloop.raise_in_coroutine(co_server, StopServer)
-        eventloop.join_coroutine(co_server)
-        thread.join()
-        assert not thread.is_alive()
+        eventloop.raise_in_coroutine('server', StopServer)
+        eventloop.join()
 
 
 @pytest.mark.usefixtures('server')
@@ -47,8 +43,7 @@ def test_server_client_write_read():
         sock.shutdown(socket.SHUT_RDWR)
         sock.close()
 
-    eventloop = EventLoop(stop_when_empty=True)
-    eventloop.run_coroutine(client_coroutine())
+    EventLoop().run_coroutine(client_coroutine())
 
 
 @pytest.mark.usefixtures('server')
@@ -67,5 +62,4 @@ def test_server_client_write_multiple_read_multiple():
         sock.shutdown(socket.SHUT_RDWR)
         sock.close()
 
-    eventloop = EventLoop(stop_when_empty=True)
-    eventloop.run_coroutine(client_coroutine())
+    EventLoop().run_coroutine(client_coroutine())
