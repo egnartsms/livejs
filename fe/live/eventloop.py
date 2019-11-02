@@ -1,12 +1,10 @@
 """Home-made eventloop (Python 3.3 does not yet have asyncio)"""
 import select
-from collections import namedtuple, deque
+from collections import namedtuple
 import threading
 import weakref
-import functools
 
 from live.eventfd import EventFd
-from live.blink import Blinker
 
 
 FdRead = namedtuple('FdRead', 'fd')
@@ -52,80 +50,95 @@ class CoroutineState:
         self.result = value_or_exc
 
 
+ignored_generatorexit = type('', (object,), {
+    '__repr__': lambda self: '<ignored GeneratorExit>'
+})()
+
+
 class EventLoop:
     def __init__(self):
         self.evt_interrupt = EventFd()
-        self.service_actions = deque()
         self.active = []
         self.wblocked = []
         self.rblocked = []
-        self.stop_when_empty = False
         self.run_by_thread = None
         # {iterator: CoroutineState}
         self.coroutines = weakref.WeakKeyDictionary()
         # {name: itr}, for human convenience, to hold onto coroutine by names.
         self.named_coroutines = {}
-        # synchronizes changes to self.coroutines
-        #self.lock_coroutines = threading.Lock()
-        # fires when any coroutine finishes
-        #self.cv_finished = threading.Condition(self.lock_coroutines)
-        self.blink_co_finished = Blinker()
-        # {itr: exc}: raise exc in itr on the next loop iteration
-        self.to_raise = {}
+        # [itr]: force quit itr (with itr.close())
+        self.to_close = []
         # intent to stop the event loop
-        self.stop_flag = False
-        # protects this event loop's running state (on/off)
-        self.cv_running_state = threading.Condition(threading.Lock())
-        # In case self.run() raised we store the exception
-        self.raised = None
-        self.exc_handler = None
+        self.stop_cmd = False
+        self.handler_coroutine = None
+        self.handler_eventloop = None
 
-    def run(self):
+        # notifies when the event loop's running state changes
+        self.cv_state = threading.Condition()
+
+    @property
+    def is_running(self):
+        return self.run_by_thread is not None
+
+    def coroutine_exc_handler(self, exc_handler):
+        assert self.handler_coroutine is None
+        self.handler_coroutine = exc_handler
+
+    def eventloop_msg_handler(self, msg_handler):
+        assert self.handler_eventloop is None
+        self.handler_eventloop = msg_handler
+
+    def run(self, autostop_condition=None):
         check_not_running_event_loop()
 
-        with self.cv_running_state:
+        with self.cv_state:
             if self.is_running:
-                self._eventloop_exception(
-                    RuntimeError("Attempt to run event loop from multiple threads")
-                )
+                msg = "Attempt to run event loop from multiple threads"
+                self._handle_eventloop_message(msg)
+                raise RuntimeError(msg)
             self.run_by_thread = threading.current_thread()
             tl_info.event_loop = self
-            self.cv_running_state.notify_all()
+            self.cv_state.notify_all()
 
-        self.stop_flag = False
-        self.raised = None
+        self.stop_cmd = False
 
         try:
-            self._run()
+            self._run(autostop_condition=autostop_condition)
         except Exception as e:
-            self._eventloop_exception(e)
+            self._handle_eventloop_message(str(e))
+            raise
         finally:
-            self.stop_when_empty = False
-            with self.cv_running_state:
+            with self.cv_state:
                 tl_info.event_loop = None
                 self.run_by_thread = None
-                self.cv_running_state.notify_all()
+                self.cv_state.notify_all()
 
-    def _run(self):
-        while not self.stop_flag:
-            while self.to_raise:
-                itr, exc = self.to_raise.popitem()
+    def _run(self, autostop_condition=None):
+        while not self.stop_cmd:
+            while self.to_close:
+                itr = self.to_close.pop(0)
                 found = self._remove_coroutine_from_lists(itr)
                 if found:
-                    self._co_yielded(itr, self._co_throw(itr, exc))
+                    self._force_quit_coroutine(itr)
 
-                if self.stop_flag:
-                    return
+                if self.stop_cmd:
+                    break
+
+            if self.stop_cmd:
+                break
 
             while self.active:
                 itr = self.active.pop(0)
-                self._co_yielded(itr, self._co_send(itr))
+                self._co_next(itr)
 
-                if self.stop_flag:
-                    return
+                if self.stop_cmd:
+                    break
 
-            if self.stop_when_empty and not self.rblocked and not self.wblocked:
-                return
+            if self.stop_cmd:
+                break
+
+            if autostop_condition is not None and autostop_condition():
+                break
 
             wait_read = [fd for itr, fd in self.rblocked]
             wait_write = [fd for itr, fd in self.wblocked]
@@ -147,6 +160,16 @@ class EventLoop:
                              if fd not in ready_write]
 
             self.evt_interrupt.clear()
+
+        if self.stop_cmd == 'just-quit':
+            return
+        elif self.stop_cmd == 'stop-coroutines':
+            for itr in list(self.coroutines):
+                found = self._remove_coroutine_from_lists(itr)
+                if found:
+                    # FIXME: notify_all() for each coroutine. It's better to have it only
+                    # once, and hold the lock for the duration of the whole operation
+                    self._force_quit_coroutine(itr)
 
     def _remove_coroutine_from_lists(self, itr):
         """Look for itr in active, rblocked and wblocked, and remove it.
@@ -171,80 +194,69 @@ class EventLoop:
 
         return False
 
-    def _co_yielded(self, itr, fd):
-        if fd is None:
-            pass
-        elif isinstance(fd, FdRead):
+    def _co_next(self, itr, exc=None):
+        """Precondition: itr must not be recorded in any of the lists"""
+        try:
+            fd = itr.send(None) if exc is None else itr.throw(exc)
+        except StopIteration as e:
+            self._record_coroutine_result(itr, e.value)
+            return
+        except Exception as e:
+            self._handle_coroutine_exception(itr, e)
+            self._record_coroutine_result(itr, e)
+            return
+
+        if isinstance(fd, FdRead):
             self.rblocked.append((itr, fd.fd))
         elif isinstance(fd, FdWrite):
             self.wblocked.append((itr, fd.fd))
         else:
-            raise RuntimeError(
-                "A coroutine {} yielded unexpected value: {}".format(itr, fd)
+            # This is a programmer's error: coroutines must only yield smth that we know
+            # how to feed to select system call.  So report this situation and close the
+            # coroutine (the iterator object)
+            self._handle_eventloop_message(
+                "Coroutine {} yielded illegal object".format(itr, fd)
+            )
+            self._force_quit_coroutine(itr)
+
+    def _force_quit_coroutine(self, itr):
+        try:
+            ret = itr.close()
+        except Exception as ret:
+            # It ignored GeneratorExit
+            self._handle_eventloop_message(
+                "Failed to close coroutine {}: {}".format(itr, ret)
             )
 
-    def _co_send(self, itr):
-        try:
-            return itr.send(None)
-        except StopIteration as e:
-            self._record_coroutine_result(itr, e.value)
-        except Exception as e:
-            self._record_coroutine_result(itr, e)
-
-        return None
-
-    def _co_throw(self, itr, exc):
-        try:
-            return itr.throw(exc)
-        except StopIteration as e:
-            self._record_coroutine_result(itr, e.value)
-        except Exception as e:
-            self._unhandled_coroutine_exception(itr, e)
-            self._record_coroutine_result(itr, e)
-
-        return None
+        self._record_coroutine_result(itr, ret)
 
     def _record_coroutine_result(self, itr, res):
-        self.coroutines[itr].finished_with(res)
-        self.blink_co_finished.blink()
+        with self.cv_state:
+            self.coroutines[itr].finished_with(res)
+            self.cv_state.notify_all()
 
-    def _unhandled_coroutine_exception(self, itr, exc):
-        if self.exc_handler is not None:
-            self.exc_handler(itr, exc)
+    def _handle_coroutine_exception(self, itr, exc):
+        if self.handler_coroutine is not None:
+            self.handler_coroutine(itr, exc)
 
-    def _eventloop_exception(self, exc):
-        self.raised = exc
-        if self.exc_handler is not None:
-            self.exc_handler(None, exc)
-        raise exc
+    def _handle_eventloop_message(self, msg):
+        if self.handler_eventloop is not None:
+            self.handler_eventloop(msg)
 
-    @property
-    def is_running(self):
-        return self.run_by_thread is not None
-
-    def join(self):
-        """Wait till the event loop is empty"""
+    def stop(self, force_quit_coroutines=False):
         check_not_running_event_loop()
 
-        with self.cv_running_state:
-            if self.is_running:
-                self.stop_when_empty = True
-                self.evt_interrupt.set()
-                self.cv_running_state.wait_for(lambda: not self.is_running)
-            if self.raised:
-                raise self.raised
+        with self.cv_state:
+            if not self.is_running:
+                return
 
-    def stop(self):
-        """Wait until stopped"""
-        check_not_running_event_loop()
+            if force_quit_coroutines:
+                self.stop_cmd = 'stop-coroutines'
+            else:
+                self.stop_cmd = 'just-quit'
 
-        with self.cv_running_state:
-            if self.is_running:
-                self.stop_flag = True
-                self.evt_interrupt.set()
-                self.cv_running_state.wait_for(lambda: not self.is_running)
-            if self.raised:
-                raise self.raised
+            self.evt_interrupt.set()
+            self.cv_state.wait_for(lambda: not self.is_running)
 
     def add_coroutine(self, itr, name=None):
         self.coroutines[itr] = CoroutineState()
@@ -259,15 +271,6 @@ class EventLoop:
         if self.is_running:
             self.evt_interrupt.set()
 
-    def raise_in_coroutine(self, itr_or_name, exc):
-        itr, name = self._named_coroutine(itr_or_name)
-        # Note: self.to_raise is not protected with a lock because we're doing atomic
-        # operations here. In self._run(), we also process it atomically. So we manage to
-        # dispense with locking.
-        self.to_raise[itr] = exc
-        if self.is_running:
-            self.evt_interrupt.set()
-
     def _named_coroutine(self, itr_or_name):
         if isinstance(itr_or_name, str):
             return self.named_coroutines[itr_or_name], itr_or_name
@@ -275,6 +278,7 @@ class EventLoop:
             return itr_or_name, None
 
     def _coroutine_state(self, itr_or_name):
+        """Return coroutine state or None if no such coroutine registered"""
         if isinstance(itr_or_name, str):
             itr = self.named_coroutines.get(itr_or_name)
             if itr is None:
@@ -284,7 +288,8 @@ class EventLoop:
 
         return self.coroutines.get(itr)
 
-    def _coroutine_result(self, state):
+    def _coroutine_result(self, itr):
+        state = self.coroutines[itr]
         if isinstance(state.result, Exception):
             raise state.result
         else:
@@ -298,19 +303,52 @@ class EventLoop:
         state = self._coroutine_state(itr_or_name)
         return state and not state.is_finished
 
-    def join_coroutine(self, itr_or_name):
+    def force_quit_coroutine(self, itr_or_name):
+        """Force given coroutine to quit and wait for completion"""
         check_not_running_event_loop()
 
         itr, name = self._named_coroutine(itr_or_name)
 
-        self.blink_co_finished.wait_for(lambda: self.coroutines[itr].is_finished)
+        with self.cv_state:
+            if not self.is_running:
+                raise RuntimeError("Event loop is not running")
+
+            self.to_close.push(itr)
+            self.evt_interrupt.set()
+            self.cv_state.wait_for(
+                lambda: not self.is_running or self.coroutines[itr].is_finished
+            )
+
+            if not self.is_running:
+                raise RuntimeError("Event loop stopped before coroutine had finished")
 
         # Yes, coroutine names are not synchronized because caller threads share the same
         # namespace and therefore responsible for avoiding name collisions.
         if name is not None:
             del self.named_coroutines[name]
 
-        return self._coroutine_result(self.coroutines[itr])
+        return self._coroutine_result(itr)
+
+    def force_quit_all_coroutines(self):
+        """Force all currently running coroutines to quit and wait for completion"""
+        check_not_running_event_loop()
+
+        with self.cv_state:
+            if not self.is_running:
+                raise RuntimeError("Event loop is not running")
+
+            now_coroutines = list(self.coroutines)
+            self.to_close.extend(now_coroutines)
+            self.evt_interrupt.set()
+            self.cv_state.wait_for(
+                lambda: (not self.is_running or
+                         all(self.is_coroutine_finished(co) for co in now_coroutines))
+            )
+
+            if not self.is_running:
+                raise RuntimeError("Event loop stopped before coroutine had finished")
+
+        self.named_coroutines.clear()
 
     def run_coroutine(self, itr):
         """Add coroutine to self and run the loop on the current thread
@@ -325,9 +363,8 @@ class EventLoop:
             raise RuntimeError("Event loop already running")
 
         self.add_coroutine(itr)
-        self.stop_when_empty = True
-        self.run()
-        return self._coroutine_result(self.coroutines[itr])
+        self.run(autostop_condition=lambda: self.is_coroutine_finished(itr))
+        return self._coroutine_result(itr)
 
     def run_in_new_thread(self):
         threading.Thread(target=self.run).start()

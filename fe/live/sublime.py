@@ -1,6 +1,5 @@
 import os
-from threading import Thread
-
+import traceback
 
 try:
     import sublime
@@ -11,23 +10,22 @@ except ImportError:
     g_insublime = False
 
 
-from live.http_server import serve, StopServer
+from live.http_server import serve
 from live.eventloop import EventLoop
 
 
 g_el = EventLoop()
 
 
-def eventloop_unhandled_exception(itr, exc):
-    import traceback
-    if itr is not None:
-        print("Coroutine {} failed with exception:".format(itr))
-    else:
-        print("Eventloop exited with exception:")
-    traceback.print_tb(exc.__traceback__)
+@g_el.coroutine_exc_handler
+def coroutine_exc_handler(itr, exc):
+    print("Coroutine {} failed:".format(itr))
+    traceback.print_exception(type(exc), exc, exc.__traceback__)
 
 
-g_el.exc_handler = eventloop_unhandled_exception
+@g_el.eventloop_msg_handler
+def eventloop_msg_handler(msg):
+    print("Eventloop says:", msg)
 
 
 def is_server_running():
@@ -42,7 +40,7 @@ def start_server():
 
     if not is_server_running():
         print("Starting the server...")
-        g_el.add_coroutine(serve(8001), 'server')
+        g_el.add_coroutine(serve(8001, be_root), 'server')
         print("Started")
 
 
@@ -51,8 +49,7 @@ def stop_server():
 
     if is_server_running():
         print("Stopping the server...")
-        g_el.raise_in_coroutine('server', StopServer)
-        g_el.join_coroutine('server')
+        g_el.force_quit_all_coroutines()
         print("Stopped")
 
 
@@ -69,7 +66,7 @@ def plugin_unloaded():
     global g_el
     print("Unloading LiveJS...")
     stop_server()
-    g_el.join()
+    g_el.stop(stop_all_coroutines=True)
     print("Unloaded")
 
 

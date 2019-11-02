@@ -19,10 +19,6 @@ def send_message(socket, str):
     yield from send_all_data(socket, str.encode('utf8') + MSG_SEPARATOR)
 
 
-class StopServer(Exception):
-    pass
-
-
 def serve(port, word_processor, evt_up=None):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setblocking(False)
@@ -38,8 +34,6 @@ def serve(port, word_processor, evt_up=None):
             yield FdRead(sock)
             cli, address = sock.accept()
             get_event_loop().add_coroutine(client_handler(cli, word_processor))
-    except StopServer:
-        pass
     finally:
         sock.shutdown(socket.SHUT_RDWR)
         sock.close()
