@@ -50,11 +50,6 @@ class CoroutineState:
         self.result = value_or_exc
 
 
-ignored_generatorexit = type('', (object,), {
-    '__repr__': lambda self: '<ignored GeneratorExit>'
-})()
-
-
 class EventLoop:
     def __init__(self):
         self.evt_interrupt = EventFd()
@@ -337,7 +332,9 @@ class EventLoop:
             if not self.is_running:
                 raise RuntimeError("Event loop is not running")
 
-            now_coroutines = list(self.coroutines)
+            now_coroutines = [co for co, state in list(self.coroutines.items())
+                              if not state.is_finished]
+
             self.to_close.extend(now_coroutines)
             self.evt_interrupt.set()
             self.cv_state.wait_for(
