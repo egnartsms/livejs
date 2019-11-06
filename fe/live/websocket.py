@@ -182,9 +182,9 @@ def read_frame(sock):
     if payload_len < 126:
         pass
     elif payload_len == 126:
-        payload_len = struct.unpack('>H', (yield from recv_next(sock, buf, 2)))
+        (payload_len,) = struct.unpack('>H', (yield from recv_next(sock, buf, 2)))
     else:
-        payload_len = struct.unpack('>Q', (yield from recv_next(sock, buf, 8)))
+        (payload_len,) = struct.unpack('>Q', (yield from recv_next(sock, buf, 8)))
 
     mask_key = yield from recv_next(sock, buf, 4)
     payload = yield from recv_next_as_buf(sock, buf, payload_len)

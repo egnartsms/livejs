@@ -142,7 +142,7 @@ class EventLoop:
         try:
             self._run(autostop_condition=autostop_condition)
         except Exception as e:
-            self._report_error(str(e))
+            self._report_error("Exception in eventloop thread:", e)
             raise
         finally:
             with self.cv_state:
@@ -225,7 +225,8 @@ class EventLoop:
             return
         except Exception as e:
             self._report_error(
-                "Coroutine {} raised unhandled exception {}".format(co.itr, e)
+                "Coroutine {} raised unhandled exception:".format(co.itr),
+                e
             )
             self._record_coroutine_result(co, e)
             return
@@ -236,7 +237,7 @@ class EventLoop:
         for fd in fds:
             if not isinstance(fd, Fd):
                 self._report_error(
-                    "Coroutine {} yielded illegal object".format(co.itr, fd)
+                    "Coroutine {} yielded illegal object: {}".format(co.itr, fd)
                 )
                 self._force_quit_coroutine(co)
                 return
@@ -284,9 +285,9 @@ class EventLoop:
             del self.w_fds[fd]
         del co.w_fds[:]
 
-    def _report_error(self, msg):
+    def _report_error(self, msg, exc=None):
         if self.error_handler is not None:
-            self.error_handler(msg)
+            self.error_handler(msg, exc)
         else:
             print(msg)
 

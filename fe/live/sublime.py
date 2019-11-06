@@ -1,14 +1,10 @@
 import os
 import traceback
+import json
+import functools
 
-try:
-    import sublime
-    import sublime_plugin
-
-    g_insublime = True
-except ImportError:
-    g_insublime = False
-
+import sublime
+import sublime_plugin
 
 import live.server as server
 from live.eventloop import EventLoop
@@ -19,8 +15,10 @@ g_el = EventLoop()
 
 
 @g_el.register_error_handler
-def eventloop_error_handler(msg):
-    print("Eventloop error:", msg)
+def eventloop_error_handler(msg, exc):
+    print(msg)
+    if exc is not None:
+        traceback.print_exception(type(exc), exc, exc.__traceback__)
 
 
 def start_server():
@@ -58,10 +56,19 @@ def plugin_unloaded():
     print("Unloaded")
 
 
+continuation = None
+view = None
+resp = None
+
+
 def ws_handler(ws, msg):
-    sublime.active_window().active_view().run_command('insert_it', {
-        'text': msg
-    })
+    global resp
+    
+    msg = json.loads(msg)
+    if msg['type'] != 'response':
+        return
+    resp = msg['response']
+    sublime.set_timeout(lambda: view.run_command('do_refresh_code_browser'), 0)
 
 
 class ToggleServerCommand(sublime_plugin.TextCommand):
@@ -78,7 +85,36 @@ class InsertItCommand(sublime_plugin.TextCommand):
         self.view.insert(edit, self.view.size(), '\n\n' + text)
 
 
-class SendToBrowser(sublime_plugin.TextCommand):
+class DoRefreshCodeBrowser(sublime_plugin.TextCommand):
     def run(self, edit):
-        text = self.view.substr(sublime.Region(0, self.view.size()))
-        server.websocket.enqueue_message(text)
+        global continuation, view, resp
+        view = None
+        c = continuation
+        continuation = None
+        r = resp
+        resp = None
+        c(self.view, edit, r)
+
+
+class RefreshCodeBrowser(sublime_plugin.WindowCommand):
+    def run(self):
+        cbv = next((v for v in self.window.views() if v.name() == 'live-code-browser'),
+                   None)
+        if cbv is None:
+            cbv = self.window.new_file()
+            cbv.set_name('live-code-browser')
+            cbv.set_scratch(True)
+            cbv.set_syntax_file('Packages/JavaScript/JavaScript.sublime-syntax')
+
+        global continuation, view
+        continuation = do_refresh_code_browser
+        view = cbv
+        server.websocket.enqueue_message('$.sendAllEntries()')
+
+
+def do_refresh_code_browser(cbv, edit, resp):
+    cbv.erase(edit, sublime.Region(0, cbv.size()))
+    for key, value in resp:
+        cbv.insert(edit, cbv.size(), key + '\n')
+        cbv.insert(edit, cbv.size(), value + '\n\n')
+    cbv.window().focus_view(cbv)

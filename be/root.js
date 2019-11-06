@@ -1,87 +1,82 @@
-window.root = {
-   nontrackedKeys: [
+window.root = (function () {
+   let $ = {};
+
+   $.nontrackedKeys = [
       'socket',
       'jsIndent',
       'jsIndentStr',
       'pieces',
-   ],
+   ];
+
+   $.socket = null;
+
+   $.jsIndent = 3;
    
-   socket: null,
+   $.jsIndentStr = '   ';
 
-   jsIndent: 0,
-   
-   jsIndentStr: '',
+   $.initOnLoad = function () {
+      $.resetSocket();
+   };
 
-   initOnLoad: function () {
-      this.resetSocket();
-   },
-
-   initOnConnect: function (options) {
-      this.jsIndent = options.jsIndent;
-      this.jsIndentStr = ' '.repeat(this.jsIndent);
-   },
-
-   onSocketOpen: function (msg) {
-      this.send({
+   $.onSocketOpen = function (msg) {
+      $.send({
          type: 'msg',
          msg: "Live system is ready!"
       });
-   },
+   };
 
-   resetSocket: function () {
-      if (this.socket !== null) {
+   $.resetSocket = function () {
+      if ($.socket !== null) {
          throw new Error("Re-creating socket not implemented yet");
       }
       
-      this.socket = new WebSocket('ws://localhost:8001/wsconnect');
-      this.socket.onmessage = this.onSocketMessage.bind(this);
-      this.socket.onopen = this.onSocketOpen.bind(this);
-   },
+      $.socket = new WebSocket('ws://localhost:8001/wsconnect');
+      $.socket.onmessage = $.onSocketMessage;
+      $.socket.onopen = $.onSocketOpen;
+   };
 
-   onSocketMessage: function (e) {
+   $.onSocketMessage = function (e) {
       let func;
       
-      console.log(`Got: ${e.data}`);
-
       try {
-         func = new Function(e.data);
+         func = new Function('$', e.data);
       }
       catch (e) {
-         this.send({
+         $.send({
             type: 'msg',
             msg: `Bad JS code:\n ${e}`
          });
       }
 
       try { 
-         func.call(this);
+         func.call(null, $);
       }
       catch (e) {
-         this.send({
+         $.send({
             type: 'msg',
             msg: `Exception:\n ${e}`
          });
       }
-   },
+   };
 
-   pieces: [],
+   $.pieces = [];
    
-   sdump: function (obj, nesting=0) {
+   $.sdump = function (obj, nesting=0) {
       if (typeof obj === 'function') {
-         this.sdumpFunc(obj, nesting);
+         $.sdumpFunc(obj, nesting);
       }
       else if (Array.isArray(obj)) {
-         this.sdumpArray(obj, nesting);
+         $.sdumpArray(obj, nesting);
       }
       else if (typeof obj === 'object') {
-         this.sdumpObject(obj, nesting)
+         $.sdumpObject(obj, nesting)
       }
       else {
-         this.pieces.push(JSON.stringify(obj, null, this.jsIndent));
+         $.pieces.push(JSON.stringify(obj, null, $.jsIndent));
       }
-   },
+   };
 
-   sdumpFunc: function (func, nesting) {
+   $.sdumpFunc = function (func, nesting) {
       let str = Function.prototype.toString.call(func);
       let lines = str.split('\n');
 
@@ -102,93 +97,94 @@ window.root = {
 
       // console.log("Base indentation for", func, "is", baseIndentation);
         
-      this.pieces.push(lines[0]);
+      $.pieces.push(lines[0]);
       for (let i = 1; i < lines.length; i += 1) {
-         this.pieces.push(
+         $.pieces.push(
             '\n',
-            this.jsIndentStr.repeat(nesting),
+            $.jsIndentStr.repeat(nesting),
             lines[i].slice(baseIndentation)
          );
       }
-   },
+   };
 
-   sdumpArray: function (array, nesting) {
-      this.pieces.push('[\n');
+   $.sdumpArray = function (array, nesting) {
+      $.pieces.push('[\n');
       for (let elem of array) {
-         this.pieces.push(this.jsIndentStr.repeat(nesting + 1));
-         this.sdump(elem, nesting + 1);
-         this.pieces.push(',\n');
+         $.pieces.push($.jsIndentStr.repeat(nesting + 1));
+         $.sdump(elem, nesting + 1);
+         $.pieces.push(',\n');
       }
-      this.pieces.push(
-         this.jsIndentStr.repeat(nesting),
+      $.pieces.push(
+         $.jsIndentStr.repeat(nesting),
          ']'
       );
-   },
+   };
 
-   sdumpObject: function (obj, nesting) {
+   $.sdumpObject = function (obj, nesting) {
       if (obj === null) {
-         this.pieces.push('null');
+         $.pieces.push('null');
          return;
       }
-      this.pieces.push('{');
+      $.pieces.push('{');
       for (let key in obj) {
-         this.pieces.push(
+         $.pieces.push(
             '\n',
-            this.jsIndentStr.repeat(nesting + 1),
+            $.jsIndentStr.repeat(nesting + 1),
             key,
             ': '
          );
-         this.sdump(obj[key], nesting + 1);
-         this.pieces.push(',');
+         $.sdump(obj[key], nesting + 1);
+         $.pieces.push(',');
       }
 
-      this.pieces.push(
+      $.pieces.push(
          '\n',
-         this.jsIndentStr.repeat(nesting),
+         $.jsIndentStr.repeat(nesting),
          '}'
       );
-   },
+   };
 
-   serialize: function (obj, nesting=0) {
-      this.sdump(obj, nesting);
-      let res = this.pieces.join('');
-      this.pieces.length = 0;
+   $.serialize = function (obj, nesting=0) {
+      $.sdump(obj, nesting);
+      let res = $.pieces.join('');
+      $.pieces.length = 0;
       return res;
-   },
+   };
 
-   send: function (msg) {
-      this.socket.send(JSON.stringify(msg));
-   },
+   $.send = function (msg) {
+      $.socket.send(JSON.stringify(msg));
+   };
 
-   sendResponse: function (response) {
-      this.send({
+   $.sendResponse = function (response) {
+      $.send({
          type: 'response',
          response
       });
-   },
+   };
    
-   sendAllEntries: function () {
+   $.sendAllEntries = function () {
       let result = [];
-      for (let [key, value] of Object.entries(this)) {
-         if (this.nontrackedKeys.includes(key)) {
+      for (let [key, value] of Object.entries($)) {
+         if ($.nontrackedKeys.includes(key)) {
             continue;
          }
 
-         result.push([key, this.serialize(value, 0)]);
+         result.push([key, $.serialize(value, 0)]);
       }
 
-      this.sendResponse(result);
-   },
+      $.sendResponse(result);
+   };
    
-   saveKey: function (key) {
-      this.send({
+   $.saveKey = function (key) {
+      $.send({
          type: 'save-key',
          key: key,
-         value: this.serialize(this[key])
+         value: $.serialize($[key])
       });
-   },
+   };
 
-};
+   return $;
+})();
 
 
 window.root.initOnLoad();

@@ -1,6 +1,6 @@
 [
     {
-        "keys": ["ctrl+enter"],
-        "command": "send_to_browser"
+        "keys": ["f5"],
+        "command": "refresh_code_browser"
     }
 ]
