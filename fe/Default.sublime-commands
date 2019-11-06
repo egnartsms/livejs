@@ -5,9 +5,6 @@
     },
     {
         "caption": "Say Hi",
-        "command": "insert_it",
-        "args": {
-            "text": "Hi!\n"
-        }
+        "command": "insert_it"
     }
 ]

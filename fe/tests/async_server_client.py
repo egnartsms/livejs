@@ -1,22 +1,22 @@
 """Helpers: async Socket server and client, needed to test the Eventloop"""
 import socket
 
-from live.eventloop import get_event_loop, FdRead, FdWrite, is_fd
+from live.eventloop import get_event_loop, Fd
 
 
 MSG_SEPARATOR = b'!end'
 
 
-def send_all_data(socket, bytes_obj):
+def send_all_data(sock, bytes_obj):
     mv = memoryview(bytes_obj)
     while mv:
-        yield FdWrite(socket)
-        n = socket.send(mv)
+        yield Fd.write(sock)
+        n = sock.send(mv)
         mv = mv[n:]
 
 
-def send_message(socket, str):
-    yield from send_all_data(socket, str.encode('utf8') + MSG_SEPARATOR)
+def send_message(sock, str):
+    yield from send_all_data(sock, str.encode('utf8') + MSG_SEPARATOR)
 
 
 def serve(port, word_processor, evt_up=None):
@@ -31,7 +31,7 @@ def serve(port, word_processor, evt_up=None):
 
     try:
         while True:
-            yield FdRead(sock)
+            yield Fd.read(sock)
             cli, address = sock.accept()
             get_event_loop().add_coroutine(client_handler(cli, word_processor))
     finally:
@@ -41,11 +41,11 @@ def serve(port, word_processor, evt_up=None):
 
 def client_handler(sock, word_processor):
     for val in read_delimited_strings(sock):
-        if is_fd(val):
+        if isinstance(val, Fd):
             yield val
             continue
 
-        get_event_loop().add_coroutine(send_message(sock, word_processor(val)))
+        yield from send_message(sock, word_processor(val))
 
 
 def read_delimited_strings(sock):
@@ -60,7 +60,7 @@ def read_delimited_strings(sock):
             del buffer[:idx + len(MSG_SEPARATOR)]
             yield word
         elif not shutdown:
-            yield FdRead(sock)
+            yield Fd.read(sock)
 
             chunk = sock.recv(1024)
             buffer += chunk
@@ -82,14 +82,14 @@ def connect(port):
     try:
         sock.connect(('127.0.0.1', port))
     except BlockingIOError:
-        yield FdWrite(sock)
+        yield Fd.write(sock)
         return sock
 
 
 def recv_1_response(sock):
     buffer = bytearray()
     while not buffer.endswith(MSG_SEPARATOR):
-        yield FdRead(sock)
+        yield Fd.read(sock)
 
         chunk = sock.recv(1024)
         buffer += chunk
@@ -115,7 +115,7 @@ def recv_n_responses(sock, n):
             del buffer[:idx + len(MSG_SEPARATOR)]
             continue
 
-        yield FdRead(sock)
+        yield Fd.read(sock)
 
         chunk = sock.recv(1024)
         buffer += chunk

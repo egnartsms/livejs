@@ -33,7 +33,7 @@ def server(server_port):
     try:
         yield
     finally:
-        eventloop.stop(force_quit_coroutines=True)
+        eventloop.stop()
 
 
 @pytest.mark.usefixtures('server')

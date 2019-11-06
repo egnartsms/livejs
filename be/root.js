@@ -33,7 +33,7 @@ window.root = {
          throw new Error("Re-creating socket not implemented yet");
       }
       
-      this.socket = new WebSocket('ws://localhost:8000/wsconnect');
+      this.socket = new WebSocket('ws://localhost:8001/wsconnect');
       this.socket.onmessage = this.onSocketMessage.bind(this);
       this.socket.onopen = this.onSocketOpen.bind(this);
    },
@@ -41,6 +41,8 @@ window.root = {
    onSocketMessage: function (e) {
       let func;
       
+      console.log(`Got: ${e.data}`);
+
       try {
          func = new Function(e.data);
       }

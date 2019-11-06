@@ -1,6 +1,13 @@
 if __name__ == '__main__':
-    from live.sublime import *
+    from weakref import WeakKeyDictionary
 
-    g_el.run_in_new_thread()
-    start_server()
-    g_el.join_coroutine('server')
+    class Hey:
+        pass
+
+    wd = WeakKeyDictionary()
+    x = Hey()
+    wd[x] = [x]
+    del x
+    print(len(wd))
+    wd[list(wd)[0]][0] = 25
+    print(len(wd))
