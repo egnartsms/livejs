@@ -2,6 +2,7 @@ import os
 import traceback
 import json
 import re
+import collections
 from functools import partial
 
 import sublime
@@ -84,7 +85,7 @@ def thru_technical_command(view, final_callback):
 
 
 def websocket_handler(ws, data):
-    data = json.loads(data)
+    data = json.loads(data, object_pairs_hook=collections.OrderedDict)
     if data['type'] == 'msg':
         sublime.message_dialog("LiveJS: {}".format(data['msg']))
         return
