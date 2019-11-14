@@ -1,7 +1,8 @@
 import os
 import traceback
 import json
-import functools
+import re
+from functools import partial
 
 import sublime
 import sublime_plugin
@@ -9,6 +10,7 @@ import sublime_plugin
 import live.server as server
 from live.eventloop import EventLoop
 from live.config import config
+from live.util import first_such, tracking_last
 
 
 g_el = EventLoop()
@@ -25,7 +27,7 @@ def start_server():
     global g_el
     if not g_el.is_coroutine_live('server'):
         print("Starting the server...")
-        g_el.add_coroutine(server.serve(8001, ws_handler), 'server')
+        g_el.add_coroutine(server.serve(8001, websocket_handler), 'server')
         print("Started")
 
 
@@ -56,21 +58,6 @@ def plugin_unloaded():
     print("Unloaded")
 
 
-continuation = None
-view = None
-resp = None
-
-
-def ws_handler(ws, msg):
-    global resp
-    
-    msg = json.loads(msg)
-    if msg['type'] != 'response':
-        return
-    resp = msg['response']
-    sublime.set_timeout(lambda: view.run_command('do_refresh_code_browser'), 0)
-
-
 class ToggleServerCommand(sublime_plugin.TextCommand):
     def run(self, edit):
         global g_co, g_el
@@ -80,41 +67,156 @@ class ToggleServerCommand(sublime_plugin.TextCommand):
             start_server()
 
 
-class InsertItCommand(sublime_plugin.TextCommand):
-    def run(self, edit, text):
-        self.view.insert(edit, self.view.size(), '\n\n' + text)
+response_callbacks = []
+technical_command_callback = None
 
 
-class DoRefreshCodeBrowser(sublime_plugin.TextCommand):
-    def run(self, edit):
-        global continuation, view, resp
-        view = None
-        c = continuation
-        continuation = None
-        r = resp
-        resp = None
-        c(self.view, edit, r)
+def thru_technical_command(view, final_callback):
+    def callback(*args, **kwargs):
+        global technical_command_callback
+        technical_command_callback = partial(final_callback, *args, **kwargs)
+        try:
+            view.run_command('livejs_technical')
+        finally:
+            technical_command_callback = None
+
+    return callback
 
 
-class RefreshCodeBrowser(sublime_plugin.WindowCommand):
+def websocket_handler(ws, data):
+    data = json.loads(data)
+    if data['type'] == 'msg':
+        sublime.message_dialog("LiveJS: {}".format(data['msg']))
+        return
+    
+    if not response_callbacks:
+        sublime.error_message("LiveJS: logic error: expected response_callbacks not to "
+                              "be empty")
+        return
+
+    cb = response_callbacks.pop(0)
+    sublime.set_timeout(lambda: cb(resp=data['resp']), 0)
+
+
+CODE_BROWSER_VIEW_NAME = "LiveJS: Code Browser"
+
+
+class LivejsRefreshCodeBrowser(sublime_plugin.WindowCommand):
     def run(self):
-        cbv = next((v for v in self.window.views() if v.name() == 'live-code-browser'),
-                   None)
+        cbv = first_such(view for view in self.window.views()
+                         if view.name() == CODE_BROWSER_VIEW_NAME)
         if cbv is None:
             cbv = self.window.new_file()
-            cbv.set_name('live-code-browser')
+            cbv.set_name(CODE_BROWSER_VIEW_NAME)
             cbv.set_scratch(True)
             cbv.set_syntax_file('Packages/JavaScript/JavaScript.sublime-syntax')
 
-        global continuation, view
-        continuation = do_refresh_code_browser
-        view = cbv
+        response_callbacks.append(thru_technical_command(cbv, do_refresh_code_browser))
         server.websocket.enqueue_message('$.sendAllEntries()')
 
 
-def do_refresh_code_browser(cbv, edit, resp):
-    cbv.erase(edit, sublime.Region(0, cbv.size()))
+def do_refresh_code_browser(view, edit, resp):
+    view.erase(edit, sublime.Region(0, view.size()))
+    
     for key, value in resp:
-        cbv.insert(edit, cbv.size(), key + '\n')
-        cbv.insert(edit, cbv.size(), value + '\n\n')
-    cbv.window().focus_view(cbv)
+        view.insert(edit, view.size(), key + '\n')
+        insert_js_unit(view, edit, value)
+        view.insert(edit, view.size(), '\n\n')
+
+    view.window().focus_view(view)
+
+
+def insert_js_unit(view, edit, obj):
+    nesting = 0
+
+    def insert(s):
+        view.insert(edit, view.size(), s)
+
+    def indent():
+        insert(config.s_indent * nesting)
+
+    def insert_unit(obj):
+        if isinstance(obj, list):
+            insert_array(obj)
+            return
+        
+        assert isinstance(obj, dict), "Got non-dict: {}".format(obj)
+        leaf = obj.get('__leaf_type__')
+        if leaf == 'js-value':
+            insert(obj['value'])
+        elif leaf == 'function':
+            insert_function(obj['value'])
+        else:
+            assert leaf is None
+            insert_object(obj)
+
+    def insert_array(arr):
+        nonlocal nesting
+
+        if not arr:
+            insert("[]")
+            return
+        insert("[\n")
+        nesting += 1
+        for item in arr:
+            indent()
+            insert_unit(item)
+            insert(",\n")
+        nesting -= 1
+        indent()
+        insert("]")
+
+    def insert_object(obj):
+        nonlocal nesting
+
+        if not obj:
+            insert("{}")
+            return
+        insert("{\n")
+        nesting += 1
+        for k, v in obj.items():
+            indent()
+            insert(k)
+            insert(': ')
+            insert_unit(v)
+            insert(',\n')
+        nesting -= 1
+        indent()
+        insert("}")
+
+    def insert_function(source):
+        # The last line of a function contains a single closing brace and is indented at
+        # the same level as the whole function.  This of course depends on the formatting
+        # style but it works for now and is very simple.
+        i = source.rfind('\n')
+        if i == -1:
+            pass
+
+        i += 1
+        n = 0
+        while i + n < len(source) and ord(source[i + n]) == 32:
+            n += 1
+
+        line0, *lines = source.splitlines()
+        
+        insert(line0)
+        insert('\n')
+        for line, islast in tracking_last(lines):
+            indent()
+            if not re.match(r'^\s*$', line):
+                insert(line[n:])
+            if not islast:
+                insert('\n')
+
+    insert_unit(obj)
+
+
+class LivejsTechnicalCommand(sublime_plugin.TextCommand):
+    def run(self, edit):
+        print("LivejsTechnicalCommand")
+        technical_command_callback(view=self.view, edit=edit)
+
+
+class InsertItCommand(sublime_plugin.TextCommand):
+    def run(self, edit, text, smext):
+        print(text, smext)

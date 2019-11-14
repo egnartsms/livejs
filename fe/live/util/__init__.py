@@ -1,38 +1,17 @@
-def tuplify(obj):
-    if isinstance(obj, tuple):
-        return obj
-    else:
-        return tuple(obj)
+def first_such(gen):
+    return next(gen, None)
 
 
-class AssocError(Exception):
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        super().__init__("Assoc_12m: X obj {} already associated with Y {}".format(x, y))
+def tracking_last(iterable):
+    i = iter(iterable)
+    e0 = next(i)
 
+    while True:
+        try:
+            e1 = next(i)
+        except StopIteration:
+            yield e0, True
+            raise
 
-class AssocOneToMany:
-    """Helper container for usage with select() call in Eventloop.
-
-    1-to-many relationship with limited functionality. We call the sides X and Y.
-    """
-    
-    def __init__(self):
-        self._x2ys = dict()
-        self._y2x = dict()
-
-    def set_new(self, x, ys):
-        ys = tuple(ys)
-        if not ys:
-            return
-        
-        assert x not in self._x2ys
-        self._x2ys[x] = ys
-        for y in ys:
-            assert y not in self._y2x
-            self._y2x[y] = x
-
-    def remove_by(self, y):
-        x = self._y2x[y]
-        del self._x2ys[x]
+        yield e0, False
+        e0 = e1
