@@ -1,6 +1,24 @@
 [
     {
-        "keys": ["f5"],
-        "command": "livejs_refresh_code_browser"
+        "keys": ["ctrl+alt+r"],
+        "command": "livejs_refresh_cb"
+    },
+    {
+        "keys": ["s"],
+        "command": "livejs_cb_select",
+        "args": {
+        },
+        "context": [
+            {
+                "key": "livejs_view",
+                "operator": "equal",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "read_only",
+                "operator": "equal",
+                "operand": true
+            }
+        ]
     }
 ]

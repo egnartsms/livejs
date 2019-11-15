@@ -11,18 +11,19 @@ window.root = (function () {
       $.resetSocket();
    };
 
-   $.onSocketOpen = function (msg) {
+   $.onSocketOpen = function () {
       $.sendMsg("LiveJS browser established connection");
    };
 
+   $.onSocketClose = function (evt) {
+      $.resetSocket();
+   };
+
    $.resetSocket = function () {
-      if ($.socket !== null) {
-         throw new Error("Re-creating socket not implemented yet");
-      }
-      
       $.socket = new WebSocket('ws://localhost:8001/wsconnect');
       $.socket.onmessage = $.onSocketMessage;
       $.socket.onopen = $.onSocketOpen;
+      $.socket.onclose = $.onSocketClose;
    };
 
    $.onSocketMessage = function (e) {
@@ -111,6 +112,19 @@ window.root = (function () {
       $.sendResp(result);
    };
    
+   $.testObj = {
+      first_name: "Iohann",
+      last_name: "Bach",
+      functions: {
+         play: function () {
+            console.log("Bach plays")
+         },
+         stop: function () {
+            console.log("Bach plays no more")
+         }
+      }
+   };
+
    return $;
 })();
 
