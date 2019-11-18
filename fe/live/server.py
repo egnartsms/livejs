@@ -2,6 +2,10 @@
 import socket
 import os
 import http.client as httpcli
+import json
+import collections
+
+import sublime
 
 from live.eventloop import get_event_loop, Fd
 from live.websocket import WSConnection
@@ -12,7 +16,7 @@ from live.http import recv_up_to_delimiter, Request, Response
 websocket = None
 
 
-def serve(port, ws_handler):
+def serve(port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setblocking(False)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -23,7 +27,7 @@ def serve(port, ws_handler):
         while True:
             yield Fd.read(sock)
             cli, address = sock.accept()
-            co = handle_http_request_wrapper(cli, ws_handler)
+            co = handle_http_request_wrapper(cli)
             co.send(None)
             get_event_loop().add_coroutine(co)
     finally:
@@ -31,18 +35,18 @@ def serve(port, ws_handler):
         sock.close()
 
 
-def handle_http_request_wrapper(sock, ws_handler):
+def handle_http_request_wrapper(sock):
     """Make sure sock is properly closed"""
     try:
         yield None
-        while (yield from handle_http_request(sock, ws_handler)):
+        while (yield from handle_http_request(sock)):
             pass
     finally:
         sock.shutdown(socket.SHUT_RDWR)
         sock.close()
 
 
-def handle_http_request(sock, ws_handler):
+def handle_http_request(sock):
     """Handle 1 HTTP request.
 
     :return: True if another request should be handled through this connection
@@ -61,7 +65,8 @@ def handle_http_request(sock, ws_handler):
         if websocket is not None:
             yield from Response(req, httpcli.BAD_REQUEST).send_empty()
         else:
-            websocket = WSConnection(req, ws_handler)
+            websocket = WSConnection(req, websocket_handler)
+            print("WS connected")
             try:
                 yield from websocket
             finally:
@@ -83,3 +88,32 @@ def handle_http_request(sock, ws_handler):
 
     yield from Response(req, httpcli.OK).send_file(filepath)
     return moveon
+
+
+response_callbacks = []
+
+action_handlers = {}
+
+
+def websocket_handler(ws, data):
+    def handle_response():
+        for action in data['actions']:
+            assert action['type'] in action_handlers
+            action_handlers[action['type']](action)
+
+        if cb is not None:
+            cb(response=data['response'])
+
+    if not response_callbacks:
+        sublime.error_message("LiveJS: logic error: expected response_callbacks not to "
+                              "be empty")
+        return
+
+    cb = response_callbacks.pop(0)
+    
+    data = json.loads(data, object_pairs_hook=collections.OrderedDict)
+    if not data['success']:
+        sublime.error_message("LiveJS BE failed: {}".format(data['message']))
+        return
+    
+    sublime.set_timeout(handle_response, 0)

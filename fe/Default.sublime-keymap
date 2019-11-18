@@ -1,11 +1,11 @@
 [
     {
         "keys": ["ctrl+alt+r"],
-        "command": "livejs_refresh_cb"
+        "command": "livejs_cb_refresh"
     },
     {
-        "keys": ["s"],
-        "command": "livejs_cb_select",
+        "keys": ["c"],
+        "command": "livejs_cb_edit",
         "args": {
         },
         "context": [
@@ -17,6 +17,24 @@
             {
                 "key": "read_only",
                 "operator": "equal",
+                "operand": true
+            }
+        ]
+    },
+    {
+        "keys": ["c"],
+        "command": "livejs_cb_commit",
+        "args": {
+        },
+        "context": [
+            {
+                "key": "livejs_view",
+                "operator": "equal",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "read_only",
+                "operator": "not_equal",
                 "operand": true
             }
         ]

@@ -12,7 +12,7 @@ window.root = (function () {
    };
 
    $.onSocketOpen = function () {
-      $.sendMsg("LiveJS browser established connection");
+      console.log("Connected to LiveJS FE");
    };
 
    $.onSocketClose = function (evt) {
@@ -33,14 +33,14 @@ window.root = (function () {
          func = new Function('$', e.data);
       }
       catch (e) {
-         $.sendMsg(`Bad JS code:\n ${e}`);
+         $.sendFailure(`Failed to compile JS code:\n ${e}`);
       }
 
       try { 
          func.call(null, $);
       }
       catch (e) {
-         $.sendMsg(`Exception:\n ${e}`);
+         $.sendFailure(`Unhandled exception:\n ${e.stack}`);
       }
    };
 
@@ -91,30 +91,94 @@ window.root = (function () {
       $.socket.send(JSON.stringify(msg));
    };
 
-   $.sendMsg = function (msg) {
-      $.send({type: 'msg', msg});
+   $.sendFailure = function (message) {
+      $.send({
+         success: false,
+         message: message
+      });
+   }
+
+   $.sendSuccess = function (response, actions=null) {
+      $.send({
+         success: true,
+         response: response,
+         actions: actions || []
+      });
    };
 
-   $.sendResp = function (resp) {
-      $.send({type: 'resp', resp});
-   };
+   $.sendActions = function (actions) {
+      if (!Array.isArray(actions)) {
+         actions = [actions];
+      }
+      $.sendSuccess(null, actions);
+   }
    
    $.sendAllEntries = function () {
       let result = [];
       for (let [key, value] of Object.entries($)) {
          if ($.nontrackedKeys.includes(key)) {
-            continue;
+            result.push([key, $.prepareForSerialization('new Object()')])
          }
-
-         result.push([key, $.prepareForSerialization(value)]);
+         else {
+            result.push([key, $.prepareForSerialization(value)]);   
+         }
       }
 
-      $.sendResp(result);
+      $.sendSuccess(result);
    };
    
+   $.edit = function (path, newValueClosure) {
+      let newValue;
+
+      try {
+         newValue = newValueClosure.call(null);
+      }
+      catch (e) {
+         $.sendFailure(`Failed to evaluate a new value:\n ${e.stack}`)
+         return;
+      }
+
+      let {parent, key} = $.path2ParentnKey(path);
+      console.log(parent, key);
+      parent[key] = newValue;
+
+      $.sendActions({
+         type: 'edit',
+         path: path,
+         newValue: $.prepareForSerialization(newValue)
+      });
+   };
+
+   $.path2ParentnKey = function (path) {
+      let parent = $, key, i = 0;
+
+      // invariant: key
+
+      for (;;) {
+         let n = path[i], child;
+
+         if (Array.isArray(parent)) {
+            [key, child] = [String(n), parent[n]];
+         }
+         else {
+            [key, child] = Object.entries(parent)[n];
+         }
+
+         i += 1;
+         if (i === path.length) {
+            break;
+         }
+         else {
+            parent = child;   
+         }
+      }
+
+      return {parent, key};
+   };
+
    $.testObj = {
       first_name: "Iohann",
-      last_name: "Bach",
+      last_name: [10, 20],
       functions: {
          play: function () {
             console.log("Bach plays")
