@@ -1,5 +1,3 @@
-import re
-from collections import OrderedDict
 import operator as pyop
 from functools import partial
 
@@ -8,8 +6,10 @@ import sublime
 
 from live import server
 from live.config import config
-from live.util import tracking_last, first_such
+from live.util import first_such
 from live.technical_command import thru_technical_command
+from live.codecommon import inserting_js_object
+from live.codepersist import change
 from live.sublime_util import Cursor
 
 
@@ -101,10 +101,6 @@ class JsInterior(JsNode, list):
     def key_reg_children(self):
         return self.key_reg_values if self.is_object else self.key_reg_items
 
-    def append_child(self, jsnode):
-        jsnode.parent = self
-        self.append(jsnode)
-
     def human_readable(self):
         if self.is_object:
             return '{' + ','.join([x.human_readable() for x in self]) + '}'
@@ -172,7 +168,7 @@ def reset(view, edit, response):
         cur.insert(' =\n')
 
         x0 = cur.pos
-        insert_js_unit(cur, value, root)
+        insert_js_object(cur, value, root)
         x1 = cur.pos
         reg_values.append(sublime.Region(x0, x1))
         
@@ -187,112 +183,55 @@ def reset(view, edit, response):
     view.window().focus_view(view)
 
 
-def insert_js_unit(cur, obj, parent):
-    nesting = parent.nesting
+def insert_js_object(cur, obj, parent_node):
+    itr = inserting_js_object(cur, obj, parent_node.nesting)
 
-    def indent():
-        cur.insert(config.s_indent * nesting)
+    def insert_object(parent_node):
+        reg_keys, reg_values, node = [], [], JsInterior(is_object=True)
+        node.parent = parent_node
+        parent_node.append(node)
 
-    def insert_unit(obj, parent):
-        if isinstance(obj, list):
-            return insert_array(obj, parent)
+        while True:
+            cmd = next(itr)
+            if cmd == 'pop':
+                break
+
+            beg, end = cmd
+            reg_keys.append(sublime.Region(beg, end))
+            insert_any(next(itr), node)
+            beg, end = next(itr)
+            reg_values.append(sublime.Region(beg, end))
+
+        cur.view.add_regions(node.key_reg_keys, reg_keys, '', '', sublime.HIDDEN)
+        cur.view.add_regions(node.key_reg_values, reg_values, '', '', sublime.HIDDEN)
+
+    def insert_array(parent_node):
+        reg_items, node = [], JsInterior(is_object=False)
+        node.parent = parent_node
+        parent_node.append(node)
+
+        while True:
+            cmd = next(itr)
+            if cmd == 'pop':
+                break
+
+            insert_any(cmd, node)
+            beg, end = next(itr)
+            reg_items.append(sublime.Region(beg, end))
         
-        assert isinstance(obj, OrderedDict), "Got non-dict: {}".format(obj)
-        leaf = obj.get('__leaf_type__')
-        if leaf == 'js-value':
-            cur.insert(obj['value'])
-            parent.append_child(JsLeaf())
-        elif leaf == 'function':
-            insert_function(obj['value'])
-            parent.append_child(JsLeaf())
-        else:
-            assert leaf is None
-            insert_object(obj, parent)
+        cur.view.add_regions(node.key_reg_items, reg_items, '', '', sublime.HIDDEN)
 
-    def insert_array(arr, parent):
-        nonlocal nesting
+    def insert_any(cmd, parent_node):
+        if cmd == 'push_object':
+            insert_object(parent_node)
+        elif cmd == 'push_array':
+            insert_array(parent_node)
+        elif cmd == 'leaf':
+            leaf = JsLeaf()
+            leaf.parent = parent_node
+            parent_node.append(leaf)
 
-        reg_items, jsnode = [], JsInterior(is_object=False)
-        parent.append_child(jsnode)
-
-        if not arr:
-            cur.insert("[]")
-            return jsnode
-
-        cur.insert("[\n")
-        nesting += 1
-        for item in arr:
-            indent()
-            x0 = cur.pos
-            insert_unit(item, jsnode)
-            x1 = cur.pos
-            reg_items.append(sublime.Region(x0, x1))
-
-            cur.insert(",\n")
-        nesting -= 1
-        indent()
-        cur.insert("]")
-
-        cur.view.add_regions(jsnode.key_reg_items, reg_items, '', '', sublime.HIDDEN)
-
-    def insert_object(obj, parent):
-        nonlocal nesting
-
-        reg_keys, reg_values, jsnode = [], [], JsInterior(is_object=True)
-        parent.append_child(jsnode)
-
-        if not obj:
-            cur.insert("{}")
-            return jsnode
-
-        cur.insert("{\n")
-        nesting += 1
-        for k, v in obj.items():
-            indent()
-            x0 = cur.pos
-            cur.insert(k)
-            x1 = cur.pos
-            reg_keys.append(sublime.Region(x0, x1))
-
-            cur.insert(': ')
-            x0 = cur.pos
-            insert_unit(v, jsnode)
-            x1 = cur.pos
-            reg_values.append(sublime.Region(x0, x1))
-
-            cur.insert(',\n')
-        nesting -= 1
-        indent()
-        cur.insert("}")
-
-        cur.view.add_regions(jsnode.key_reg_keys, reg_keys, '', '', sublime.HIDDEN)
-        cur.view.add_regions(jsnode.key_reg_values, reg_values, '', '', sublime.HIDDEN)
-
-    def insert_function(source):
-        # The last line of a function contains a single closing brace and is indented at
-        # the same level as the whole function.  This of course depends on the formatting
-        # style but it works for now and is very simple.
-        i = source.rfind('\n')
-        if i == -1:
-            pass
-
-        i += 1
-        n = 0
-        while i + n < len(source) and ord(source[i + n]) == 32:
-            n += 1
-
-        line0, *lines = source.splitlines()
-        
-        cur.insert(line0)
-        cur.insert('\n')
-        for line, islast in tracking_last(lines):
-            indent()
-            if not re.match(r'^\s*$', line):
-                cur.insert(line[n:])
-            if not islast:
-                cur.insert('\n')
-
-    insert_unit(obj, parent)
+    insert_any(next(itr), parent_node)
 
 
 def erase_regions(view, jsnode):
@@ -343,7 +282,7 @@ CODE_BROWSER_VIEW_NAME = "LiveJS: Code Browser"
 class LivejsCbRefresh(sublime_plugin.WindowCommand):
     def run(self):
         if server.websocket is None:
-            sublime.error_message("BE did not connect yet")
+            sublime.error_message("BE is not connected")
             return
 
         cbv = first_such(view for view in self.window.views()
@@ -376,6 +315,24 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
         
         op = pyop.eq if operator == sublime.OP_EQUAL else pyop.ne
         return op(self.view.settings().get('livejs_view'), operand)
+
+    def on_activated(self):
+        if server.websocket is None:
+            invalidate_codebrowser(self.view)
+            return
+        vinfo = info_for(self.view)
+        if vinfo.root is None:
+            invalidate_codebrowser(self.view)
+
+
+def invalidate_codebrowser(view):
+    def go(view, edit):
+        view.set_read_only(False)
+        view.erase(edit, sublime.Region(0, view.size()))
+        view.insert(edit, 0, "<<<<< Codebrowser contents outdated. Please refresh! >>>>>")
+        view.set_read_only(True)
+
+    thru_technical_command(view, go)()
 
 
 class LivejsCbEdit(sublime_plugin.TextCommand):
@@ -445,13 +402,20 @@ def edit_change_view(view, edit, action):
     del jsnode.parent[n:]
     cur = Cursor(span.a, view, edit)
     x0 = cur.pos
-    insert_js_unit(cur, new_value, jsnode.parent)
+    insert_js_object(cur, new_value, jsnode.parent)
     x1 = cur.pos
     parent_regions = view.get_regions(jsnode.parent.key_reg_children)
     parent_regions[n] = sublime.Region(x0, x1)
     view.add_regions(jsnode.parent.key_reg_children, parent_regions, '', '',
                      sublime.HIDDEN)
     jsnode.parent += following_siblings
+
+    # TODO: move this to a proper place
+    def change_in_root_view(view, edit):
+        change(view, edit, path, new_value)
+
+    root_view = view.window().find_open_file('/home/serhii/hack/livejs/be/root.js')
+    thru_technical_command(root_view, change_in_root_view)()
 
 
 server.action_handlers['edit'] = action_handler_edit

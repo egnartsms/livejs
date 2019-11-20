@@ -96,7 +96,7 @@ window.root = (function () {
          success: false,
          message: message
       });
-   }
+   };
 
    $.sendSuccess = function (response, actions=null) {
       $.send({
@@ -111,7 +111,7 @@ window.root = (function () {
          actions = [actions];
       }
       $.sendSuccess(null, actions);
-   }
+   };
    
    $.sendAllEntries = function () {
       let result = [];
@@ -178,11 +178,13 @@ window.root = (function () {
 
    $.testObj = {
       first_name: "Iohann",
-      last_name: [10, 20],
+      last_name: [120, 24],
       functions: {
-         play: function () {
-            console.log("Bach plays")
-         },
+         play: [
+            "one",
+            "two",
+            "",
+         ],
          stop: function () {
             console.log("Bach plays no more")
          }

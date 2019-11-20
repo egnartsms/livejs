@@ -22,7 +22,7 @@
         ]
     },
     {
-        "keys": ["c"],
+        "keys": ["ctrl+enter"],
         "command": "livejs_cb_commit",
         "args": {
         },
@@ -34,8 +34,7 @@
             },
             {
                 "key": "read_only",
-                "operator": "not_equal",
-                "operand": true
+                "operand": false
             }
         ]
     }
