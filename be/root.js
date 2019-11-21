@@ -114,14 +114,7 @@ window.root = (function () {
          actions: actions || []
       });
    };
-
-   $.sendActions = function (actions) {
-      if (!Array.isArray(actions)) {
-         actions = [actions];
-      }
-      $.sendSuccess(null, actions);
-   };
-   
+  
    $.sendAllEntries = function () {
       let result = [];
       for (let [key, value] of Object.entries($)) {
@@ -134,6 +127,12 @@ window.root = (function () {
       }
 
       $.sendSuccess(result);
+   };
+
+   $.sendObjectAt = function (path) {
+      let {parent, key} = $.path2ParentnKey(path);
+
+      $.sendSuccess($.prepareForSerialization(parent[key]));
    };
    
    $.edit = function (path, newValueClosure) {
@@ -148,14 +147,13 @@ window.root = (function () {
       }
 
       let {parent, key} = $.path2ParentnKey(path);
-      console.log(parent, key);
       parent[key] = newValue;
 
-      $.sendActions({
+      $.sendSuccess(null, [{
          type: 'edit',
          path: path,
          newValue: $.prepareForSerialization(newValue)
-      });
+      }]);
    };
 
    $.path2ParentnKey = function (path) {
@@ -195,7 +193,7 @@ window.root = (function () {
             /[on]/,
             [
                [
-                  /[(]/,
+                  "Hello!",
                   function another () {
                      return 'another';
                   },

@@ -6,8 +6,6 @@
     {
         "keys": ["e"],
         "command": "livejs_cb_edit",
-        "args": {
-        },
         "context": [
             {
                 "key": "livejs_view",
@@ -22,8 +20,21 @@
     {
         "keys": ["ctrl+enter"],
         "command": "livejs_cb_commit",
-        "args": {
-        },
+        "context": [
+            {
+                "key": "livejs_view",
+                "operator": "equal",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "read_only",
+                "operator": "not_equal"
+            }
+        ]
+    },
+    {
+        "keys": ["alt+c"],
+        "command": "livejs_cb_cancel_edit",
         "context": [
             {
                 "key": "livejs_view",

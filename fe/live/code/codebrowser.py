@@ -284,7 +284,7 @@ def on_refresh(view, edit, response):
     set_viewport_position(view, prev_viewport_pos, False)
 
 
-def handle_edit_action(view, edit, path, new_value):
+def replace_node(view, edit, path, new_value):
     jsnode = info_for(view).root.get_at_path(path)
     parent = jsnode.parent
     [reg] = view.get_regions('being_edited')
@@ -302,7 +302,7 @@ def handle_edit_action(view, edit, path, new_value):
     # The following is needed because of how we deal with the region being edited. We
     # extend it to contain more than just the node being edited.
     if parent.is_object:
-        cur.insert(':')
+        cur.insert(': ')
     else:
         cur.insert('\n')
         cur.insert(config.s_indent * parent.nesting)

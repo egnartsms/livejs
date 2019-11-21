@@ -9,11 +9,11 @@ from live import server
 from live.sublime_util.technical_command import thru_technical_command
 from live.sublime_util.cursor import Cursor
 from live.code.codebrowser import (
-    on_refresh, info_for, find_containing_leaf_and_region
+    on_refresh, info_for, find_containing_leaf_and_region, replace_node
 )
 
 
-__all__ = ['LivejsCbRefresh', 'LivejsCbEdit', 'LivejsCbCommit',
+__all__ = ['LivejsCbRefresh', 'LivejsCbEdit', 'LivejsCbCommit', 'LivejsCbCancelEdit',
            'CodeBrowserEventListener']
 
 
@@ -117,13 +117,32 @@ class LivejsCbCommit(sublime_plugin.TextCommand):
         JSCODE = '''$.edit({}, (function () {{ return ({}); }}));'''.format(
             jsnode.path, js
         )
-        server.response_callbacks.append(partial(on_value_updated, view=self.view))
+        server.response_callbacks.append(partial(on_edit_committed, view=self.view))
         server.websocket.enqueue_message(JSCODE)
         self.view.set_status('pending', "LiveJS: back-end is processing..")
 
 
-def on_value_updated(view, response):
+def on_edit_committed(view, response):
+    switch_to_view_mode(view)
+
+
+def switch_to_view_mode(view):
+    """Switch from edit mode to the ordinary view mode"""
     view.erase_status('pending')
     info_for(view).jsnode_being_edited = None
     view.erase_regions('being_edited')
     view.set_read_only(True)
+
+
+class LivejsCbCancelEdit(sublime_plugin.TextCommand):
+    def run(self, edit):
+        path = info_for(self.view).jsnode_being_edited.path
+        JSCODE = '''$.sendObjectAt({})'''.format(path)
+        server.response_callbacks.append(partial(on_edit_aborted, view=self.view))
+        server.websocket.enqueue_message(JSCODE)
+
+
+def on_edit_aborted(view, response):
+    node = info_for(view).jsnode_being_edited
+    thru_technical_command(view, replace_node)(path=node.path, new_value=response)
+    switch_to_view_mode(view)

@@ -17,7 +17,7 @@ def edit(action):
     cbv = first_such(view for view in sublime.active_window().views()
                      if view.settings().get('livejs_view') == 'Code Browser')
     
-    thru_technical_command(cbv, codebrowser.handle_edit_action)(
+    thru_technical_command(cbv, codebrowser.replace_node)(
         path=action['path'],
         new_value=action['newValue']
     )
