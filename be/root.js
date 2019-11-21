@@ -78,7 +78,16 @@ window.root = (function () {
          return Array.from(obj, prepare);
       }
 
-      if (Object.getPrototypeOf(obj) !== Object.prototype) {
+      let proto = Object.getPrototypeOf(obj);
+
+      if (proto === RegExp.prototype) {
+         return {
+            __leaf_type__: 'js-value',
+            value: obj.toString()
+         };
+      }
+
+      if (proto !== Object.prototype) {
          throw new Error(`Cannot serialize objects with non-standard prototype`);
       }
 
@@ -183,13 +192,18 @@ window.root = (function () {
          }],
       functions: {
          play: [
-            "on",
+            /[on]/,
             [
-               "Ukraine",
+               [
+                  /[(]/,
+                  function another () {
+                     return 'another';
+                  },
+               ],
                "Gonduras",
             ],
             function (x, y) {
-               return x + y;
+               return (x + y) * 2;
             },
          ],
          stop: function () {

@@ -1,6 +1,7 @@
 import sublime_plugin
 import sublime
 
+from live.config import config
 from live.code.common import inserting_js_object
 from live.sublime_util.cursor import Cursor
 from live.sublime_util.hacks import set_viewport_position
@@ -216,7 +217,7 @@ def erase_regions(jsnode, view):
     erase(jsnode)
 
 
-def find_containing_leaf(view, x):
+def find_containing_leaf_and_region(view, x):
     node = info_for(view).root
     reg = None
 
@@ -283,27 +284,28 @@ def on_refresh(view, edit, response):
     set_viewport_position(view, prev_viewport_pos, False)
 
 
-def on_value_updated(view, response):
-    view.erase_status('pending')
-    info_for(view).jsnode_being_edited = None
-    view.erase_regions('being_edited')
-    view.set_read_only(True)
-
-
 def handle_edit_action(view, edit, path, new_value):
     jsnode = info_for(view).root.get_at_path(path)
-    
+    parent = jsnode.parent
+    [reg] = view.get_regions('being_edited')
+
     assert jsnode is info_for(view).jsnode_being_edited
 
-    parent = jsnode.parent
-    cur = Cursor(jsnode.begin(view), view, edit)
-    
+    view.erase(edit, reg)
     erase_regions(jsnode, view)
-    cur.erase(jsnode.end(view))
-    n = jsnode.num
+    cur = Cursor(reg.a, view, edit)
+    
     # We temporarily remove all the jsnode's siblings that go after it, then re-add
+    n = jsnode.num
     following_siblings = parent[n + 1:]
     del parent[n:]
+    # The following is needed because of how we deal with the region being edited. We
+    # extend it to contain more than just the node being edited.
+    if parent.is_object:
+        cur.insert(':')
+    else:
+        cur.insert('\n')
+        cur.insert(config.s_indent * parent.nesting)
     beg = cur.pos
     insert_js_object(cur, new_value, parent)
     end = cur.pos

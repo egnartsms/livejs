@@ -7,8 +7,9 @@ import sublime_plugin
 from live.util import first_such
 from live import server
 from live.sublime_util.technical_command import thru_technical_command
+from live.sublime_util.cursor import Cursor
 from live.code.codebrowser import (
-    on_refresh, on_value_updated, info_for, find_containing_leaf
+    on_refresh, info_for, find_containing_leaf_and_region
 )
 
 
@@ -86,27 +87,43 @@ class LivejsCbEdit(sublime_plugin.TextCommand):
             self.view.window().status_message("must not select any regions")
             return
 
-        obj, reg = find_containing_leaf(self.view, r0.b)
+        obj, reg = find_containing_leaf_and_region(self.view, r0.b)
         if obj is None:
             self.view.window().status_message("not inside a leaf")
             return
 
         info_for(self.view).jsnode_being_edited = obj
+
+        self.view.set_read_only(False)
+        
+        beg = Cursor(reg.a, self.view)
+        beg.skip_ws_bwd(skip_bol=True)
+        end = Cursor(reg.b, self.view, edit)
+        end.insert('\n')
+        reg = sublime.Region(beg.pos, end.pos)
+
         self.view.add_regions('being_edited', [reg], 'region.greenish', '',
                               sublime.DRAW_NO_FILL | sublime.DRAW_EMPTY)
         self.view.sel().clear()
         self.view.sel().add(reg)
-        self.view.set_read_only(False)
 
 
 class LivejsCbCommit(sublime_plugin.TextCommand):
     def run(self, edit):
         jsnode = info_for(self.view).jsnode_being_edited
         [reg] = self.view.get_regions('being_edited')
+        js = self.view.substr(reg).strip()
 
         JSCODE = '''$.edit({}, (function () {{ return ({}); }}));'''.format(
-            jsnode.path, self.view.substr(reg)
+            jsnode.path, js
         )
         server.response_callbacks.append(partial(on_value_updated, view=self.view))
         server.websocket.enqueue_message(JSCODE)
         self.view.set_status('pending', "LiveJS: back-end is processing..")
+
+
+def on_value_updated(view, response):
+    view.erase_status('pending')
+    info_for(view).jsnode_being_edited = None
+    view.erase_regions('being_edited')
+    view.set_read_only(True)
