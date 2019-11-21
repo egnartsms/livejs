@@ -4,7 +4,7 @@
         "command": "livejs_cb_refresh"
     },
     {
-        "keys": ["c"],
+        "keys": ["e"],
         "command": "livejs_cb_edit",
         "args": {
         },
@@ -15,9 +15,7 @@
                 "operand": "Code Browser"
             },
             {
-                "key": "read_only",
-                "operator": "equal",
-                "operand": true
+                "key": "read_only"
             }
         ]
     },
@@ -34,7 +32,7 @@
             },
             {
                 "key": "read_only",
-                "operand": false
+                "operator": "not_equal"
             }
         ]
     }

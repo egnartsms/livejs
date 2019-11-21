@@ -91,29 +91,39 @@ def handle_http_request(sock):
 
 
 response_callbacks = []
-
 action_handlers = {}
 
 
 def websocket_handler(ws, data):
-    def handle_response():
-        for action in data['actions']:
-            assert action['type'] in action_handlers
-            action_handlers[action['type']](action)
-
-        if cb is not None:
-            cb(response=data['response'])
-
     if not response_callbacks:
-        sublime.error_message("LiveJS: logic error: expected response_callbacks not to "
-                              "be empty")
+        sublime.set_timeout(
+            lambda: sublime.error_message("LiveJS: logic error: expected "
+                                          "response_callbacks not to be empty"),
+            0
+        )
         return
 
-    cb = response_callbacks.pop(0)
-    
+    callback = response_callbacks.pop(0)
     data = json.loads(data, object_pairs_hook=collections.OrderedDict)
+    sublime.set_timeout(lambda: handle_response(data, callback), 0)
+
+
+def handle_response(data, callback):
     if not data['success']:
         sublime.error_message("LiveJS BE failed: {}".format(data['message']))
         return
-    
-    sublime.set_timeout(handle_response, 0)
+
+    for action in data['actions']:
+        assert action['type'] in action_handlers
+        action_handlers[action['type']](action)
+
+    if callback is not None:
+        callback(response=data['response'])
+
+
+def action_handler(action_type):
+    def decorator(fn):
+        action_handlers[action_type] = fn
+        return fn
+
+    return decorator

@@ -4,18 +4,18 @@ import sublime
 import sublime_plugin
 
 
-from live.sublime_util import Cursor
+from live.sublime_util.cursor import Cursor
 from live.util import tracking_last
-from live.codecommon import inserting_js_object
+from live.code.common import inserting_js_object
 
 
 re_toplevel = r'^\s{nesting}\$\.([^=]+)\s*='
 re_any_brace = r'''[`'"()[\]{}]'''
 re_line_comment = r'//'
 re_block_comment = r'/\*'
-re_regexp = r'(^|[,([{!~+-/*&|=:])\s*/(?!/)'
-re_of_interest = '{re_any_brace}|{re_line_comment}|{re_block_comment}|{re_regexp}'\
-    .format(**globals())
+re_of_interest = (
+    '{re_any_brace}|{re_line_comment}|{re_block_comment}|/'.format(**globals())
+)
 
 
 class CodePersistCursor(Cursor):
@@ -23,7 +23,6 @@ class CodePersistCursor(Cursor):
         super().__init__(pos, view, edit)
         self.nesting = self.view.settings().get('tab_size')
         self.re_toplevel = re_toplevel.replace('nesting', str(self.nesting))
-        # self.reg = None  # found region
 
     def next_toplevel(self):
         reg = self.find(self.re_toplevel)
@@ -52,8 +51,6 @@ class CodePersistCursor(Cursor):
             s = self.view.substr(reg)
             self.pos = reg.b
 
-            print("Found {} at pos {} balance {}".format(s, self.pos, balance))
-
             if s == literal:
                 if balance == 0:
                     if not inc:
@@ -66,7 +63,11 @@ class CodePersistCursor(Cursor):
             elif s == '//':
                 self._skip_to_newline()
             elif s.endswith('/'):
-                self._skip_to_end_of_regex()
+                # May be a regex. Check what precedes the current position
+                if self._is_start_of_regex():
+                    self._skip_to_end_of_regex()
+                else:
+                    pass
             elif s in "\"'`":
                 self._skip_to_end_of_string(s)
             elif s in '([{':
@@ -98,12 +99,18 @@ class CodePersistCursor(Cursor):
             raise UnexpectedContents(self, "Unterminated string literal")
         self.pos = reg.b
 
+    def _is_start_of_regex(self):
+        reg = self.view.line(self.pos)
+        line = self.view.substr(sublime.Region(reg.a, self.pos - 1))[::-1]
+        return bool(re.match(r'\s*([,([{!~+-/*&|=:]|$)', line))
+
     def _skip_to_end_of_regex(self):
         while True:
             reg = self.find(r'\[|(?<!\\)/|\n')
             if reg.a == -1 or self.view.substr(reg) == '\n':
                 raise UnexpectedContents(self, "Unterminated regex literal")
             self.pos = reg.b
+            s = self.view.substr(reg)
             if s == '/':
                 return
             
@@ -121,7 +128,7 @@ class UnexpectedContents(Exception):
         super().__init__("Unexpected contents after pos {}: {}".format(cur.pos, msg))
 
 
-def change(view, edit, path, new_value):
+def handle_edit_action(view, edit, path, new_value):
     cur = CodePersistCursor(0, view, edit)
     reg = cur.next_toplevel()
     for i in range(path[0]):
@@ -155,3 +162,6 @@ def change(view, edit, path, new_value):
     itr = inserting_js_object(cur, new_value, len(path))
     while next(itr, None):
         pass
+
+    # Just saving does not work, we have to do it after the current command completes
+    sublime.set_timeout(lambda: view.run_command('save'), 0)

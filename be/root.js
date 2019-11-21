@@ -178,12 +178,19 @@ window.root = (function () {
 
    $.testObj = {
       first_name: "Iohann",
-      last_name: [120, 24],
+      last_name: [120, function () {
+            console.log(/[a-z({\]((ab]/);
+         }],
       functions: {
          play: [
-            "one",
-            "two",
-            "",
+            "on",
+            [
+               "Ukraine",
+               "Gonduras",
+            ],
+            function (x, y) {
+               return x + y;
+            },
          ],
          stop: function () {
             console.log("Bach plays no more")

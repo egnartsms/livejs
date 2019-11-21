@@ -7,8 +7,8 @@ import sublime_plugin
 from live import server
 from live.eventloop import EventLoop
 from live.config import config
-from live.codebrowser import *  # noqa
-from live.technical_command import *  # noqa
+from live.code import *  # noqa
+from live.sublime_util import *  # noqa
 
 g_el = EventLoop()
 
