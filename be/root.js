@@ -185,29 +185,17 @@ window.root = (function () {
 
    $.testObj = {
       first_name: "Iohann",
-      last_name: [120, function () {
+      last_name: [
+         120,
+         function () {
             console.log(/[a-z({\]((ab]/);
-         }],
+         },
+      ],
       functions: {
-         play: [
-            /[on]/,
-            [
-               [
-                  "Hello!",
-                  function another () {
-                     return 'another';
-                  },
-               ],
-               "Gonduras",
-            ],
-            function (x, y) {
-               return (x + y) * 2;
-            },
-         ],
-         stop: function () {
-            console.log("Bach plays no more")
-         }
-      }
+         squeak: function () { return 'squeak' },
+         pharo: function () { return 'pharo' },
+      },
+      version: "0.0.10",
    };
 
    return $;

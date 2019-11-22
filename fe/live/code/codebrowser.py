@@ -2,7 +2,7 @@ import sublime_plugin
 import sublime
 
 from live.config import config
-from live.code.common import inserting_js_object
+from live.code.common import inserting_js_value
 from live.sublime_util.cursor import Cursor
 from live.sublime_util.hacks import set_viewport_position
 
@@ -149,8 +149,8 @@ class JsLeaf(JsNode):
         return '#<jsleaf>'
 
 
-def insert_js_object(cur, obj, parent_node):
-    itr = inserting_js_object(cur, obj, parent_node.nesting)
+def insert_js_value(cur, jsval, parent_node):
+    itr = inserting_js_value(cur, jsval, parent_node.nesting)
 
     def insert_object(parent_node):
         reg_keys, reg_values, node = [], [], JsInterior(is_object=True)
@@ -217,30 +217,34 @@ def erase_regions(jsnode, view):
     erase(jsnode)
 
 
-def find_containing_leaf_and_region(view, x):
+def find_containing_node_and_region(view, xreg):
+    """Find innermost node that fully contains xreg
+
+    :return: (node, reg) or (None, None) if not inside any node or spans >1 top-level
+    nodes.
+    """
     node = info_for(view).root
     reg = None
 
     while not node.is_leaf:
-        if node.is_object:
-            regs = view.get_regions(node.key_reg_values)
-        else:
-            regs = view.get_regions(node.key_reg_items)
+        regs = view.get_regions(node.key_reg_children)
 
         assert len(regs) == len(node)
 
         for subreg, subnode in zip(regs, node):
-            if subreg.contains(x):
+            if subreg.contains(xreg):
                 node = subnode
                 reg = subreg
                 break
         else:
-            return None, None
+            # xreg is not fully contained in any single child of node.  That means that
+            # node and reg are what we're looking for.
+            break
 
     return node, reg
 
 
-def on_refresh(view, edit, response):
+def refresh(view, edit, response):
     prev_pos = view.sel()[0].begin()
     prev_viewport_pos = view.viewport_position()
 
@@ -261,10 +265,10 @@ def on_refresh(view, edit, response):
         x1 = cur.pos
         reg_keys.append(sublime.Region(x0, x1))
 
-        cur.insert(' =\n')
+        cur.insert(' = ')
 
         x0 = cur.pos
-        insert_js_object(cur, value, root)
+        insert_js_value(cur, value, root)
         x1 = cur.pos
         reg_values.append(sublime.Region(x0, x1))
         
@@ -302,12 +306,12 @@ def replace_node(view, edit, path, new_value):
     # The following is needed because of how we deal with the region being edited. We
     # extend it to contain more than just the node being edited.
     if parent.is_object:
-        cur.insert(': ')
+        cur.insert(' ')
     else:
         cur.insert('\n')
         cur.insert(config.s_indent * parent.nesting)
     beg = cur.pos
-    insert_js_object(cur, new_value, parent)
+    insert_js_value(cur, new_value, parent)
     end = cur.pos
     parent += following_siblings
 

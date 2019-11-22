@@ -9,7 +9,7 @@ from live import server
 from live.sublime_util.technical_command import thru_technical_command
 from live.sublime_util.cursor import Cursor
 from live.code.codebrowser import (
-    on_refresh, info_for, find_containing_leaf_and_region, replace_node
+    refresh, info_for, find_containing_node_and_region, replace_node
 )
 
 
@@ -72,27 +72,26 @@ class LivejsCbRefresh(sublime_plugin.WindowCommand):
             cbv.set_scratch(True)
             cbv.set_syntax_file('Packages/JavaScript/JavaScript.sublime-syntax')
 
-        server.response_callbacks.append(thru_technical_command(cbv, on_refresh))
+        server.response_callbacks.append(thru_technical_command(cbv, refresh))
         server.websocket.enqueue_message('$.sendAllEntries()')
 
 
 class LivejsCbEdit(sublime_plugin.TextCommand):
     def run(self, edit):
         if len(self.view.sel()) != 1:
-            self.view.window().status_message(">1 cursors")
+            self.view.window().status_message("Could not determine the node to edit: "
+                                              "many cursors")
             return
 
         r0 = self.view.sel()[0]
-        if r0.size() > 0:
-            self.view.window().status_message("must not select any regions")
+        node, reg = find_containing_node_and_region(self.view, r0.b)
+        if node is None:
+            self.view.window().status_message("Could not determine the node to edit: "
+                                              "selected region is not entirely inside a "
+                                              "node")
             return
 
-        obj, reg = find_containing_leaf_and_region(self.view, r0.b)
-        if obj is None:
-            self.view.window().status_message("not inside a leaf")
-            return
-
-        info_for(self.view).jsnode_being_edited = obj
+        info_for(self.view).jsnode_being_edited = node
 
         self.view.set_read_only(False)
         
@@ -100,9 +99,9 @@ class LivejsCbEdit(sublime_plugin.TextCommand):
         beg.skip_ws_bwd(skip_bol=True)
         end = Cursor(reg.b, self.view, edit)
         end.insert('\n')
-        reg = sublime.Region(beg.pos, end.pos)
+        ex_reg = sublime.Region(beg.pos, end.pos)
 
-        self.view.add_regions('being_edited', [reg], 'region.greenish', '',
+        self.view.add_regions('being_edited', [ex_reg], 'region.greenish', '',
                               sublime.DRAW_NO_FILL | sublime.DRAW_EMPTY)
         self.view.sel().clear()
         self.view.sel().add(reg)

@@ -6,7 +6,7 @@ import sublime_plugin
 
 from live.sublime_util.cursor import Cursor
 from live.util import tracking_last
-from live.code.common import inserting_js_object
+from live.code.common import inserting_js_value
 
 
 re_toplevel = r'^\s{nesting}\$\.([^=]+)\s*='
@@ -38,20 +38,20 @@ class CodePersistCursor(Cursor):
         else:
             self.pos = reg.a
 
-    def consume(self, literal, inc):
+    def consume(self, terminator, inc):
         balance = 0
 
-        re_target = '({})|({})'.format(re_of_interest, literal)
+        re_target = '({})|({})'.format(re_of_interest, terminator)
 
         while True:
             reg = self.find(re_target)
             if reg.a == -1:
-                raise UnexpectedContents(self, "Not found literal {}", literal)
+                raise UnexpectedContents(self, "Not found the terminator {}", terminator)
 
             s = self.view.substr(reg)
             self.pos = reg.b
 
-            if s == literal:
+            if re.match(terminator, s):
                 if balance == 0:
                     if not inc:
                         self.pos = reg.a
@@ -156,10 +156,10 @@ def handle_edit_action(view, edit, path, new_value):
         cur.skipws()
 
     beg = cur.pos
-    cur.consume(',', inc=False)
+    cur.consume(',|;', inc=False)
     cur.erase(beg)
     
-    itr = inserting_js_object(cur, new_value, len(path))
+    itr = inserting_js_value(cur, new_value, len(path))
     while next(itr, None):
         pass
 

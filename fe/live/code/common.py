@@ -5,26 +5,26 @@ from live.config import config
 from live.util import tracking_last
 
 
-def inserting_js_object(cur, obj, nesting):
+def inserting_js_value(cur, jsval, nesting):
     def indent():
         cur.insert(config.s_indent * nesting)
 
-    def insert_any(obj):
-        if isinstance(obj, list):
-            yield from insert_array(obj)
+    def insert_any(jsval):
+        if isinstance(jsval, list):
+            yield from insert_array(jsval)
             return
         
-        assert isinstance(obj, OrderedDict), "Got non-dict: {}".format(obj)
-        leaf = obj.get('__leaf_type__')
+        assert isinstance(jsval, OrderedDict), "Got non-dict: {}".format(jsval)
+        leaf = jsval.get('__leaf_type__')
         if leaf == 'js-value':
-            cur.insert(obj['value'])
+            cur.insert(jsval['value'])
             yield 'leaf'
         elif leaf == 'function':
-            insert_function(obj['value'])
+            insert_function(jsval['value'])
             yield 'leaf'
         else:
             assert leaf is None
-            yield from insert_object(obj)
+            yield from insert_object(jsval)
 
     def insert_array(arr):
         nonlocal nesting
@@ -99,7 +99,9 @@ def inserting_js_object(cur, obj, nesting):
         line0, *lines = source.splitlines()
         
         cur.insert(line0)
-        cur.insert('\n')
+        if lines:
+            cur.insert('\n')
+
         for line, islast in tracking_last(lines):
             indent()
             if not re.match(r'^\s*$', line):
@@ -107,4 +109,4 @@ def inserting_js_object(cur, obj, nesting):
             if not islast:
                 cur.insert('\n')
 
-    yield from insert_any(obj)
+    yield from insert_any(jsval)
