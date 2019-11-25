@@ -195,7 +195,7 @@ window.root = (function () {
          squeak: function () { return 'squeak' },
          pharo: function () { return 'pharo' },
       },
-      version: "0.0.10",
+      version: "0.0.11",
    };
 
    return $;

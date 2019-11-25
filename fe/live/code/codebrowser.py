@@ -220,7 +220,7 @@ def erase_regions(jsnode, view):
 def find_containing_node_and_region(view, xreg):
     """Find innermost node that fully contains xreg
 
-    :return: (node, reg) or (None, None) if not inside any node or spans >1 top-level
+    :return: (node, reg) or (root, None) if not inside any node or spans >1 top-level
     nodes.
     """
     node = info_for(view).root
@@ -231,7 +231,7 @@ def find_containing_node_and_region(view, xreg):
 
         assert len(regs) == len(node)
 
-        for subreg, subnode in zip(regs, node):
+        for subnode, subreg in zip(node, regs):
             if subreg.contains(xreg):
                 node = subnode
                 reg = subreg
@@ -244,8 +244,28 @@ def find_containing_node_and_region(view, xreg):
     return node, reg
 
 
+def find_node_by_exact_region(view, xreg):
+    node = info_for(view).root
+
+    while not node.is_leaf:
+        regs = view.get_regions(node.key_reg_children)
+
+        assert len(regs) == len(node)
+
+        for subnode, subreg in zip(node, regs):
+            if subreg == xreg:
+                return subnode
+            elif subreg.contains(xreg):
+                node = subnode
+                break
+        else:
+            break
+
+    return None
+
+
 def refresh(view, edit, response):
-    prev_pos = view.sel()[0].begin()
+    prev_pos = view.sel()[0].begin() if len(view.sel()) > 0 else None
     prev_viewport_pos = view.viewport_position()
 
     root = info_for(view).root
@@ -281,7 +301,7 @@ def refresh(view, edit, response):
 
     view.set_read_only(True)
     view.window().focus_view(view)
-    if prev_pos < view.size():
+    if prev_pos is not None and prev_pos < view.size():
         view.sel().clear()
         view.sel().add(prev_pos)
 

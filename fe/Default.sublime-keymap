@@ -9,7 +9,6 @@
         "context": [
             {
                 "key": "livejs_view",
-                "operator": "equal",
                 "operand": "Code Browser"
             },
             {
@@ -23,7 +22,6 @@
         "context": [
             {
                 "key": "livejs_view",
-                "operator": "equal",
                 "operand": "Code Browser"
             },
             {
@@ -38,12 +36,88 @@
         "context": [
             {
                 "key": "livejs_view",
-                "operator": "equal",
                 "operand": "Code Browser"
             },
             {
                 "key": "read_only",
                 "operator": "not_equal"
+            }
+        ]
+    },
+    {
+        "keys": ["s"],
+        "command": "livejs_cb_select",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "read_only"
+            }
+        ]
+    },
+    {
+        "keys": ["ctrl+right"],
+        "command": "livejs_cb_move_sel_right",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "read_only"
+            },
+            {
+                "key": "livejs_exact_node_selected"
+            }
+        ]
+    },
+    {
+        "keys": ["ctrl+left"],
+        "command": "livejs_cb_move_sel_left",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "read_only"
+            },
+            {
+                "key": "livejs_exact_node_selected"
+            }
+        ]
+    },
+    {
+        "keys": ["ctrl+up"],
+        "command": "livejs_cb_move_sel_up",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "read_only"
+            },
+            {
+                "key": "livejs_exact_node_selected"
+            }
+        ]
+    },
+    {
+        "keys": ["ctrl+down"],
+        "command": "livejs_cb_move_sel_down",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "read_only"
+            },
+            {
+                "key": "livejs_exact_node_selected"
             }
         ]
     }
