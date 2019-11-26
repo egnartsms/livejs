@@ -7,7 +7,8 @@ import sublime
 from live.config import config
 from live.util import first_such
 from live import server
-from live.code import codebrowser, persist
+from live.code import persist
+from live.code.codebrowser import JsNodePath, replace_node
 from live.sublime_util.technical_command import thru_technical_command
 from live.sublime_util.on_view_loaded import on_load
 
@@ -17,8 +18,10 @@ def edit(action):
     cbv = first_such(view for view in sublime.active_window().views()
                      if view.settings().get('livejs_view') == 'Code Browser')
     
-    thru_technical_command(cbv, codebrowser.replace_node)(
-        path=action['path'],
+    path = JsNodePath.from_json(action['path'])
+
+    thru_technical_command(cbv, replace_node)(
+        path=path,
         new_value=action['newValue']
     )
 
@@ -30,5 +33,5 @@ def edit(action):
         cbv.window().focus_view(focused_view)
 
     tech = partial(thru_technical_command(root_view, persist.handle_edit_action),
-                   path=action['path'], new_value=action['newValue'])
+                   path=path, new_value=action['newValue'])
     on_load(root_view, tech)

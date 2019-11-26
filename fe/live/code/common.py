@@ -1,3 +1,5 @@
+import sublime
+
 import re
 from collections import OrderedDict
 
@@ -5,7 +7,33 @@ from live.config import config
 from live.util import tracking_last
 
 
-def inserting_js_value(cur, jsval, nesting):
+def make_js_value_inserter(cur, jsval, nesting):
+    """Return a generator that inserts JS values with given cursor and yields commands.
+    
+    Yields the following commands:
+      'leaf': just inserted a leaf js value
+      'push_object': just started to lay out a js object
+      'push_array': just started to lay out a js array
+      'pop': finished to lay out whatever the current thing was (object or array)
+      sublime.Region(beg, end): Sublime region that the most recent object occupies (see
+                                example below).
+
+    The object {a: 1, b: [20, 30]} would lead to following commands generated:
+
+    push_object
+    <(a, b) of 'a'>
+    leaf
+    <(a, b) of '1'>
+    <(a, b) of 'b'>
+    push_array
+    leaf
+    <(a, b) of 20>
+    leaf
+    <(a, b) of 30>
+    pop
+    <(a, b) of [20, 30]>
+    pop
+    """
     def indent():
         cur.insert(config.s_indent * nesting)
 
@@ -42,7 +70,7 @@ def inserting_js_value(cur, jsval, nesting):
             x0 = cur.pos
             yield from insert_any(item)
             x1 = cur.pos
-            yield (x0, x1)
+            yield sublime.Region(x0, x1)
 
             cur.insert(",\n")
         nesting -= 1
@@ -68,13 +96,13 @@ def inserting_js_value(cur, jsval, nesting):
             x0 = cur.pos
             cur.insert(k)
             x1 = cur.pos
-            yield (x0, x1)
+            yield sublime.Region(x0, x1)
 
             cur.insert(': ')
             x0 = cur.pos
             yield from insert_any(v)
             x1 = cur.pos
-            yield (x0, x1)
+            yield sublime.Region(x0, x1)
 
             cur.insert(',\n')
         nesting -= 1

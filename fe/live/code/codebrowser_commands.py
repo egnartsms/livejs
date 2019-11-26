@@ -89,6 +89,9 @@ class LivejsCbRefresh(sublime_plugin.WindowCommand):
             cbv.set_scratch(True)
             cbv.set_syntax_file('Packages/JavaScript/JavaScript.sublime-syntax')
 
+        if info_for(cbv).node_being_edited is not None:
+            switch_to_view_mode(cbv)
+
         server.response_callbacks.append(thru_technical_command(cbv, refresh))
         server.websocket.enqueue_message('$.sendAllEntries()')
 
@@ -108,7 +111,7 @@ class LivejsCbEdit(sublime_plugin.TextCommand):
                                               "node")
             return
 
-        info_for(self.view).jsnode_being_edited = node
+        info_for(self.view).node_being_edited = node
 
         self.view.set_read_only(False)
         
@@ -126,12 +129,12 @@ class LivejsCbEdit(sublime_plugin.TextCommand):
 
 class LivejsCbCommit(sublime_plugin.TextCommand):
     def run(self, edit):
-        jsnode = info_for(self.view).jsnode_being_edited
+        node = info_for(self.view).node_being_edited
         [reg] = self.view.get_regions('being_edited')
         js = self.view.substr(reg).strip()
 
         JSCODE = '''$.edit({}, (function () {{ return ({}); }}));'''.format(
-            jsnode.path, js
+            node.path.as_json(), js
         )
         server.response_callbacks.append(partial(on_edit_committed, view=self.view))
         server.websocket.enqueue_message(JSCODE)
@@ -145,21 +148,21 @@ def on_edit_committed(view, response):
 def switch_to_view_mode(view):
     """Switch from edit mode to the ordinary view mode"""
     view.erase_status('pending')
-    info_for(view).jsnode_being_edited = None
+    info_for(view).node_being_edited = None
     view.erase_regions('being_edited')
     view.set_read_only(True)
 
 
 class LivejsCbCancelEdit(sublime_plugin.TextCommand):
     def run(self, edit):
-        path = info_for(self.view).jsnode_being_edited.path
-        JSCODE = '''$.sendObjectAt({})'''.format(path)
+        path = info_for(self.view).node_being_edited.path
+        JSCODE = '''$.sendObjectAt({})'''.format(path.as_json())
         server.response_callbacks.append(partial(on_edit_aborted, view=self.view))
         server.websocket.enqueue_message(JSCODE)
 
 
 def on_edit_aborted(view, response):
-    node = info_for(view).jsnode_being_edited
+    node = info_for(view).node_being_edited
     thru_technical_command(view, replace_node)(path=node.path, new_value=response)
     switch_to_view_mode(view)
 
@@ -191,7 +194,7 @@ class LivejsCbMoveSelRight(sublime_plugin.TextCommand):
         if node is None:
             return  # should not normally happen
         
-        right = node.parent[(node.num + 1) % len(node.parent)]
+        right = node.parent[(node.position + 1) % len(node.parent)]
         self.view.sel().clear()
         self.view.sel().add(right.span(self.view))
         self.view.show(self.view.sel(), True)
@@ -205,7 +208,7 @@ class LivejsCbMoveSelLeft(sublime_plugin.TextCommand):
         if node is None:
             return  # should not normally happen
 
-        left = node.parent[node.num - 1]
+        left = node.parent[node.position - 1]
         self.view.sel().clear()
         self.view.sel().add(left.span(self.view))
         self.view.show(self.view.sel(), True)

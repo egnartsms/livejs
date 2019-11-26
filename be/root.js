@@ -34,6 +34,7 @@ window.root = (function () {
       }
       catch (e) {
          $.sendFailure(`Failed to compile JS code:\n ${e}`);
+         return;
       }
 
       try { 
@@ -41,6 +42,7 @@ window.root = (function () {
       }
       catch (e) {
          $.sendFailure(`Unhandled exception:\n ${e.stack}`);
+         return;
       }
    };
 
@@ -157,12 +159,14 @@ window.root = (function () {
    };
 
    $.path2ParentnKey = function (path) {
+      if (path.keyAt !== null) {
+         throw new Error("Object key editing not yet implemented!");
+      }
+
       let parent = $, key, i = 0;
 
-      // invariant: key
-
       for (;;) {
-         let n = path[i], child;
+         let n = path.components[i], child;
 
          if (Array.isArray(parent)) {
             [key, child] = [String(n), parent[n]];
@@ -172,7 +176,7 @@ window.root = (function () {
          }
 
          i += 1;
-         if (i === path.length) {
+         if (i === path.components.length) {
             break;
          }
          else {
@@ -186,13 +190,21 @@ window.root = (function () {
    $.testObj = {
       first_name: "Iohann",
       last_name: [
-         120,
+         [
+            function () { return 24; },
+            [
+               "a",
+               "buck",
+               "c",
+            ],
+         ],
          function () {
+            throw new Error('illustrious');
             console.log(/[a-z({\]((ab]/);
          },
       ],
       functions: {
-         squeak: function () { return 'squeak' },
+         squeak: function () { return 'squeak!' },
          pharo: function () { return 'pharo' },
       },
       version: "0.0.11",

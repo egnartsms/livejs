@@ -15,3 +15,9 @@ def tracking_last(iterable):
 
         yield e0, False
         e0 = e1
+
+
+def index_where(iterable):
+    for i, x in enumerate(iterable):
+        if x:
+            return i

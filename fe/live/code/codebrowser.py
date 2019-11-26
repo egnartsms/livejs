@@ -1,10 +1,13 @@
 import sublime_plugin
 import sublime
 
+import json
+
 from live.config import config
-from live.code.common import inserting_js_value
+from live.code.common import make_js_value_inserter
 from live.sublime_util.cursor import Cursor
 from live.sublime_util.hacks import set_viewport_position
+from live.util import index_where
 
 
 __all__ = ['PerViewInfoDiscarder']
@@ -18,7 +21,7 @@ per_view = dict()
 
 class ViewInfo:
     root = None
-    jsnode_being_edited = None
+    node_being_edited = None
 
     def __init__(self):
         pass
@@ -37,12 +40,20 @@ class PerViewInfoDiscarder(sublime_plugin.EventListener):
         per_view.pop(view.id(), None)
 
 
-# JS nodes laid out in a codebrowser view.
-def path_join(path, n):
-    if path:
-        return '{}.{}'.format(path, n)
-    else:
-        return str(n)
+class JsNodePath:
+    def __init__(self, components, key_at=None):
+        self.components = components
+        self.key_at = key_at
+
+    def as_json(self):
+        return json.dumps({
+            'components': self.components,
+            'keyAt': self.key_at
+        })
+
+    @classmethod
+    def from_json(cls, json):
+        return cls(json['components'], json['keyAt'])
 
 
 class JsNode:
@@ -57,86 +68,42 @@ class JsNode:
         return self.parent is None
 
     @property
-    def num(self):
-        assert not self.is_root
-        return self.parent.index(self)
+    def position(self):
+        return index_where(x is self for x in self.parent)
 
     @property
     def nesting(self):
-        if self.is_root:
-            return 0
-        else:
-            return 1 + self.parent.nesting
+        node = self
+        nesting = 0
+        while not node.is_root:
+            nesting += 1
+            node = node.parent
+
+        return nesting
 
     @property
     def path(self):
         components = []
         node = self
         while not node.is_root:
-            components.append(node.num)
+            components.append(node.position)
             node = node.parent
 
         components.reverse()
-        return components
+        return JsNodePath(components)
 
     @property
     def dotpath(self):
-        return '.'.join(map(str, self.path))
+        return '.'.join(map(str, self.path.components))
 
     def span(self, view):
-        assert not self.is_root
-        return view.get_regions(self.parent.key_reg_children)[self.num]
+        return view.get_regions(self.parent.key_reg_values)[self.position]
 
     def begin(self, view):
-        assert not self.is_root
         return self.span(view).a
 
     def end(self, view):
-        assert not self.is_root
         return self.span(view).b
-
-
-class JsInterior(JsNode, list):
-    is_leaf = False
-    
-    def __init__(self, is_object):
-        super().__init__()
-        self.is_object = is_object
-    
-    @property
-    def key_reg_keys(self):
-        assert self.is_object
-        return path_join(self.dotpath, 'keys')
-    
-    @property
-    def key_reg_values(self):
-        assert self.is_object
-        return path_join(self.dotpath, 'values')
-
-    @property
-    def key_reg_items(self):
-        assert not self.is_object
-        return path_join(self.dotpath, 'items')
-
-    @property
-    def key_reg_children(self):
-        return self.key_reg_values if self.is_object else self.key_reg_items
-
-    def get_at_path(self, path):
-        assert len(path) > 0
-        node = self
-        for n in path:
-            node = node[n]
-        return node
-
-    def human_readable(self):
-        if self.is_object:
-            return '{' + ','.join([x.human_readable() for x in self]) + '}'
-        else:
-            return '[' + ','.join([x.human_readable() for x in self]) + ']'
-
-    def __repr__(self):
-        return '#<jsnode: {}>'.format(self.human_readable())
 
 
 class JsLeaf(JsNode):
@@ -149,58 +116,177 @@ class JsLeaf(JsNode):
         return '#<jsleaf>'
 
 
-def insert_js_value(cur, jsval, parent_node):
-    itr = inserting_js_value(cur, jsval, parent_node.nesting)
+class JsKey(JsNode):
+    is_leaf = True
 
-    def insert_object(parent_node):
-        reg_keys, reg_values, node = [], [], JsInterior(is_object=True)
-        node.parent = parent_node
-        parent_node.append(node)
+    def __repr__(self):
+        return '#<jspropname>'
+
+    @property
+    def position(self):
+        return index_where(x is self for x in self.parent.keys)
+
+    @property
+    def nesting(self):
+        return self.parent.nesting
+
+    @property
+    def path(self):
+        path = self.parent.path
+        path.key_at = self.position
+        return path
+
+    @property
+    def dotpath(self):
+        raise NotImplementedError  # makes no sense
+
+    def span(self, view):
+        return view.get_regions(self.parent.key_reg_keys)[self.position]
+
+
+def dotpath_join(dotpath, n):
+    if dotpath:
+        return '{}.{}'.format(dotpath, n)
+    else:
+        return str(n)
+
+
+class JsObject(JsNode, list):
+    """A list of values nodes. Key nodes are stored under 'keys' attribute."""
+    is_leaf = False
+
+    def __init__(self):
+        super().__init__()
+        self.keys = []
+        self.reg_keys = []
+        self.reg_values = []
+
+    def human_readable(self):
+        return '{' + ','.join([x.human_readable() for x in self]) + '}'
+
+    def __repr__(self):
+        return '#<jsnode: {}>'.format(self.human_readable())
+
+    @property
+    def key_reg_keys(self):
+        return dotpath_join(self.dotpath, 'keys')
+    
+    @property
+    def key_reg_values(self):
+        return dotpath_join(self.dotpath, 'values')
+
+    def add_regions(self, view):
+        view.add_regions(self.key_reg_keys, self.reg_keys, '', '', sublime.HIDDEN)
+        del self.reg_keys
+        view.add_regions(self.key_reg_values, self.reg_values, '', '', sublime.HIDDEN)
+        del self.reg_values
+
+    def append_entry(self, key_node, val_node):
+        assert isinstance(key_node, JsKey)
+        self.keys.append(key_node)
+        key_node.parent = self
+        self.append(val_node)
+        val_node.parent = self
+
+
+class JsArray(JsNode, list):
+    is_leaf = False
+
+    def __init__(self):
+        super().__init__()
+        self.reg_values = []
+
+    def human_readable(self):
+        return '[' + ','.join([x.human_readable() for x in self]) + ']'
+
+    def __repr__(self):
+        return '#<jsnode: {}>'.format(self.human_readable())
+
+    @property
+    def key_reg_values(self):
+        return dotpath_join(self.dotpath, 'values')
+
+    def add_regions(self, view):
+        view.add_regions(self.key_reg_values, self.reg_values, '', '', sublime.HIDDEN)
+        del self.reg_values
+
+    def append_child(self, child_node):
+        self.append(child_node)
+        child_node.parent = self
+
+
+def node_at(node, path):
+    for n in path.components:
+        node = node[n]
+    if path.key_at is not None:
+        if not isinstance(node, JsObject):
+            raise RuntimeError(
+                "Invalid path (last link happens to be a non-JS object): {}".format(path)
+            )
+        node = node.keys[path.key_at]
+    return node
+
+
+def insert_js_value(view, inserter):
+    def insert_object():
+        node = JsObject()
 
         while True:
-            cmd = next(itr)
+            cmd = next(inserter)
             if cmd == 'pop':
                 break
 
-            beg, end = cmd
-            reg_keys.append(sublime.Region(beg, end))
-            insert_any(next(itr), node)
-            beg, end = next(itr)
-            reg_values.append(sublime.Region(beg, end))
+            reg = cmd
+            node.reg_keys.append(reg)
+            child_node = insert_any(next(inserter))
+            reg = next(inserter)
+            node.reg_values.append(reg)
+            node.append_entry(JsKey(), child_node)
 
-        cur.view.add_regions(node.key_reg_keys, reg_keys, '', '', sublime.HIDDEN)
-        cur.view.add_regions(node.key_reg_values, reg_values, '', '', sublime.HIDDEN)
+        return node
 
-    def insert_array(parent_node):
-        reg_items, node = [], JsInterior(is_object=False)
-        node.parent = parent_node
-        parent_node.append(node)
+    def insert_array():
+        node = JsArray()
 
         while True:
-            cmd = next(itr)
+            cmd = next(inserter)
             if cmd == 'pop':
                 break
 
-            insert_any(cmd, node)
-            beg, end = next(itr)
-            reg_items.append(sublime.Region(beg, end))
+            child_node = insert_any(cmd)
+            reg = next(inserter)
+            node.reg_values.append(reg)
+            node.append_child(child_node)
         
-        cur.view.add_regions(node.key_reg_items, reg_items, '', '', sublime.HIDDEN)
+        return node
 
-    def insert_any(cmd, parent_node):
+    def insert_any(cmd):
         if cmd == 'push_object':
-            insert_object(parent_node)
+            return insert_object()
         elif cmd == 'push_array':
-            insert_array(parent_node)
+            return insert_array()
         elif cmd == 'leaf':
-            leaf = JsLeaf()
-            leaf.parent = parent_node
-            parent_node.append(leaf)
+            return JsLeaf()
+        else:
+            assert 0, "Unexpected cmd: {}".format(cmd)
 
-    insert_any(next(itr), parent_node)
+    return insert_any(next(inserter))
 
 
-def erase_regions(jsnode, view):
+def add_regions(node, view):
+    def add(node):
+        if node.is_leaf:
+            return
+
+        for subnode in node:
+            add(subnode)
+
+        node.add_regions(view)
+
+    add(node)
+
+
+def erase_regions(node, view):
     def erase(node):
         if node.is_leaf:
             return
@@ -208,13 +294,18 @@ def erase_regions(jsnode, view):
         for subnode in node:
             erase(subnode)
 
-        if node.is_object:
-            view.erase_regions(node.key_reg_keys)
-            view.erase_regions(node.key_reg_values)
-        else:
-            view.erase_regions(node.key_reg_items)
+        view.erase_regions(node.key_reg_values)
 
-    erase(jsnode)
+        if isinstance(node, JsObject):
+            view.erase_regions(node.key_reg_keys)
+
+    erase(node)
+
+
+def replace_region(node, reg, view):
+    parent_regions = view.get_regions(node.parent.key_reg_values)
+    parent_regions[node.position] = reg
+    view.add_regions(node.parent.key_reg_values, parent_regions, '', '', sublime.HIDDEN)
 
 
 def find_containing_node_and_region(view, xreg):
@@ -227,7 +318,7 @@ def find_containing_node_and_region(view, xreg):
     reg = None
 
     while not node.is_leaf:
-        regs = view.get_regions(node.key_reg_children)
+        regs = view.get_regions(node.key_reg_values)
 
         assert len(regs) == len(node)
 
@@ -248,7 +339,7 @@ def find_node_by_exact_region(view, xreg):
     node = info_for(view).root
 
     while not node.is_leaf:
-        regs = view.get_regions(node.key_reg_children)
+        regs = view.get_regions(node.key_reg_values)
 
         assert len(regs) == len(node)
 
@@ -265,76 +356,71 @@ def find_node_by_exact_region(view, xreg):
 
 
 def refresh(view, edit, response):
-    prev_pos = view.sel()[0].begin() if len(view.sel()) > 0 else None
+    prev_pos = list(view.sel())
     prev_viewport_pos = view.viewport_position()
 
-    root = info_for(view).root
-    if root is not None:
-        erase_regions(root, view)
+    if info_for(view).root is not None:
+        erase_regions(info_for(view).root, view)
+        info_for(view).root = None
 
     view.set_read_only(False)
     view.erase(edit, sublime.Region(0, view.size()))
     cur = Cursor(0, view, edit)
-    
-    root = JsInterior(is_object=True)
-    reg_keys, reg_values = [], []
+    root = JsObject()
 
     for key, value in response:
         x0 = cur.pos
         cur.insert(key)
         x1 = cur.pos
-        reg_keys.append(sublime.Region(x0, x1))
+        root.reg_keys.append(sublime.Region(x0, x1))
 
         cur.insert(' = ')
 
         x0 = cur.pos
-        insert_js_value(cur, value, root)
+        child = insert_js_value(view, make_js_value_inserter(cur, value, 0))
         x1 = cur.pos
-        reg_values.append(sublime.Region(x0, x1))
+        root.reg_values.append(sublime.Region(x0, x1))
+
+        root.append_entry(JsKey(), child)
         
         cur.insert('\n\n')
 
-    view.add_regions(root.key_reg_keys, reg_keys, '', '', sublime.HIDDEN)
-    view.add_regions(root.key_reg_values, reg_values, '', '', sublime.HIDDEN)
-
+    add_regions(root, view)
     info_for(view).root = root
 
     view.set_read_only(True)
     view.window().focus_view(view)
-    if prev_pos is not None and prev_pos < view.size():
-        view.sel().clear()
-        view.sel().add(prev_pos)
+    view.sel().clear()
+    view.sel().add_all(prev_pos)
 
     set_viewport_position(view, prev_viewport_pos, False)
 
 
 def replace_node(view, edit, path, new_value):
-    jsnode = info_for(view).root.get_at_path(path)
-    parent = jsnode.parent
+    node = node_at(info_for(view).root, path)
+    parent = node.parent
     [reg] = view.get_regions('being_edited')
 
-    assert jsnode is info_for(view).jsnode_being_edited
+    assert node is info_for(view).node_being_edited
 
+    erase_regions(node, view)
     view.erase(edit, reg)
-    erase_regions(jsnode, view)
     cur = Cursor(reg.a, view, edit)
     
-    # We temporarily remove all the jsnode's siblings that go after it, then re-add
-    n = jsnode.num
-    following_siblings = parent[n + 1:]
-    del parent[n:]
-    # The following is needed because of how we deal with the region being edited. We
-    # extend it to contain more than just the node being edited.
-    if parent.is_object:
+    if isinstance(parent, JsObject):
         cur.insert(' ')
     else:
         cur.insert('\n')
         cur.insert(config.s_indent * parent.nesting)
     beg = cur.pos
-    insert_js_value(cur, new_value, parent)
+    new_node = insert_js_value(
+        view,
+        make_js_value_inserter(cur, new_value, parent.nesting)
+    )
     end = cur.pos
-    parent += following_siblings
 
-    parent_regions = view.get_regions(parent.key_reg_children)
-    parent_regions[n] = sublime.Region(beg, end)
-    view.add_regions(parent.key_reg_children, parent_regions, '', '', sublime.HIDDEN)
+    parent[node.position] = new_node
+    new_node.parent = parent
+
+    add_regions(new_node, view)
+    replace_region(new_node, sublime.Region(beg, end), view)

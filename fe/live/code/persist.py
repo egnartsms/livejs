@@ -129,6 +129,7 @@ class UnexpectedContents(Exception):
 
 
 def handle_edit_action(view, edit, path, new_value):
+    path = path.components  # TODO: make this normal
     cur = CodePersistCursor(0, view, edit)
     reg = cur.next_toplevel()
     for i in range(path[0]):
