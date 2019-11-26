@@ -3,7 +3,6 @@ import sublime
 import re
 from collections import OrderedDict
 
-from live.config import config
 from live.util import tracking_last
 
 
@@ -34,9 +33,6 @@ def make_js_value_inserter(cur, jsval, nesting):
     <(a, b) of [20, 30]>
     pop
     """
-    def indent():
-        cur.insert(config.s_indent * nesting)
-
     def insert_any(jsval):
         if isinstance(jsval, list):
             yield from insert_array(jsval)
@@ -66,7 +62,7 @@ def make_js_value_inserter(cur, jsval, nesting):
         cur.insert("[\n")
         nesting += 1
         for item in arr:
-            indent()
+            cur.indent(nesting)
             x0 = cur.pos
             yield from insert_any(item)
             x1 = cur.pos
@@ -74,7 +70,7 @@ def make_js_value_inserter(cur, jsval, nesting):
 
             cur.insert(",\n")
         nesting -= 1
-        indent()
+        cur.indent(nesting)
         cur.insert("]")
 
         yield 'pop'
@@ -92,7 +88,7 @@ def make_js_value_inserter(cur, jsval, nesting):
         cur.insert("{\n")
         nesting += 1
         for k, v in obj.items():
-            indent()
+            cur.indent(nesting)
             x0 = cur.pos
             cur.insert(k)
             x1 = cur.pos
@@ -106,7 +102,7 @@ def make_js_value_inserter(cur, jsval, nesting):
 
             cur.insert(',\n')
         nesting -= 1
-        indent()
+        cur.indent(nesting)
         cur.insert("}")
 
         yield 'pop'
@@ -131,7 +127,7 @@ def make_js_value_inserter(cur, jsval, nesting):
             cur.insert('\n')
 
         for line, islast in tracking_last(lines):
-            indent()
+            cur.indent(nesting)
             if not re.match(r'^\s*$', line):
                 cur.insert(line[n:])
             if not islast:

@@ -6,7 +6,7 @@ import sublime_plugin
 
 from live.sublime_util.cursor import Cursor
 from live.util import tracking_last
-from live.code.common import inserting_js_value
+from live.code.common import make_js_value_inserter
 
 
 re_toplevel = r'^\s{nesting}\$\.([^=]+)\s*='
@@ -129,7 +129,6 @@ class UnexpectedContents(Exception):
 
 
 def handle_edit_action(view, edit, path, new_value):
-    path = path.components  # TODO: make this normal
     cur = CodePersistCursor(0, view, edit)
     reg = cur.next_toplevel()
     for i in range(path[0]):
@@ -160,7 +159,7 @@ def handle_edit_action(view, edit, path, new_value):
     cur.consume(',|;', inc=False)
     cur.erase(beg)
     
-    itr = inserting_js_value(cur, new_value, len(path))
+    itr = make_js_value_inserter(cur, new_value, len(path))
     while next(itr, None):
         pass
 

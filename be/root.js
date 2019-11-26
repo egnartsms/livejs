@@ -159,32 +159,23 @@ window.root = (function () {
    };
 
    $.path2ParentnKey = function (path) {
-      if (path.keyAt !== null) {
-         throw new Error("Object key editing not yet implemented!");
-      }
+      let parent, child = $;
 
-      let parent = $, key, i = 0;
-
-      for (;;) {
-         let n = path.components[i], child;
-
-         if (Array.isArray(parent)) {
-            [key, child] = [String(n), parent[n]];
-         }
-         else {
-            [key, child] = Object.entries(parent)[n];
-         }
-
-         i += 1;
-         if (i === path.components.length) {
-            break;
-         }
-         else {
-            parent = child;   
-         }
+      for (let i = 0; i < path.length; i += 1) {
+         parent = child;
+         [key, child] = $.nthEntry(parent, path[i]);
       }
 
       return {parent, key};
+   };
+
+   $.nthEntry = function (obj, n) {
+      if (Array.isArray(obj)) {
+         return [String(n), obj[n]];
+      }
+      else {
+         return Object.entries(obj)[n];
+      }
    };
 
    $.testObj = {
@@ -194,12 +185,12 @@ window.root = (function () {
             function () { return 24; },
             [
                "a",
-               "buck",
-               "c",
+               "luck",
+               "sake",
             ],
          ],
          function () {
-            throw new Error('illustrious');
+            console.log("Hello!");
             console.log(/[a-z({\]((ab]/);
          },
       ],
@@ -207,7 +198,11 @@ window.root = (function () {
          squeak: function () { return 'squeak!' },
          pharo: function () { return 'pharo' },
       },
-      version: "0.0.11",
+      version: {
+         major: 0,
+         minor: 5,
+         build: 25,
+      },
    };
 
    return $;

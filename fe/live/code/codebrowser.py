@@ -1,9 +1,6 @@
 import sublime_plugin
 import sublime
 
-import json
-
-from live.config import config
 from live.code.common import make_js_value_inserter
 from live.sublime_util.cursor import Cursor
 from live.sublime_util.hacks import set_viewport_position
@@ -40,24 +37,9 @@ class PerViewInfoDiscarder(sublime_plugin.EventListener):
         per_view.pop(view.id(), None)
 
 
-class JsNodePath:
-    def __init__(self, components, key_at=None):
-        self.components = components
-        self.key_at = key_at
-
-    def as_json(self):
-        return json.dumps({
-            'components': self.components,
-            'keyAt': self.key_at
-        })
-
-    @classmethod
-    def from_json(cls, json):
-        return cls(json['components'], json['keyAt'])
-
-
 class JsNode:
-    is_leaf = None   # to be overriden by subclasses
+    is_leaf = False
+    is_key = False
 
     def __init__(self):
         super().__init__()
@@ -83,18 +65,18 @@ class JsNode:
 
     @property
     def path(self):
-        components = []
+        path = []
         node = self
         while not node.is_root:
-            components.append(node.position)
+            path.append(node.position)
             node = node.parent
 
-        components.reverse()
-        return JsNodePath(components)
+        path.reverse()
+        return path
 
     @property
     def dotpath(self):
-        return '.'.join(map(str, self.path.components))
+        return '.'.join(map(str, self.path))
 
     def span(self, view):
         return view.get_regions(self.parent.key_reg_values)[self.position]
@@ -119,6 +101,16 @@ class JsNode:
     def preceding_sibling(self):
         return self._my_siblings[self.position - 1]
 
+    def textually_following_sibling(self):
+        return self.parent._child_textually_following(self)
+
+    def textually_preceding_sibling(self):
+        return self.parent._child_textually_preceding(self)
+
+    def prepare_for_editing(self, view, edit):
+        """Make necessary adjustments in the view and return the extended region"""
+        return self.parent._prepare_for_editing_of_child(self, view, edit)
+
 
 class JsLeaf(JsNode):
     is_leaf = True
@@ -132,6 +124,7 @@ class JsLeaf(JsNode):
 
 class JsKey(JsNode):
     is_leaf = True
+    is_key = True
 
     def __repr__(self):
         return '#<jspropname>'
@@ -145,12 +138,6 @@ class JsKey(JsNode):
         return self.parent.nesting
 
     @property
-    def path(self):
-        path = self.parent.path
-        path.key_at = self.position
-        return path
-
-    @property
     def dotpath(self):
         raise NotImplementedError  # makes no sense
 
@@ -162,16 +149,8 @@ class JsKey(JsNode):
         return self.parent.keys
 
 
-def dotpath_join(dotpath, n):
-    if dotpath:
-        return '{}.{}'.format(dotpath, n)
-    else:
-        return str(n)
-
-
 class JsObject(JsNode, list):
     """A list of values nodes. Key nodes are stored under 'keys' attribute."""
-    is_leaf = False
 
     def __init__(self):
         super().__init__()
@@ -193,6 +172,12 @@ class JsObject(JsNode, list):
     def key_reg_values(self):
         return dotpath_join(self.dotpath, 'values')
 
+    def retain_key_region(self, reg):
+        self.reg_keys.append(reg)
+
+    def retain_value_region(self, reg):
+        self.reg_values.append(reg)
+
     def add_regions(self, view):
         view.add_regions(self.key_reg_keys, self.reg_keys, '', '', sublime.HIDDEN)
         del self.reg_keys
@@ -206,14 +191,14 @@ class JsObject(JsNode, list):
         self.append(val_node)
         val_node.parent = self
 
-    def textually_following(self, child):
-        if isinstance(child, JsKey):
+    def _child_textually_following(self, child):
+        if child.is_key:
             return self[child.position]
         else:
             return self.keys[(child.position + 1) % len(self)]
 
-    def textually_preceding(self, child):
-        if isinstance(child, JsKey):
+    def _child_textually_preceding(self, child):
+        if child.is_key:
             return self[child.position - 1]
         else:
             return self.keys[child.position]
@@ -229,10 +214,32 @@ class JsObject(JsNode, list):
             yield regk
             yield regv
 
+    def _prepare_for_editing_of_child(self, child, view, edit):
+        reg = child.span(view)
+        beg, end = Cursor(reg.a, view, edit), Cursor(reg.b, view, edit)
+
+        if child.is_key:
+            beg.skip_ws_to_bol(skip_bol=True)
+            end.insert('\n')
+        else:
+            beg.skip_ws_to_bol(skip_bol=False)
+            end.insert('\n')
+
+        return sublime.Region(beg.pos, end.pos)
+
+    def reinsert_after_edit(self, cur, is_key):
+        if is_key:
+            cur.insert('\n')
+            cur.indent(self.nesting)
+            yield
+            if self.is_root:
+                cur.insert(' ')
+        else:
+            cur.insert(' ')
+            yield
+
 
 class JsArray(JsNode, list):
-    is_leaf = False
-
     def __init__(self):
         super().__init__()
         self.reg_values = []
@@ -247,6 +254,9 @@ class JsArray(JsNode, list):
     def key_reg_values(self):
         return dotpath_join(self.dotpath, 'values')
 
+    def retain_value_region(self, reg):
+        self.reg_values.append(reg)
+
     def add_regions(self, view):
         view.add_regions(self.key_reg_values, self.reg_values, '', '', sublime.HIDDEN)
         del self.reg_values
@@ -255,10 +265,10 @@ class JsArray(JsNode, list):
         self.append(child_node)
         child_node.parent = self
 
-    def textually_following(self, child):
+    def _child_textually_following(self, child):
         return child.following_sibling()
 
-    def textually_preceding(self, child):
+    def _child_textually_preceding(self, child):
         return child.preceding_sibling()
 
     def get_all_child_nodes(self):
@@ -267,17 +277,40 @@ class JsArray(JsNode, list):
     def get_all_regions(self, view):
         return view.get_regions(self.key_reg_values)
 
+    def _prepare_for_editing_of_child(self, child, view, edit):
+        reg = child.span(view)
+        beg, end = Cursor(reg.a, view, edit), Cursor(reg.b, view, edit)
 
-def node_at(node, path):
-    for n in path.components:
+        beg.skip_ws_to_bol(skip_bol=True)
+        end.insert('\n')
+
+        return sublime.Region(beg.pos, end.pos)
+
+    def reinsert_after_edit(self, cur, is_key):
+        cur.insert('\n')
+        cur.indent(self.nesting)
+        yield
+
+
+def dotpath_join(dotpath, n):
+    if dotpath:
+        return '{}.{}'.format(dotpath, n)
+    else:
+        return str(n)
+
+
+def value_node_at(node, path):
+    for n in path:
         node = node[n]
-    if path.key_at is not None:
-        if not isinstance(node, JsObject):
-            raise RuntimeError(
-                "Invalid path (last link happens to be a non-JS object): {}".format(path)
-            )
-        node = node.keys[path.key_at]
     return node
+
+
+def key_node_at(node, path):
+    for n in path[:-1]:
+        node = node[n]
+    if not isinstance(node, JsObject):
+        raise RuntimeError("Path to key node of {} is incorrect: {}".format(node, path))
+    return node.keys[path[-1]]
 
 
 def insert_js_value(view, inserter):
@@ -290,10 +323,10 @@ def insert_js_value(view, inserter):
                 break
 
             reg = cmd
-            node.reg_keys.append(reg)
+            node.retain_key_region(reg)
             child_node = insert_any(next(inserter))
             reg = next(inserter)
-            node.reg_values.append(reg)
+            node.retain_value_region(reg)
             node.append_entry(JsKey(), child_node)
 
         return node
@@ -308,7 +341,7 @@ def insert_js_value(view, inserter):
 
             child_node = insert_any(cmd)
             reg = next(inserter)
-            node.reg_values.append(reg)
+            node.retain_value_region(reg)
             node.append_child(child_node)
         
         return node
@@ -361,31 +394,28 @@ def replace_region(node, reg, view):
     view.add_regions(node.parent.key_reg_values, parent_regions, '', '', sublime.HIDDEN)
 
 
-def find_containing_node_and_region(view, xreg):
+def find_containing_node(xreg, view):
     """Find innermost node that fully contains xreg
 
-    :return: (node, reg) or (root, None) if not inside any node or spans >1 top-level
-    nodes.
+    :return: node or None if not inside any node or spans >1 top-level nodes.
     """
     node = info_for(view).root
-    reg = None
 
     while not node.is_leaf:
         for subnode, subreg in zip(node.get_all_child_nodes(),
                                    node.get_all_regions(view)):
             if subreg.contains(xreg):
                 node = subnode
-                reg = subreg
                 break
         else:
             # xreg is not fully contained in any single child of node.  That means that
             # node and reg are what we're looking for.
             break
 
-    return node, reg
+    return None if node.is_root else node
 
 
-def find_node_by_exact_region(view, xreg):
+def find_node_by_exact_region(xreg, view):
     node = info_for(view).root
 
     while not node.is_leaf:
@@ -419,14 +449,14 @@ def refresh(view, edit, response):
         x0 = cur.pos
         cur.insert(key)
         x1 = cur.pos
-        root.reg_keys.append(sublime.Region(x0, x1))
+        root.retain_key_region(sublime.Region(x0, x1))
 
         cur.insert(' = ')
 
         x0 = cur.pos
         child = insert_js_value(view, make_js_value_inserter(cur, value, 0))
         x1 = cur.pos
-        root.reg_values.append(sublime.Region(x0, x1))
+        root.retain_value_region(sublime.Region(x0, x1))
 
         root.append_entry(JsKey(), child)
         
@@ -444,30 +474,30 @@ def refresh(view, edit, response):
 
 
 def replace_node(view, edit, path, new_value):
-    node = node_at(info_for(view).root, path)
-    parent = node.parent
-    [reg] = view.get_regions('being_edited')
+    node = value_node_at(info_for(view).root, path)
 
     assert node is info_for(view).node_being_edited
 
+    parent = node.parent
+    [reg] = view.get_regions('being_edited')
+
     erase_regions(node, view)
+    
     view.erase(edit, reg)
     cur = Cursor(reg.a, view, edit)
-    
-    if isinstance(parent, JsObject):
-        cur.insert(' ')
-    else:
-        cur.insert('\n')
-        cur.insert(config.s_indent * parent.nesting)
+    reinserter = parent.reinsert_after_edit(cur, node.is_key)
+    next(reinserter)
     beg = cur.pos
     new_node = insert_js_value(
         view,
         make_js_value_inserter(cur, new_value, parent.nesting)
     )
     end = cur.pos
+    next(reinserter, None)
 
     parent[node.position] = new_node
     new_node.parent = parent
+    node.parent = None
 
     add_regions(new_node, view)
     replace_region(new_node, sublime.Region(beg, end), view)
