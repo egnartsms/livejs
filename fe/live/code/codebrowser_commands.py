@@ -187,28 +187,36 @@ class LivejsCbSelect(sublime_plugin.TextCommand):
 
 
 class LivejsCbMoveSelRight(sublime_plugin.TextCommand):
-    def run(self, edit):
+    def run(self, edit, by_same_kind):
         if len(self.view.sel()) != 1:
             return  # should not normally happen
         node = find_node_by_exact_region(self.view, self.view.sel()[0])
         if node is None:
             return  # should not normally happen
         
-        right = node.parent[(node.position + 1) % len(node.parent)]
+        if by_same_kind:
+            right = node.following_sibling()
+        else:
+            right = node.parent.textually_following(node)
+
         self.view.sel().clear()
         self.view.sel().add(right.span(self.view))
         self.view.show(self.view.sel(), True)
 
 
 class LivejsCbMoveSelLeft(sublime_plugin.TextCommand):
-    def run(self, edit):
+    def run(self, edit, by_same_kind):
         if len(self.view.sel()) != 1:
             return  # should not normally happen
         node = find_node_by_exact_region(self.view, self.view.sel()[0])
         if node is None:
             return  # should not normally happen
 
-        left = node.parent[node.position - 1]
+        if by_same_kind:
+            left = node.preceding_sibling()
+        else:
+            left = node.parent.textually_preceding(node)
+        
         self.view.sel().clear()
         self.view.sel().add(left.span(self.view))
         self.view.show(self.view.sel(), True)

@@ -60,6 +60,9 @@
     {
         "keys": ["ctrl+right"],
         "command": "livejs_cb_move_sel_right",
+        "args": {
+            "by_same_kind": true
+        },
         "context": [
             {
                 "key": "livejs_view",
@@ -76,6 +79,47 @@
     {
         "keys": ["ctrl+left"],
         "command": "livejs_cb_move_sel_left",
+        "args": {
+            "by_same_kind": true
+        },
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "read_only"
+            },
+            {
+                "key": "livejs_exact_node_selected"
+            }
+        ]
+    },
+        {
+        "keys": ["alt+right"],
+        "command": "livejs_cb_move_sel_right",
+        "args": {
+            "by_same_kind": false
+        },
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "read_only"
+            },
+            {
+                "key": "livejs_exact_node_selected"
+            }
+        ]
+    },
+    {
+        "keys": ["alt+left"],
+        "command": "livejs_cb_move_sel_left",
+        "args": {
+            "by_same_kind": false
+        },
         "context": [
             {
                 "key": "livejs_view",

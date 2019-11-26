@@ -105,6 +105,20 @@ class JsNode:
     def end(self, view):
         return self.span(view).b
 
+    @property
+    def _my_siblings(self):
+        """Parent's list where self is contained.
+
+        For JsKey, this is overriden to return self.parent.keys.
+        """
+        return self.parent
+
+    def following_sibling(self):
+        return self._my_siblings[(self.position + 1) % len(self._my_siblings)]
+
+    def preceding_sibling(self):
+        return self._my_siblings[self.position - 1]
+
 
 class JsLeaf(JsNode):
     is_leaf = True
@@ -142,6 +156,10 @@ class JsKey(JsNode):
 
     def span(self, view):
         return view.get_regions(self.parent.key_reg_keys)[self.position]
+
+    @property
+    def _my_siblings(self):
+        return self.parent.keys
 
 
 def dotpath_join(dotpath, n):
@@ -188,6 +206,29 @@ class JsObject(JsNode, list):
         self.append(val_node)
         val_node.parent = self
 
+    def textually_following(self, child):
+        if isinstance(child, JsKey):
+            return self[child.position]
+        else:
+            return self.keys[(child.position + 1) % len(self)]
+
+    def textually_preceding(self, child):
+        if isinstance(child, JsKey):
+            return self[child.position - 1]
+        else:
+            return self.keys[child.position]
+
+    def get_all_child_nodes(self):
+        for key_node, val_node in zip(self.keys, self):
+            yield key_node
+            yield val_node
+
+    def get_all_regions(self, view):
+        for regk, regv in zip(view.get_regions(self.key_reg_keys),
+                              view.get_regions(self.key_reg_values)):
+            yield regk
+            yield regv
+
 
 class JsArray(JsNode, list):
     is_leaf = False
@@ -213,6 +254,18 @@ class JsArray(JsNode, list):
     def append_child(self, child_node):
         self.append(child_node)
         child_node.parent = self
+
+    def textually_following(self, child):
+        return child.following_sibling()
+
+    def textually_preceding(self, child):
+        return child.preceding_sibling()
+
+    def get_all_child_nodes(self):
+        return self
+
+    def get_all_regions(self, view):
+        return view.get_regions(self.key_reg_values)
 
 
 def node_at(node, path):
@@ -318,11 +371,8 @@ def find_containing_node_and_region(view, xreg):
     reg = None
 
     while not node.is_leaf:
-        regs = view.get_regions(node.key_reg_values)
-
-        assert len(regs) == len(node)
-
-        for subnode, subreg in zip(node, regs):
+        for subnode, subreg in zip(node.get_all_child_nodes(),
+                                   node.get_all_regions(view)):
             if subreg.contains(xreg):
                 node = subnode
                 reg = subreg
@@ -339,11 +389,8 @@ def find_node_by_exact_region(view, xreg):
     node = info_for(view).root
 
     while not node.is_leaf:
-        regs = view.get_regions(node.key_reg_values)
-
-        assert len(regs) == len(node)
-
-        for subnode, subreg in zip(node, regs):
+        for subnode, subreg in zip(node.get_all_child_nodes(),
+                                   node.get_all_regions(view)):
             if subreg == xreg:
                 return subnode
             elif subreg.contains(xreg):
