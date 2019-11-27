@@ -9,7 +9,8 @@ from live.util import tracking_last
 from live.code.common import make_js_value_inserter
 
 
-re_toplevel = r'^\s{nesting}\$\.([^=]+)\s*='
+re_toplevel_before_key = r'^\s{nesting}\$\.'
+re_toplevel = re_toplevel_before_key + r'([^=]+)\s*='
 re_any_brace = r'''[`'"()[\]{}]'''
 re_line_comment = r'//'
 re_block_comment = r'/\*'
@@ -22,21 +23,49 @@ class CodePersistCursor(Cursor):
     def __init__(self, pos, view, edit=None):
         super().__init__(pos, view, edit)
         self.nesting = self.view.settings().get('tab_size')
+        self.re_toplevel_before_key = \
+            re_toplevel_before_key.replace('nesting', str(self.nesting))
         self.re_toplevel = re_toplevel.replace('nesting', str(self.nesting))
 
-    def next_toplevel(self):
-        reg = self.find(self.re_toplevel)
-        if reg.a == -1:
-            raise UnexpectedContents(self, "Could not move to next toplevel")
-        self.pos = reg.a
-        return reg
+    def goto_nth_toplevel(self, n):
+        regs = self.view.find_all(self.re_toplevel)
+        if n >= len(regs):
+            raise UnexpectedContents(self, "Could not move to toplevel #{} "
+                                           "(only {} in total)".format(n, len(regs)))
+        self.pos = regs[n].a
 
-    def skipws(self):
-        reg = self.find(r'\S')
-        if reg.a == -1:
-            self.pos = self.view.size()
-        else:
-            self.pos = reg.a
+    def goto_cur_toplevel_value(self):
+        self.skip_re(self.re_toplevel)
+        self.skip_ws()
+
+    def goto_cur_toplevel_key(self):
+        self.skip_re(self.re_toplevel_before_key)
+
+    def skip_to_nth_value(self, n):
+        if self.char not in ('{', '['):
+            raise UnexpectedContents(self, "Expected object or array")
+
+        is_object = self.char == '{'
+        self.pos += 1
+
+        for _ in range(n):
+            self.consume(',', inc=True)
+
+        if is_object:
+            self.consume(':', inc=True)
+
+        self.skip_ws()
+
+    def skip_to_nth_key(self, n):
+        if self.char != '{':
+            raise UnexpectedContents(self, "Expected object")
+
+        self.pos += 1
+
+        for _ in range(n):
+            self.consume(',', inc=True)
+
+        self.skip_ws()
 
     def consume(self, terminator, inc):
         balance = 0
@@ -128,32 +157,14 @@ class UnexpectedContents(Exception):
         super().__init__("Unexpected contents after pos {}: {}".format(cur.pos, msg))
 
 
-def handle_edit_action(view, edit, path, new_value):
+def edit(view, edit, path, new_value):
     cur = CodePersistCursor(0, view, edit)
-    reg = cur.next_toplevel()
-    for i in range(path[0]):
-        cur.pos += 1  # to force the current toplevel not to be found again
-        reg = cur.next_toplevel()
+    ntoplevel, *path = path
+    cur.goto_nth_toplevel(ntoplevel)
+    cur.goto_cur_toplevel_value()
 
-    cur.pos = reg.b
-    cur.skipws()
-
-    for n in path[1:]:
-        if cur.char not in ('{', '['):
-            raise UnexpectedContents(cur, "Expected object or array")
-
-        is_object = cur.char == '{'
-        cur.pos += 1
-
-        for _ in range(n):
-            if is_object:
-                cur.consume(':', inc=True)
-            cur.consume(',', inc=True)
-
-        if is_object:
-            cur.consume(':', inc=True)
-
-        cur.skipws()
+    for n in path:
+        cur.skip_to_nth_value(n)
 
     beg = cur.pos
     cur.consume(',|;', inc=False)
@@ -162,6 +173,28 @@ def handle_edit_action(view, edit, path, new_value):
     itr = make_js_value_inserter(cur, new_value, len(path))
     while next(itr, None):
         pass
+
+    # Just saving does not work, we have to do it after the current command completes
+    sublime.set_timeout(lambda: view.run_command('save'), 0)
+
+
+def rename_key(view, edit, path, new_name):
+    cur = CodePersistCursor(0, view, edit)
+    ntoplevel, *path = path
+    cur.goto_nth_toplevel(ntoplevel)
+    if not path:
+        cur.goto_cur_toplevel_key()
+    else:
+        cur.goto_cur_toplevel_value()
+        path, nlast = path[:-1], path[-1]
+        for n in path:
+            cur.skip_to_nth_value(n)
+        cur.skip_to_nth_key(nlast)
+
+    beg = cur.pos
+    cur.skip_re(r'[a-zA-Z0-9_]+')
+    cur.erase(beg)
+    cur.insert(new_name)
 
     # Just saving does not work, we have to do it after the current command completes
     sublime.set_timeout(lambda: view.run_command('save'), 0)

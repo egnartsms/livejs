@@ -78,6 +78,10 @@ class JsNode:
     def dotpath(self):
         return '.'.join(map(str, self.path))
 
+    @property
+    def parent_key_reg(self):
+        return self.parent.key_reg_values
+
     def span(self, view):
         return view.get_regions(self.parent.key_reg_values)[self.position]
 
@@ -141,6 +145,10 @@ class JsKey(JsNode):
     def dotpath(self):
         raise NotImplementedError  # makes no sense
 
+    @property
+    def parent_key_reg(self):
+        return self.parent.key_reg_keys
+    
     def span(self, view):
         return view.get_regions(self.parent.key_reg_keys)[self.position]
 
@@ -220,6 +228,7 @@ class JsObject(JsNode, list):
 
         if child.is_key:
             beg.skip_ws_to_bol(skip_bol=True)
+            end.skip_ws()
             end.insert('\n')
         else:
             beg.skip_ws_to_bol(skip_bol=False)
@@ -389,9 +398,9 @@ def erase_regions(node, view):
 
 
 def replace_region(node, reg, view):
-    parent_regions = view.get_regions(node.parent.key_reg_values)
+    parent_regions = view.get_regions(node.parent_key_reg)
     parent_regions[node.position] = reg
-    view.add_regions(node.parent.key_reg_values, parent_regions, '', '', sublime.HIDDEN)
+    view.add_regions(node.parent_key_reg, parent_regions, '', '', sublime.HIDDEN)
 
 
 def find_containing_node(xreg, view):
@@ -473,7 +482,7 @@ def refresh(view, edit, response):
     set_viewport_position(view, prev_viewport_pos, False)
 
 
-def replace_node(view, edit, path, new_value):
+def replace_value_node(view, edit, path, new_value):
     node = value_node_at(info_for(view).root, path)
 
     assert node is info_for(view).node_being_edited
@@ -501,3 +510,24 @@ def replace_node(view, edit, path, new_value):
 
     add_regions(new_node, view)
     replace_region(new_node, sublime.Region(beg, end), view)
+
+
+def replace_key_node(view, edit, path, new_name):
+    node = key_node_at(info_for(view).root, path)
+
+    assert node is info_for(view).node_being_edited
+    assert node.is_key
+
+    parent = node.parent
+    [reg] = view.get_regions('being_edited')
+    
+    view.erase(edit, reg)
+    cur = Cursor(reg.a, view, edit)
+    reinserter = parent.reinsert_after_edit(cur, node.is_key)
+    next(reinserter)
+    beg = cur.pos
+    cur.insert(new_name)
+    end = cur.pos
+    next(reinserter, None)
+
+    replace_region(node, sublime.Region(beg, end), view)

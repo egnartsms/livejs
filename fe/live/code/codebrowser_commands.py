@@ -1,15 +1,15 @@
-import operator as pyop
-from functools import partial
-
 import sublime
 import sublime_plugin
+
+import re
+import operator as pyop
+from functools import partial
 
 from live.util import first_such
 from live import server
 from live.sublime_util.technical_command import thru_technical_command
-from live.sublime_util.cursor import Cursor
 from live.code.codebrowser import (
-    refresh, info_for, find_containing_node, replace_node,
+    refresh, info_for, find_containing_node, replace_value_node, replace_key_node,
     find_node_by_exact_region
 )
 
@@ -18,9 +18,6 @@ __all__ = ['CodeBrowserEventListener', 'LivejsCbRefresh', 'LivejsCbEdit',
            'LivejsCbCommit', 'LivejsCbCancelEdit', 'LivejsCbSelect',
            'LivejsCbMoveSelRight', 'LivejsCbMoveSelLeft', 'LivejsCbMoveSelUp',
            'LivejsCbMoveSelDown']
-
-
-CODE_BROWSER_VIEW_NAME = "LiveJS: Code Browser"
 
 
 class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
@@ -72,6 +69,9 @@ def invalidate_codebrowser(view):
         view.set_read_only(True)
 
     thru_technical_command(view, go)()
+
+
+CODE_BROWSER_VIEW_NAME = "LiveJS: Code Browser"
 
 
 class LivejsCbRefresh(sublime_plugin.WindowCommand):
@@ -126,15 +126,30 @@ class LivejsCbCommit(sublime_plugin.TextCommand):
         [reg] = self.view.get_regions('being_edited')
         js = self.view.substr(reg).strip()
 
-        JSCODE = (
-            '$.edit({}, (function () {{ return ({}); }}));'.format(node.path, js)
-        )
-        server.response_callbacks.append(partial(on_edit_committed, view=self.view))
-        server.websocket.enqueue_message(JSCODE)
+        if node.is_key:
+            if not re.match('^[a-zA-Z0-9_]+$', js):
+                self.view.window().status_message("Invalid JS identifier")
+                return
+            jscode = '$.renameKey({}, "{}")'.format(node.path, js)
+            server.response_callbacks.append(
+                partial(on_edit_key_committed, view=self.view)
+            )
+        else:
+            jscode = (
+                '$.edit({}, (function () {{ return ({}); }}));'.format(node.path, js)
+            )
+            server.response_callbacks.append(
+                partial(on_edit_value_committed, view=self.view)
+            )
+        server.websocket.enqueue_message(jscode)
         self.view.set_status('pending', "LiveJS: back-end is processing..")
 
 
-def on_edit_committed(view, response):
+def on_edit_value_committed(view, response):
+    switch_to_view_mode(view)
+
+
+def on_edit_key_committed(view, response):
     switch_to_view_mode(view)
 
 
@@ -148,15 +163,28 @@ def switch_to_view_mode(view):
 
 class LivejsCbCancelEdit(sublime_plugin.TextCommand):
     def run(self, edit):
-        path = info_for(self.view).node_being_edited.path
-        JSCODE = '''$.sendObjectAt({})'''.format(path)
+        node = info_for(self.view).node_being_edited
+
+        if node.is_key:
+            jscode = '$.sendKeyAt({})'.format(node.path)
+        else:
+            jscode = '$.sendValueAt({})'.format(node.path)
+
         server.response_callbacks.append(partial(on_edit_aborted, view=self.view))
-        server.websocket.enqueue_message(JSCODE)
+        server.websocket.enqueue_message(jscode)
 
 
 def on_edit_aborted(view, response):
     node = info_for(view).node_being_edited
-    thru_technical_command(view, replace_node)(path=node.path, new_value=response)
+    if node.is_key:
+        thru_technical_command(view, replace_key_node)(
+            path=node.path, new_name=response
+        )
+    else:
+        thru_technical_command(view, replace_value_node)(
+            path=node.path, new_value=response
+        )
+
     switch_to_view_mode(view)
 
 

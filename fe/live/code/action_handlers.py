@@ -12,23 +12,43 @@ from live.sublime_util.technical_command import thru_technical_command
 from live.sublime_util.on_view_loaded import on_load
 
 
+def get_root_view(window):
+    filename = os.path.join(config.be_root, config.root_module)
+    root_view = window.find_open_file(filename)
+    if root_view is None:
+        focused_view = window.active_view()
+        root_view = window.open_file(filename)
+        window.focus_view(focused_view)
+    return root_view
+
+
 @server.action_handler('edit')
 def edit(action):
     cbv = first_such(view for view in sublime.active_window().views()
                      if view.settings().get('livejs_view') == 'Code Browser')
     
-    thru_technical_command(cbv, codebrowser.replace_node)(
+    thru_technical_command(cbv, codebrowser.replace_value_node)(
         path=action['path'],
         new_value=action['newValue']
     )
 
-    filename = os.path.join(config.be_root, config.root_module)
-    root_view = cbv.window().find_open_file(filename)
-    if root_view is None:
-        focused_view = cbv.window().active_view()
-        root_view = cbv.window().open_file(filename)
-        cbv.window().focus_view(focused_view)
+    root_view = get_root_view(sublime.active_window())
+    cmd = partial(thru_technical_command(root_view, persist.edit),
+                  path=action['path'], new_value=action['newValue'])
+    on_load(root_view, cmd)
 
-    tech = partial(thru_technical_command(root_view, persist.handle_edit_action),
-                   path=action['path'], new_value=action['newValue'])
-    on_load(root_view, tech)
+
+@server.action_handler('rename_key')
+def rename_key(action):
+    cbv = first_such(view for view in sublime.active_window().views()
+                     if view.settings().get('livejs_view') == 'Code Browser')
+    
+    thru_technical_command(cbv, codebrowser.replace_key_node)(
+        path=action['path'],
+        new_name=action['newName']
+    )
+
+    root_view = get_root_view(sublime.active_window())
+    cmd = partial(thru_technical_command(root_view, persist.rename_key),
+                  path=action['path'], new_name=action['newName'])
+    on_load(root_view, cmd)

@@ -3,6 +3,7 @@ window.root = (function () {
 
    $.nontrackedKeys = [
       'socket',
+      'orderedKeysMap'
    ];
 
    $.socket = null;
@@ -45,6 +46,25 @@ window.root = (function () {
          return;
       }
    };
+
+   $.orderedKeysMap = new WeakMap;
+
+   $.ensureOrdkeys = function (obj) {
+      let ordkeys = $.orderedKeysMap.get(obj);
+      if (ordkeys === undefined) {
+         ordkeys = Object.keys(obj);
+         $.orderedKeysMap.set(obj, ordkeys);
+      }
+      return ordkeys;
+   };
+
+   $.keys = function (obj) {
+      return $.orderedKeysMap.get(obj) || Object.keys(obj);
+   };
+
+   $.entries = function (obj) {
+      return $.keys(obj).map(key => [key, obj[key]]);
+   }
 
    $.prepareForSerialization = function prepare(obj) {
       switch (typeof obj) {
@@ -94,7 +114,7 @@ window.root = (function () {
       }
 
       return Object.fromEntries(
-         Object.entries(obj).map(([k, v]) => [k, prepare(v)])
+         $.entries(obj).map(([k, v]) => [k, prepare(v)])
       );
    };
 
@@ -116,7 +136,27 @@ window.root = (function () {
          actions: actions || []
       });
    };
-  
+
+   $.path2ParentnKey = function (path) {
+      let parent, child = $;
+
+      for (let i = 0; i < path.length; i += 1) {
+         parent = child;
+         [key, child] = $.nthEntry(parent, path[i]);
+      }
+
+      return {parent, key};
+   };
+
+   $.nthEntry = function (obj, n) {
+      if (Array.isArray(obj)) {
+         return [String(n), obj[n]];
+      }
+      else {
+         return $.entries(obj)[n];
+      }
+   };
+
    $.sendAllEntries = function () {
       let result = [];
       for (let [key, value] of Object.entries($)) {
@@ -131,12 +171,16 @@ window.root = (function () {
       $.sendSuccess(result);
    };
 
-   $.sendObjectAt = function (path) {
+   $.sendValueAt = function (path) {
       let {parent, key} = $.path2ParentnKey(path);
-
       $.sendSuccess($.prepareForSerialization(parent[key]));
    };
    
+   $.sendKeyAt = function (path) {
+      let {parent, key} = $.path2ParentnKey(path);
+      $.sendSuccess(key);
+   };
+
    $.edit = function (path, newValueClosure) {
       let newValue;
 
@@ -158,29 +202,22 @@ window.root = (function () {
       }]);
    };
 
-   $.path2ParentnKey = function (path) {
-      let parent, child = $;
-
-      for (let i = 0; i < path.length; i += 1) {
-         parent = child;
-         [key, child] = $.nthEntry(parent, path[i]);
-      }
-
-      return {parent, key};
+   $.renameKey = function (path, newName) {
+      let {parent, key} = $.path2ParentnKey(path);
+      let ordkeys = $.ensureOrdkeys(parent);
+      ordkeys[ordkeys.indexOf(key)] = newName;
+      parent[newName] = parent[key];
+      delete parent[key];
+      $.sendSuccess(null, [{
+         type: 'rename_key',
+         path,
+         newName
+      }])
    };
 
-   $.nthEntry = function (obj, n) {
-      if (Array.isArray(obj)) {
-         return [String(n), obj[n]];
-      }
-      else {
-         return Object.entries(obj)[n];
-      }
-   };
-
-   $.testObj = {
-      first_name: "Iohann",
-      last_name: [
+   $.probe = {
+      firstName: "Iohann",
+      lastName: [
          [
             function () { return 24; },
             [
@@ -198,7 +235,7 @@ window.root = (function () {
          squeak: function () { return 'squeak!' },
          pharo: function () { return 'pharo' },
       },
-      version: {
+      versionNumber: {
          major: 0,
          minor: 5,
          build: 25,

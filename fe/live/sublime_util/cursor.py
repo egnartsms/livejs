@@ -49,3 +49,6 @@ class Cursor:
         reg = self.find(re)
         if reg.a == self.pos:
             self.pos = reg.b
+
+    def skip_ws(self):
+        self.skip_re(r'\s+')
