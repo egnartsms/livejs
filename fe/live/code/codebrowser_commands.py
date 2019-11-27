@@ -16,8 +16,8 @@ from live.code.codebrowser import (
 
 __all__ = ['CodeBrowserEventListener', 'LivejsCbRefresh', 'LivejsCbEdit',
            'LivejsCbCommit', 'LivejsCbCancelEdit', 'LivejsCbSelect',
-           'LivejsCbMoveSelRight', 'LivejsCbMoveSelLeft', 'LivejsCbMoveSelUp',
-           'LivejsCbMoveSelDown']
+           'LivejsCbMoveSelNext', 'LivejsCbMoveSelPrev', 'LivejsCbMoveSelOutside',
+           'LivejsCbMoveSelInside']
 
 
 class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
@@ -207,7 +207,7 @@ class LivejsCbSelect(sublime_plugin.TextCommand):
         self.view.sel().add(node.span(self.view))
 
 
-class LivejsCbMoveSelRight(sublime_plugin.TextCommand):
+class LivejsCbMoveSelNext(sublime_plugin.TextCommand):
     def run(self, edit, by_same_kind):
         if len(self.view.sel()) != 1:
             return  # should not normally happen
@@ -225,7 +225,7 @@ class LivejsCbMoveSelRight(sublime_plugin.TextCommand):
         self.view.show(self.view.sel(), True)
 
 
-class LivejsCbMoveSelLeft(sublime_plugin.TextCommand):
+class LivejsCbMoveSelPrev(sublime_plugin.TextCommand):
     def run(self, edit, by_same_kind):
         if len(self.view.sel()) != 1:
             return  # should not normally happen
@@ -243,7 +243,7 @@ class LivejsCbMoveSelLeft(sublime_plugin.TextCommand):
         self.view.show(self.view.sel(), True)
 
 
-class LivejsCbMoveSelUp(sublime_plugin.TextCommand):
+class LivejsCbMoveSelOutside(sublime_plugin.TextCommand):
     def run(self, edit):
         if len(self.view.sel()) != 1:
             return  # should not normally happen
@@ -261,7 +261,7 @@ class LivejsCbMoveSelUp(sublime_plugin.TextCommand):
         self.view.show(self.view.sel(), True)
 
 
-class LivejsCbMoveSelDown(sublime_plugin.TextCommand):
+class LivejsCbMoveSelInside(sublime_plugin.TextCommand):
     def run(self, edit, into_key):
         if len(self.view.sel()) != 1:
             return  # should not normally happen
