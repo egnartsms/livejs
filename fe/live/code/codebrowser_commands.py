@@ -262,7 +262,7 @@ class LivejsCbMoveSelUp(sublime_plugin.TextCommand):
 
 
 class LivejsCbMoveSelDown(sublime_plugin.TextCommand):
-    def run(self, edit):
+    def run(self, edit, into_key):
         if len(self.view.sel()) != 1:
             return  # should not normally happen
         node = find_node_by_exact_region(self.view.sel()[0], self.view)
@@ -272,7 +272,11 @@ class LivejsCbMoveSelDown(sublime_plugin.TextCommand):
         if node.is_leaf or not node:
             return
 
-        down = node[0]
+        if into_key and node.is_object:
+            down = node.keys[0]
+        else:
+            down = node[0]
+
         self.view.sel().clear()
         self.view.sel().add(down.span(self.view))
         self.view.show(self.view.sel(), True)

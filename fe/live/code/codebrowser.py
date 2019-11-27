@@ -40,6 +40,8 @@ class PerViewInfoDiscarder(sublime_plugin.EventListener):
 class JsNode:
     is_leaf = False
     is_key = False
+    is_object = False
+    is_array = False
 
     def __init__(self):
         super().__init__()
@@ -160,6 +162,8 @@ class JsKey(JsNode):
 class JsObject(JsNode, list):
     """A list of values nodes. Key nodes are stored under 'keys' attribute."""
 
+    is_object = True
+
     def __init__(self):
         super().__init__()
         self.keys = []
@@ -193,7 +197,7 @@ class JsObject(JsNode, list):
         del self.reg_values
 
     def append_entry(self, key_node, val_node):
-        assert isinstance(key_node, JsKey)
+        assert key_node.is_key
         self.keys.append(key_node)
         key_node.parent = self
         self.append(val_node)
@@ -249,6 +253,8 @@ class JsObject(JsNode, list):
 
 
 class JsArray(JsNode, list):
+    is_array = True
+
     def __init__(self):
         super().__init__()
         self.reg_values = []
@@ -317,7 +323,7 @@ def value_node_at(node, path):
 def key_node_at(node, path):
     for n in path[:-1]:
         node = node[n]
-    if not isinstance(node, JsObject):
+    if not node.is_object:
         raise RuntimeError("Path to key node of {} is incorrect: {}".format(node, path))
     return node.keys[path[-1]]
 
@@ -391,7 +397,7 @@ def erase_regions(node, view):
 
         view.erase_regions(node.key_reg_values)
 
-        if isinstance(node, JsObject):
+        if node.is_object:
             view.erase_regions(node.key_reg_keys)
 
     erase(node)

@@ -133,6 +133,7 @@
             }
         ]
     },
+    // ctrl+up and alt+up are identical
     {
         "keys": ["ctrl+up"],
         "command": "livejs_cb_move_sel_up",
@@ -150,8 +151,46 @@
         ]
     },
     {
+        "keys": ["alt+up"],
+        "command": "livejs_cb_move_sel_up",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "read_only"
+            },
+            {
+                "key": "livejs_exact_node_selected"
+            }
+        ]
+    },
+    {
         "keys": ["ctrl+down"],
         "command": "livejs_cb_move_sel_down",
+        "args": {
+            "into_key": false
+        },
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "read_only"
+            },
+            {
+                "key": "livejs_exact_node_selected"
+            }
+        ]
+    },
+    {
+        "keys": ["alt+down"],
+        "command": "livejs_cb_move_sel_down",
+        "args": {
+            "into_key": true
+        },
         "context": [
             {
                 "key": "livejs_view",
