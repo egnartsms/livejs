@@ -33,9 +33,9 @@ def make_js_value_inserter(cur, jsval, nesting):
     <(a, b) of [20, 30]>
     pop
     """
-    def insert_any(jsval):
+    def insert_any(jsval, nesting):
         if isinstance(jsval, list):
-            yield from insert_array(jsval)
+            yield from insert_array(jsval, nesting)
             return
         
         assert isinstance(jsval, OrderedDict), "Got non-dict: {}".format(jsval)
@@ -44,40 +44,32 @@ def make_js_value_inserter(cur, jsval, nesting):
             cur.insert(jsval['value'])
             yield 'leaf'
         elif leaf == 'function':
-            insert_function(jsval['value'])
+            insert_function(jsval['value'], nesting)
             yield 'leaf'
         else:
             assert leaf is None
-            yield from insert_object(jsval)
+            yield from insert_object(jsval, nesting)
 
-    def insert_array(arr):
-        nonlocal nesting
-
+    def insert_array(arr, nesting):
         yield 'push_array'
         if not arr:
             cur.insert("[]")
             yield 'pop'
             return
 
-        cur.insert("[\n")
-        nesting += 1
-        for item in arr:
-            cur.indent(nesting)
+        cur.insert("[")
+        cur.sep_initial(nesting)
+        for item, islast in tracking_last(arr):
             x0 = cur.pos
-            yield from insert_any(item)
+            yield from insert_any(item, nesting + 1)
             x1 = cur.pos
             yield sublime.Region(x0, x1)
-
-            cur.insert(",\n")
-        nesting -= 1
-        cur.indent(nesting)
+            (cur.sep_terminal if islast else cur.sep_inter)(nesting)
         cur.insert("]")
 
         yield 'pop'
 
-    def insert_object(obj):
-        nonlocal nesting
-
+    def insert_object(obj, nesting):
         yield 'push_object'
 
         if not obj:
@@ -85,10 +77,9 @@ def make_js_value_inserter(cur, jsval, nesting):
             yield 'pop'
             return
 
-        cur.insert("{\n")
-        nesting += 1
-        for k, v in obj.items():
-            cur.indent(nesting)
+        cur.insert("{")
+        cur.sep_initial(nesting)
+        for (k, v), islast in tracking_last(obj.items()):
             x0 = cur.pos
             cur.insert(k)
             x1 = cur.pos
@@ -96,18 +87,16 @@ def make_js_value_inserter(cur, jsval, nesting):
 
             cur.insert(': ')
             x0 = cur.pos
-            yield from insert_any(v)
+            yield from insert_any(v, nesting + 1)
             x1 = cur.pos
             yield sublime.Region(x0, x1)
 
-            cur.insert(',\n')
-        nesting -= 1
-        cur.indent(nesting)
+            (cur.sep_terminal if islast else cur.sep_inter)(nesting)
         cur.insert("}")
 
         yield 'pop'
 
-    def insert_function(source):
+    def insert_function(source, nesting):
         # The last line of a function contains a single closing brace and is indented at
         # the same level as the whole function.  This of course depends on the formatting
         # style but it works for now and is very simple.
@@ -133,4 +122,4 @@ def make_js_value_inserter(cur, jsval, nesting):
             if not islast:
                 cur.insert('\n')
 
-    yield from insert_any(jsval)
+    yield from insert_any(jsval, nesting)

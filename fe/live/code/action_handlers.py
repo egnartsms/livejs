@@ -22,8 +22,8 @@ def get_root_view(window):
     return root_view
 
 
-@server.action_handler('edit')
-def edit(action):
+@server.action_handler('replace')
+def replace(action):
     cbv = first_such(view for view in sublime.active_window().views()
                      if view.settings().get('livejs_view') == 'Code Browser')
     
@@ -33,13 +33,41 @@ def edit(action):
     )
 
     root_view = get_root_view(sublime.active_window())
-    cmd = partial(thru_technical_command(root_view, persist.edit),
+    cmd = partial(thru_technical_command(root_view, persist.replace_value),
                   path=action['path'], new_value=action['newValue'])
     on_load(root_view, cmd)
 
 
 @server.action_handler('rename_key')
 def rename_key(action):
+    cbv = first_such(view for view in sublime.active_window().views()
+                     if view.settings().get('livejs_view') == 'Code Browser')
+    
+    thru_technical_command(cbv, codebrowser.replace_key_node)(
+        path=action['path'],
+        new_name=action['newName']
+    )
+
+    root_view = get_root_view(sublime.active_window())
+    cmd = partial(thru_technical_command(root_view, persist.rename_key),
+                  path=action['path'], new_name=action['newName'])
+    on_load(root_view, cmd)
+
+
+@server.action_handler('delete')
+def delete(action):
+    cbv = first_such(view for view in sublime.active_window().views()
+                     if view.settings().get('livejs_view') == 'Code Browser')
+    
+    thru_technical_command(cbv, codebrowser.delete_node)(path=action['path'])
+
+    root_view = get_root_view(sublime.active_window())
+    cmd = partial(thru_technical_command(root_view, persist.delete), path=action['path'])
+    on_load(root_view, cmd)
+
+
+@server.action_handler('insert')
+def insert(action):
     cbv = first_such(view for view in sublime.active_window().views()
                      if view.settings().get('livejs_view') == 'Code Browser')
     

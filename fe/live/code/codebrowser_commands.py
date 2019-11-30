@@ -8,6 +8,7 @@ from functools import partial
 from live.util import first_such
 from live import server
 from live.sublime_util.technical_command import thru_technical_command
+from live.code.cursor import Cursor
 from live.code.codebrowser import (
     refresh, info_for, find_containing_node, replace_value_node, replace_key_node,
     find_node_by_exact_region
@@ -17,7 +18,7 @@ from live.code.codebrowser import (
 __all__ = ['CodeBrowserEventListener', 'LivejsCbRefresh', 'LivejsCbEdit',
            'LivejsCbCommit', 'LivejsCbCancelEdit', 'LivejsCbSelect',
            'LivejsCbMoveSelNext', 'LivejsCbMoveSelPrev', 'LivejsCbMoveSelOutside',
-           'LivejsCbMoveSelInside']
+           'LivejsCbMoveSelInside', 'LivejsCbDelNode']
 
 
 class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
@@ -40,7 +41,7 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
         if key == 'livejs_view':
             return op(self.view.settings().get('livejs_view'), operand)
         elif key == 'livejs_exact_node_selected':
-            return op(is_exact_node_selected(self.view), operand)
+            return op(get_single_selected_node(self.view) is not None, operand)
         else:
             assert 0, "Programming error: unexpected context key {}".format(key)
 
@@ -53,12 +54,10 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
             invalidate_codebrowser(self.view)
 
 
-def is_exact_node_selected(view):
-    sel = view.sel()
-    if len(sel) != 1:
-        return False
-    node = find_node_by_exact_region(sel[0], view)
-    return node is not None
+def get_single_selected_node(view):
+    if len(view.sel()) != 1:
+        return None
+    return find_node_by_exact_region(view.sel()[0], view)
 
 
 def invalidate_codebrowser(view):
@@ -113,11 +112,22 @@ class LivejsCbEdit(sublime_plugin.TextCommand):
 
         info_for(self.view).node_being_edited = node
         self.view.set_read_only(False)
-        ex_reg = node.prepare_for_editing(self.view, edit)
+        ex_reg = prepare_node_for_editing(self.view, edit, node)
         self.view.add_regions('being_edited', [ex_reg], 'region.greenish', '',
                               sublime.DRAW_NO_FILL | sublime.DRAW_EMPTY)
         self.view.sel().clear()
-        self.view.sel().add(node.span(self.view))
+        self.view.sel().add(node.region)
+
+
+def prepare_node_for_editing(view, edit, node):
+    beg = node.begin
+    cur = Cursor(beg, view, edit)
+    row, col = view.rowcol(beg)
+    cur.insert('\n')
+    cur.indent(node.nesting)
+    cur.pos = node.end
+    cur.insert('\n')
+    return sublime.Region(beg, cur.pos)
 
 
 class LivejsCbCommit(sublime_plugin.TextCommand):
@@ -136,7 +146,7 @@ class LivejsCbCommit(sublime_plugin.TextCommand):
             )
         else:
             jscode = (
-                '$.edit({}, (function () {{ return ({}); }}));'.format(node.path, js)
+                '$.replace({}, (function () {{ return ({}); }}));'.format(node.path, js)
             )
             server.response_callbacks.append(
                 partial(on_edit_value_committed, view=self.view)
@@ -204,68 +214,59 @@ class LivejsCbSelect(sublime_plugin.TextCommand):
             return
 
         self.view.sel().clear()
-        self.view.sel().add(node.span(self.view))
+        self.view.sel().add(node.region)
 
 
 class LivejsCbMoveSelNext(sublime_plugin.TextCommand):
     def run(self, edit, by_same_kind):
-        if len(self.view.sel()) != 1:
-            return  # should not normally happen
-        node = find_node_by_exact_region(self.view.sel()[0], self.view)
+        node = get_single_selected_node(self.view)
         if node is None:
             return  # should not normally happen
-        
+
         if by_same_kind:
-            right = node.following_sibling()
+            right = node.following_sibling_circ
         else:
-            right = node.textually_following_sibling()
+            right = node.textually_following_sibling_circ
 
         self.view.sel().clear()
-        self.view.sel().add(right.span(self.view))
+        self.view.sel().add(right.region)
         self.view.show(self.view.sel(), True)
 
 
 class LivejsCbMoveSelPrev(sublime_plugin.TextCommand):
     def run(self, edit, by_same_kind):
-        if len(self.view.sel()) != 1:
-            return  # should not normally happen
-        node = find_node_by_exact_region(self.view.sel()[0], self.view)
+        node = get_single_selected_node(self.view)
         if node is None:
             return  # should not normally happen
 
         if by_same_kind:
-            left = node.preceding_sibling()
+            left = node.preceding_sibling_circ
         else:
-            left = node.textually_preceding_sibling()
+            left = node.textually_preceding_sibling_circ
         
         self.view.sel().clear()
-        self.view.sel().add(left.span(self.view))
+        self.view.sel().add(left.region)
         self.view.show(self.view.sel(), True)
 
 
 class LivejsCbMoveSelOutside(sublime_plugin.TextCommand):
     def run(self, edit):
-        if len(self.view.sel()) != 1:
-            return  # should not normally happen
-        node = find_node_by_exact_region(self.view.sel()[0], self.view)
+        node = get_single_selected_node(self.view)
         if node is None:
             return  # should not normally happen
 
         up = node.parent
-
         if up.is_root:
             return
 
         self.view.sel().clear()
-        self.view.sel().add(up.span(self.view))
+        self.view.sel().add(up.region)
         self.view.show(self.view.sel(), True)
 
 
 class LivejsCbMoveSelInside(sublime_plugin.TextCommand):
     def run(self, edit, into_key):
-        if len(self.view.sel()) != 1:
-            return  # should not normally happen
-        node = find_node_by_exact_region(self.view.sel()[0], self.view)
+        node = get_single_selected_node(self.view)
         if node is None:
             return  # should not normally happen
 
@@ -273,10 +274,43 @@ class LivejsCbMoveSelInside(sublime_plugin.TextCommand):
             return
 
         if into_key and node.is_object:
-            down = node.keys[0]
+            down = node.key_nodes[0]
         else:
-            down = node[0]
+            down = node.value_nodes[0]
 
         self.view.sel().clear()
-        self.view.sel().add(down.span(self.view))
+        self.view.sel().add(down.region)
         self.view.show(self.view.sel(), True)
+
+
+class LivejsCbMoveNodeFwd(sublime_plugin.TextCommand):
+    def run(self, edit):
+        node = get_single_selected_node(self.view)
+        if node is None:
+            return  # should not normally happen
+
+        jscode = '$.move({}, true)'.format(node.path)
+        server.response_callbacks.append(None)
+        server.websocket.enqueue_message(jscode)
+
+
+class LivejsCbMoveNodeBwd(sublime_plugin.TextCommand):
+    def run(self, edit):
+        node = get_single_selected_node(self.view)
+        if node is None:
+            return  # should not normally happen
+
+        jscode = '$.move({}, false)'.format(node.path)
+        server.response_callbacks.append(None)
+        server.websocket.enqueue_message(jscode)
+
+
+class LivejsCbDelNode(sublime_plugin.TextCommand):
+    def run(self, edit):
+        node = get_single_selected_node(self.view)
+        if node is None:
+            return  # should not normally happen
+
+        jscode = '$.delete({})'.format(node.path)
+        server.response_callbacks.append(None)
+        server.websocket.enqueue_message(jscode)

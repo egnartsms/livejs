@@ -1,245 +1,309 @@
 window.root = (function () {
-   let $ = {};
+   let $ = {
+      nontrackedKeys: [
+         'socket',
+         'orderedKeysMap'
+      ],
 
-   $.nontrackedKeys = [
-      'socket',
-      'orderedKeysMap'
-   ];
+      socket: null,
 
-   $.socket = null;
+      initOnLoad: function () {
+         $.resetSocket();
+      },
 
-   $.initOnLoad = function () {
-      $.resetSocket();
-   };
+      onSocketOpen: function () {
+         console.log("Connected to LiveJS FE");
+      },
 
-   $.onSocketOpen = function () {
-      console.log("Connected to LiveJS FE");
-   };
+      onSocketClose: function (evt) {
+         $.resetSocket();
+      },
 
-   $.onSocketClose = function (evt) {
-      $.resetSocket();
-   };
+      resetSocket: function () {
+         $.socket = new WebSocket('ws://localhost:8001/wsconnect');
+         $.socket.onmessage = $.onSocketMessage;
+         $.socket.onopen = $.onSocketOpen;
+         $.socket.onclose = $.onSocketClose;
+      },
 
-   $.resetSocket = function () {
-      $.socket = new WebSocket('ws://localhost:8001/wsconnect');
-      $.socket.onmessage = $.onSocketMessage;
-      $.socket.onopen = $.onSocketOpen;
-      $.socket.onclose = $.onSocketClose;
-   };
+      onSocketMessage: function (e) {
+         let func;
 
-   $.onSocketMessage = function (e) {
-      let func;
-      
-      try {
-         func = new Function('$', e.data);
-      }
-      catch (e) {
-         $.sendFailure(`Failed to compile JS code:\n ${e}`);
-         return;
-      }
+         try {
+            func = new Function('$', e.data);
+         }
+         catch (e) {
+            $.sendFailure(`Failed to compile JS code:\n ${e}`);
+            return;
+         }
 
-      try { 
-         func.call(null, $);
-      }
-      catch (e) {
-         $.sendFailure(`Unhandled exception:\n ${e.stack}`);
-         return;
-      }
-   };
+         try { 
+            func.call(null, $);
+         }
+         catch (e) {
+            $.sendFailure(`Unhandled exception:\n ${e.stack}`);
+            return;
+         }
+      },
 
-   $.orderedKeysMap = new WeakMap;
+      orderedKeysMap: new WeakMap,
 
-   $.ensureOrdkeys = function (obj) {
-      let ordkeys = $.orderedKeysMap.get(obj);
-      if (ordkeys === undefined) {
-         ordkeys = Object.keys(obj);
-         $.orderedKeysMap.set(obj, ordkeys);
-      }
-      return ordkeys;
-   };
+      ensureOrdkeys: function (obj) {
+         let ordkeys = $.orderedKeysMap.get(obj);
+         if (ordkeys === undefined) {
+            ordkeys = Object.keys(obj);
+            $.orderedKeysMap.set(obj, ordkeys);
+         }
+         return ordkeys;
+      },
 
-   $.keys = function (obj) {
-      return $.orderedKeysMap.get(obj) || Object.keys(obj);
-   };
+      keys: function (obj) {
+         return $.orderedKeysMap.get(obj) || Object.keys(obj);
+      },
 
-   $.entries = function (obj) {
-      return $.keys(obj).map(key => [key, obj[key]]);
-   }
+      entries: function (obj) {
+         return $.keys(obj).map(key => [key, obj[key]]);
+      },
 
-   $.prepareForSerialization = function prepare(obj) {
-      switch (typeof obj) {
-         case 'function':
-         return {
-            __leaf_type__: 'function',
-            value: obj.toString()
-         };
-         
-         case 'string':
-         return {
-            __leaf_type__: 'js-value',
-            value: JSON.stringify(obj)
-         };
-
-         case 'number':
-         case 'boolean':
-         case 'undefined':
-         return {
-            __leaf_type__: 'js-value',
-            value: String(obj)
-         };
-      }
-
-      if (obj === null) {
-         return {
-            __leaf_type__: 'js-value',
-            value: 'null'
-         };
-      }
-
-      if (Array.isArray(obj)) {
-         return Array.from(obj, prepare);
-      }
-
-      let proto = Object.getPrototypeOf(obj);
-
-      if (proto === RegExp.prototype) {
-         return {
-            __leaf_type__: 'js-value',
-            value: obj.toString()
-         };
-      }
-
-      if (proto !== Object.prototype) {
-         throw new Error(`Cannot serialize objects with non-standard prototype`);
-      }
-
-      return Object.fromEntries(
-         $.entries(obj).map(([k, v]) => [k, prepare(v)])
-      );
-   };
-
-   $.send = function (msg) {
-      $.socket.send(JSON.stringify(msg));
-   };
-
-   $.sendFailure = function (message) {
-      $.send({
-         success: false,
-         message: message
-      });
-   };
-
-   $.sendSuccess = function (response, actions=null) {
-      $.send({
-         success: true,
-         response: response,
-         actions: actions || []
-      });
-   };
-
-   $.path2ParentnKey = function (path) {
-      let parent, child = $;
-
-      for (let i = 0; i < path.length; i += 1) {
-         parent = child;
-         [key, child] = $.nthEntry(parent, path[i]);
-      }
-
-      return {parent, key};
-   };
-
-   $.nthEntry = function (obj, n) {
-      if (Array.isArray(obj)) {
-         return [String(n), obj[n]];
-      }
-      else {
-         return $.entries(obj)[n];
-      }
-   };
-
-   $.sendAllEntries = function () {
-      let result = [];
-      for (let [key, value] of Object.entries($)) {
-         if ($.nontrackedKeys.includes(key)) {
-            result.push([key, $.prepareForSerialization('new Object()')])
+      deleteProp: function (obj, prop) {
+         let ordkeys = $.orderedKeysMap.get(obj);
+         if (ordkeys) {
+            let index = ordkeys.indexOf(prop);
+            if (index === -1) {
+               return;
+            }
+            ordkeys.splice(index, 1);
+            delete obj[prop];
          }
          else {
-            result.push([key, $.prepareForSerialization(value)]);   
+            delete obj[prop];
          }
-      }
+      },
 
-      $.sendSuccess(result);
-   };
+      prepareForSerialization: function prepare(obj) {
+         switch (typeof obj) {
+            case 'function':
+            return {
+               __leaf_type__: 'function',
+               value: obj.toString()
+            };
 
-   $.sendValueAt = function (path) {
-      let {parent, key} = $.path2ParentnKey(path);
-      $.sendSuccess($.prepareForSerialization(parent[key]));
-   };
-   
-   $.sendKeyAt = function (path) {
-      let {parent, key} = $.path2ParentnKey(path);
-      $.sendSuccess(key);
-   };
+            case 'string':
+            return {
+               __leaf_type__: 'js-value',
+               value: JSON.stringify(obj)
+            };
 
-   $.edit = function (path, newValueClosure) {
-      let newValue;
+            case 'number':
+            case 'boolean':
+            case 'undefined':
+            return {
+               __leaf_type__: 'js-value',
+               value: String(obj)
+            };
+         }
 
-      try {
-         newValue = newValueClosure.call(null);
-      }
-      catch (e) {
-         $.sendFailure(`Failed to evaluate a new value:\n ${e.stack}`)
-         return;
-      }
+         if (obj === null) {
+            return {
+               __leaf_type__: 'js-value',
+               value: 'null'
+            };
+         }
 
-      let {parent, key} = $.path2ParentnKey(path);
-      parent[key] = newValue;
+         if (Array.isArray(obj)) {
+            return Array.from(obj, prepare);
+         }
 
-      $.sendSuccess(null, [{
-         type: 'edit',
-         path: path,
-         newValue: $.prepareForSerialization(newValue)
-      }]);
-   };
+         let proto = Object.getPrototypeOf(obj);
 
-   $.renameKey = function (path, newName) {
-      let {parent, key} = $.path2ParentnKey(path);
-      let ordkeys = $.ensureOrdkeys(parent);
-      ordkeys[ordkeys.indexOf(key)] = newName;
-      parent[newName] = parent[key];
-      delete parent[key];
-      $.sendSuccess(null, [{
-         type: 'rename_key',
-         path,
-         newName
-      }])
-   };
+         if (proto === RegExp.prototype) {
+            return {
+               __leaf_type__: 'js-value',
+               value: obj.toString()
+            };
+         }
 
-   $.probe = {
-      firstName: "Iohann",
-      lastName: [
-         [
-            function () { return 24; },
+         if (proto !== Object.prototype) {
+            throw new Error(`Cannot serialize objects with non-standard prototype`);
+         }
+
+         return Object.fromEntries(
+            $.entries(obj).map(([k, v]) => [k, prepare(v)])
+            );
+      },
+
+      send: function (msg) {
+         $.socket.send(JSON.stringify(msg));
+      },
+
+      sendFailure: function (message) {
+         $.send({
+            success: false,
+            message: message
+         });
+      },
+
+      sendSuccess: function (response, actions=null) {
+         $.send({
+            success: true,
+            response: response,
+            actions: actions || []
+         });
+      },
+
+      path2ParentnKey: function (path) {
+         let parent, child = $;
+
+         for (let i = 0; i < path.length; i += 1) {
+            parent = child;
+            [key, child] = $.nthEntry(parent, path[i]);
+         }
+
+         return {parent, key};
+      },
+
+      nthEntry: function (obj, n) {
+         if (Array.isArray(obj)) {
+            return [String(n), obj[n]];
+         }
+         else {
+            return $.entries(obj)[n];
+         }
+      },
+
+      sendAllEntries: function () {
+         let result = [];
+         for (let [key, value] of Object.entries($)) {
+            if ($.nontrackedKeys.includes(key)) {
+               result.push([key, $.prepareForSerialization('new Object()')])
+            }
+            else {
+               result.push([key, $.prepareForSerialization(value)]);   
+            }
+         }
+
+         $.sendSuccess(result);
+      },
+
+      sendValueAt: function (path) {
+         let {parent, key} = $.path2ParentnKey(path);
+         $.sendSuccess($.prepareForSerialization(parent[key]));
+      },
+
+      sendKeyAt: function (path) {
+         let {parent, key} = $.path2ParentnKey(path);
+         $.sendSuccess(key);
+      },
+
+      replace: function (path, newValueClosure) {
+         let newValue;
+
+         try {
+            newValue = newValueClosure.call(null);
+         }
+         catch (e) {
+            $.sendFailure(`Failed to evaluate a new value:\n ${e.stack}`)
+            return;
+         }
+
+         let {parent, key} = $.path2ParentnKey(path);
+         parent[key] = newValue;
+
+         $.sendSuccess(null, [{
+            type: 'replace',
+            path: path,
+            newValue: $.prepareForSerialization(newValue)
+         }]);
+      },
+
+      renameKey: function (path, newName) {
+         let {parent, key} = $.path2ParentnKey(path);
+         let ordkeys = $.ensureOrdkeys(parent);
+         ordkeys[ordkeys.indexOf(key)] = newName;
+         parent[newName] = parent[key];
+         delete parent[key];
+         $.sendSuccess(null, [{
+            type: 'rename_key',
+            path,
+            newName
+         }])
+      },
+
+      move: function (path, fwd) {
+         function newNodePos(len, i, fwd) {
+            return fwd ? (i === len - 1 ? 0 : i + 1) : 
+            (i === 0 ? len - 1 : i - 1);
+         }
+
+         let
+            {parent, key} = $.path2ParentnKey(path),
+            value = parent[key],
+            pos = path[path.length - 1],
+            array = Array.isArray(parent) ? parent : $.ensureOrdkeys(parent),
+            newPos = newNodePos(array.length, pos, fwd);
+
+         [array[pos], array[newPos]] = [array[newPos], array[pos]];
+
+         let newPath = path.slice();
+         newPath[newPath.length - 1] = newPos;
+
+         $.sendSuccess(null, [{
+            type: 'delete',
+            path: path
+         }, {
+            type: 'insert',
+            path: newPath,
+            value: $.prepareForSerialization(value)
+         }]);
+      },
+
+      delete: function (path) {
+         let {parent, key} = $.path2ParentnKey(path);
+
+         if (Array.isArray(parent)) {
+            parent.splice(path[path.length - 1], 1);
+         }
+         else {
+            $.deleteProp(parent, key);
+         }
+
+         $.sendSuccess(null, [{
+            type: 'delete',
+            path: path
+         }]);
+      },
+
+      probe: {
+         firstName: "Iohann",
+         xyz: [
             [
-               "a",
-               "luck",
-               "sake",
+               function () { return 24; },
+               [
+                  "b",
+                  {
+                     some: 10,
+                     woo: 20
+                  },
+                  "sake",
+               ],
             ],
+            function () {
+               console.log(/[a-z({\]((ab]/);
+            },
          ],
-         function () {
-            console.log("Hello!");
-            console.log(/[a-z({\]((ab]/);
+         funcs: {
+            squeak: function () { return 'squeak!' },
+            pharo: function () { 
+               console.log(Array.from(1,2,3));
+               return 'taro';
+            },
          },
-      ],
-      functions: {
-         squeak: function () { return 'squeak!' },
-         pharo: function () { return 'pharo' },
-      },
-      versionNumber: {
-         major: 0,
-         minor: 5,
-         build: 25,
-      },
+         versionNumber: {
+            major: 0,
+            minor: 5,
+            build: 25,
+         },
+      }
    };
 
    return $;

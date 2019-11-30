@@ -205,5 +205,22 @@
                 "key": "livejs_exact_node_selected"
             }
         ]
+    },
+    // Deletion
+    {
+        "keys": ["d"],
+        "command": "livejs_cb_del_node",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "read_only"
+            },
+            {
+                "key": "livejs_exact_node_selected"
+            }
+        ]
     }
 ]
