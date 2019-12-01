@@ -68,15 +68,18 @@ def delete(action):
 
 @server.action_handler('insert')
 def insert(action):
+    print("action insert:", action['path'], action['key'], action['value'])
+    
     cbv = first_such(view for view in sublime.active_window().views()
                      if view.settings().get('livejs_view') == 'Code Browser')
     
-    thru_technical_command(cbv, codebrowser.replace_key_node)(
-        path=action['path'],
-        new_name=action['newName']
+    thru_technical_command(cbv, codebrowser.insert_node)(
+        path=action['path'], key=action['key'], value=action['value']
     )
 
     root_view = get_root_view(sublime.active_window())
-    cmd = partial(thru_technical_command(root_view, persist.rename_key),
-                  path=action['path'], new_name=action['newName'])
+    cmd = partial(
+        thru_technical_command(root_view, persist.insert),
+        path=action['path'], key=action['key'], value=action['value']
+    )
     on_load(root_view, cmd)

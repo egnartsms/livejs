@@ -232,7 +232,7 @@ window.root = (function () {
       move: function (path, fwd) {
          function newNodePos(len, i, fwd) {
             return fwd ? (i === len - 1 ? 0 : i + 1) : 
-            (i === 0 ? len - 1 : i - 1);
+                         (i === 0 ? len - 1 : i - 1);
          }
 
          let
@@ -242,7 +242,10 @@ window.root = (function () {
             array = Array.isArray(parent) ? parent : $.ensureOrdkeys(parent),
             newPos = newNodePos(array.length, pos, fwd);
 
-         [array[pos], array[newPos]] = [array[newPos], array[pos]];
+         let tem = array[pos];
+
+         array.splice(pos, 1);
+         array.splice(newPos, 0, tem);
 
          let newPath = path.slice();
          newPath[newPath.length - 1] = newPos;
@@ -253,6 +256,7 @@ window.root = (function () {
          }, {
             type: 'insert',
             path: newPath,
+            key: Array.isArray(parent) ? null : key,
             value: $.prepareForSerialization(value)
          }]);
       },
@@ -284,25 +288,26 @@ window.root = (function () {
                      some: 10,
                      woo: 20
                   },
-                  "sake",
-               ],
+                  "sake"
+               ]
             ],
             function () {
                console.log(/[a-z({\]((ab]/);
-            },
+            }
          ],
          funcs: {
             squeak: function () { return 'squeak!' },
             pharo: function () { 
                console.log(Array.from(1,2,3));
                return 'taro';
-            },
+            }
          },
-         versionNumber: {
-            major: 0,
-            minor: 5,
-            build: 25,
-         },
+         versionNumber: [],
+      },
+
+      probe2: {
+         what: 'is',
+         your: 'name?'
       }
    };
 

@@ -18,7 +18,8 @@ from live.code.codebrowser import (
 __all__ = ['CodeBrowserEventListener', 'LivejsCbRefresh', 'LivejsCbEdit',
            'LivejsCbCommit', 'LivejsCbCancelEdit', 'LivejsCbSelect',
            'LivejsCbMoveSelNext', 'LivejsCbMoveSelPrev', 'LivejsCbMoveSelOutside',
-           'LivejsCbMoveSelInside', 'LivejsCbDelNode']
+           'LivejsCbMoveSelInside', 'LivejsCbDelNode', 'LivejsCbMoveNodeFwd',
+           'LivejsCbMoveNodeBwd']
 
 
 class CodeBrowserEventListener(sublime_plugin.ViewEventListener):

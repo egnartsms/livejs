@@ -115,6 +115,7 @@ def handle_response(data, callback):
 
     for action in data['actions']:
         assert action['type'] in action_handlers
+        # print("Performing action:", action)
         action_handlers[action['type']](action)
 
     if callback is not None:

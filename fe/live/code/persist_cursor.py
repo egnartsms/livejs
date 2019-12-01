@@ -24,8 +24,16 @@ class PersistCursor(Cursor):
         self.pos = reg.b
         self.enter()
 
+    @property
+    def is_at_container_begin(self):
+        return self.char in '[{'
+
+    @property
+    def is_at_container_end(self):
+        return self.char in ']}'
+
     def enter(self):
-        if self.char not in '[{':
+        if not self.is_at_container_begin:
             raise UnexpectedContents(self, "cannot enter smth which is neither array nor "
                                            "object")
         self.is_inside_object = self.char == '{'
@@ -40,6 +48,9 @@ class PersistCursor(Cursor):
         found = self.consume(upto_and_including=r',')
         if found:
             self.skip_ws()
+            return not self.is_at_container_end
+        else:
+            return False
 
     def moveto_next_entry(self):
         found = self.consume(upto_and_including=r',')
@@ -52,6 +63,17 @@ class PersistCursor(Cursor):
         while n > 0:
             self.moveto_next_entry()
             n -= 1
+
+    def moveto_nth_entry_or_end(self, n):
+        self.skip_ws()
+        if self.is_at_container_end:
+            return False
+        while n > 0:
+            found = self.moveto_next_entry_or_end()
+            if not found:
+                return False
+            n -= 1
+        return True
 
     def moveto_nth_key(self, n):
         if not self.is_inside_object:
@@ -87,6 +109,13 @@ class PersistCursor(Cursor):
         cur = cls.at_entry_start(path, view, edit)
         cur.moveto_nth_entry(nlast)
         return cur
+
+    @classmethod
+    def at_entry_or_end(cls, path, view, edit):
+        path, nlast = path[:-1], path[-1]
+        cur = cls.at_entry_start(path, view, edit)
+        found = cur.moveto_nth_entry_or_end(nlast)
+        return cur, found
 
     @classmethod
     def at_entry_start(cls, path, view, edit):

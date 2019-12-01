@@ -40,11 +40,11 @@ class WSConnection:
 
         while True:
             yield Fd.read(self.sock), Fd.read(self.evt_write)
-            # yield Fd.read(self.sock)
             if self.evt_write.is_set():
                 while self.queue_write:
-                    print("self.queue_write:", self.queue_write)
-                    yield from self.send_message(self.queue_write.popleft())
+                    msg = self.queue_write.popleft()
+                    # print("Sending to BE:", msg)
+                    yield from self.send_message(msg)
                 self.evt_write.clear()
             else:
                 msg = yield from self.read_message()

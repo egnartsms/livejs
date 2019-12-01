@@ -222,5 +222,37 @@
                 "key": "livejs_exact_node_selected"
             }
         ]
+    },
+    {
+        "keys": ["ctrl+shift+down"],
+        "command": "livejs_cb_move_node_fwd",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "read_only"
+            },
+            {
+                "key": "livejs_exact_node_selected"
+            }
+        ]
+    },
+    {
+        "keys": ["ctrl+shift+up"],
+        "command": "livejs_cb_move_node_bwd",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "read_only"
+            },
+            {
+                "key": "livejs_exact_node_selected"
+            }
+        ]
     }
 ]

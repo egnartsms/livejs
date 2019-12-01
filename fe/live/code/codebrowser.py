@@ -6,7 +6,7 @@ import contextlib
 from live.sublime_util.hacks import set_viewport_position
 from live.code.common import make_js_value_inserter
 from live.code.cursor import Cursor
-from live.util import index_where, serially
+from live.util import serially
 
 
 __all__ = ['PerViewInfoDiscarder']
@@ -196,6 +196,10 @@ class JsKey(JsNode):
     is_leaf = True
     is_key = True
 
+    def __init__(self, parent):
+        super().__init__()
+        self.parent = parent
+
     def __repr__(self):
         return '#<jspropname>'
 
@@ -213,6 +217,9 @@ class JsKey(JsNode):
 
 
 class JsComposite(JsNode):
+    def __len__(self):
+        return len(self.value_nodes)
+
     def _add_retained_regions(self):
         raise NotImplementedError
 
@@ -257,14 +264,15 @@ class JsComposite(JsNode):
         return node
 
     def key_node_at(self, path):
+        xpath, nlast = path[:-1], path[-1]
         node = self
-        for n in path[:-1]:
+        for n in xpath:
             node = node.value_nodes[n]
         if not node.is_object:
             raise RuntimeError(
                 "Path to key node of {} is incorrect: {}".format(node, path)
             )
-        return node.key_nodes[path[-1]]
+        return node.key_nodes[nlast]
 
 
 class JsObject(JsComposite):
@@ -312,35 +320,33 @@ class JsObject(JsComposite):
         self.view.erase_regions(self.regkey_keys)
         self.view.erase_regions(self.regkey_values)
 
-    def entry_region_at(self, pos):
-        reg_key = self.key_nodes[pos].region
-        reg_value = self.value_nodes[pos].region
-        return reg_key.cover(reg_value)
-
-    def append(self, key_node, key_region, value_node, value_region):
+    def append(self, key_region, value_node, value_region):
         assert not self.is_attached
-        assert key_node.is_key and not value_node.is_key
+        assert not value_node.is_key
+        assert not value_node.is_attached
 
-        self.key_nodes.append(key_node)
-        key_node.parent = self
+        self.key_nodes.append(JsKey(self))
         self.key_regions.append(key_region)
 
         self.value_nodes.append(value_node)
         value_node.parent = self
         self.value_regions.append(value_region)
 
-    def insert_entry(self, key_node, val_node, pos):
-        #         if self.is_attached:
-        #     with region_list(self.regkey_keys, self.view) as regions:
-        #         regions.append(key_region)
-            
-        #     with region_list(self.regkey_values, self.view) as regions:
-        #         regions.append(value_region)
+    def insert_at(self, pos, key_region, value_node, value_region):
+        assert self.is_attached, "Why do we need to insert into an unattached node?"
+        assert not value_node.is_attached
 
-        #     if not value_node.is_leaf:
-        #         value_node.add_retained_regions_full_depth()
-        # else:
-        raise NotImplementedError
+        self.key_nodes.insert(pos, JsKey(self))
+        self.value_nodes.insert(pos, value_node)
+        value_node.parent = self
+
+        with region_list(self.regkey_keys, self.view) as regions:
+            regions.insert(pos, key_region)
+        
+        with region_list(self.regkey_values, self.view) as regions:
+            regions.insert(pos, value_region)
+
+        value_node._add_retained_regions_full_depth()
 
     def delete_at(self, pos):
         assert self.is_attached, "Why do we need to delete from an unattached node?"
@@ -410,9 +416,6 @@ class JsArray(JsComposite):
     def _erase_regions(self):
         self.view.erase_regions(self.regkey_values)
 
-    def entry_region_at(self, pos):
-        return self.value_nodes[pos].region
-
     def append(self, node, region):
         assert not self.is_attached
         assert not node.is_key
@@ -421,15 +424,17 @@ class JsArray(JsComposite):
         node.parent = self
         self.value_regions.append(region)
 
-    def insert_entry(self, *args):
-        #         if self.is_attached:
-        #     with region_list(self.regkey_values, self.view) as regions:
-        #         regions.append(region)
+    def insert_at(self, pos, node, region):
+        assert self.is_attached, "Why do we need to insert into an unattached node?"
+        assert not node.is_attached
 
-        #     if not node.is_leaf:
-        #         node.add_retained_regions_full_depth()
-        # else:
-        raise NotImplementedError
+        self.value_nodes.insert(pos, node)
+        node.parent = self
+
+        with region_list(self.regkey_values, self.view) as regions:
+            regions.insert(pos, region)
+
+        node._add_retained_regions_full_depth()
 
     def delete_at(self, pos):
         assert self.is_attached, "Why do we need to delete from an unattached node?"
@@ -504,7 +509,7 @@ def insert_js_value(view, inserter):
             key_region = cmd
             value_node = insert_any(next(inserter))
             value_region = next(inserter)
-            node.append(JsKey(), key_region, value_node, value_region)
+            node.append(key_region, value_node, value_region)
 
         return node
 
@@ -597,7 +602,7 @@ def refresh(view, edit, response):
         x1 = cur.pos
         value_region = sublime.Region(x0, x1)
 
-        root.append(JsKey(), key_region, value_node, value_region)
+        root.append(key_region, value_node, value_region)
         
         cur.insert('\n\n')
 
@@ -670,4 +675,58 @@ def delete_node(view, edit, path):
     parent.delete_at(pos)
     view.set_read_only(False)
     view.erase(edit, diereg)
+    view.set_read_only(True)
+
+
+def insert_node(view, edit, path, key, value):
+    assert info_for(view).node_being_edited is None, \
+        "We don't know how to handle insertion of nodes while editing in Code Browser"
+
+    path, new_index = path[:-1], path[-1]
+    parent = info_for(view).root.value_node_at(path)
+    nesting = parent.nesting
+
+    if (key is not None) != parent.is_object:
+        raise RuntimeError("Object/array mismatch")
+
+    def insert():
+        if not parent:
+            cur = Cursor(parent.begin + 1, view, edit)
+            cur.sep_initial(nesting)
+            yield cur
+            cur.sep_terminal(nesting)
+        elif new_index >= len(parent):
+            cur = Cursor(parent.entries[len(parent) - 1].end, view, edit)
+            cur.sep_inter(nesting)
+            yield cur
+        else:
+            cur = Cursor(parent.entries[new_index].begin, view, edit)
+            yield cur
+            cur.sep_inter(nesting)
+
+    view.set_read_only(False)
+
+    gen = insert()
+    cur = next(gen)
+
+    if key is not None:
+        beg = cur.pos
+        cur.insert(key)
+        key_region = sublime.Region(beg, cur.pos)
+        cur.insert(': ')
+    
+    beg = cur.pos
+    value_node = insert_js_value(
+        view,
+        make_js_value_inserter(cur, value, nesting + 1)
+    )
+    value_region = sublime.Region(beg, cur.pos)
+
+    if key is not None:
+        parent.insert_at(new_index, key_region, value_node, value_region)
+    else:
+        parent.insert_at(new_index, value_node, value_region)
+
+    next(gen, None)
+
     view.set_read_only(True)
