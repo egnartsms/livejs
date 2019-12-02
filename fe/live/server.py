@@ -116,7 +116,10 @@ def handle_response(data, callback):
     for action in data['actions']:
         assert action['type'] in action_handlers
         # print("Performing action:", action)
+        import time
+        start = time.perf_counter()
         action_handlers[action['type']](action)
+        print("Action", action['type'], "took, s:", time.perf_counter() - start)
 
     if callback is not None:
         callback(response=data['response'])

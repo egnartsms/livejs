@@ -9,6 +9,8 @@ from live.util import tracking_last
 def make_js_value_inserter(cur, jsval, nesting):
     """Return a generator that inserts JS values with given cursor and yields commands.
     
+    :param nesting: nesting of jsval at point of insertion.
+
     Yields the following commands:
       'leaf': just inserted a leaf js value
       'push_object': just started to lay out a js object
@@ -58,13 +60,13 @@ def make_js_value_inserter(cur, jsval, nesting):
             return
 
         cur.insert("[")
-        cur.sep_initial(nesting)
+        cur.sep_initial(nesting + 1)
         for item, islast in tracking_last(arr):
             x0 = cur.pos
             yield from insert_any(item, nesting + 1)
             x1 = cur.pos
             yield sublime.Region(x0, x1)
-            (cur.sep_terminal if islast else cur.sep_inter)(nesting)
+            (cur.sep_terminal if islast else cur.sep_inter)(nesting + 1)
         cur.insert("]")
 
         yield 'pop'
@@ -78,20 +80,20 @@ def make_js_value_inserter(cur, jsval, nesting):
             return
 
         cur.insert("{")
-        cur.sep_initial(nesting)
+        cur.sep_initial(nesting + 1)
         for (k, v), islast in tracking_last(obj.items()):
             x0 = cur.pos
             cur.insert(k)
             x1 = cur.pos
             yield sublime.Region(x0, x1)
 
-            cur.insert(': ')
+            cur.sep_keyval(nesting + 1)
             x0 = cur.pos
             yield from insert_any(v, nesting + 1)
             x1 = cur.pos
             yield sublime.Region(x0, x1)
 
-            (cur.sep_terminal if islast else cur.sep_inter)(nesting)
+            (cur.sep_terminal if islast else cur.sep_inter)(nesting + 1)
         cur.insert("}")
 
         yield 'pop'

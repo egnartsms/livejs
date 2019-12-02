@@ -291,7 +291,9 @@ class LivejsCbMoveNodeFwd(sublime_plugin.TextCommand):
             return  # should not normally happen
 
         jscode = '$.move({}, true)'.format(node.path)
-        server.response_callbacks.append(None)
+        server.response_callbacks.append(
+            partial(select_node, view=self.view, key=node.is_key)
+        )
         server.websocket.enqueue_message(jscode)
 
 
@@ -302,7 +304,9 @@ class LivejsCbMoveNodeBwd(sublime_plugin.TextCommand):
             return  # should not normally happen
 
         jscode = '$.move({}, false)'.format(node.path)
-        server.response_callbacks.append(None)
+        server.response_callbacks.append(
+            partial(select_node, view=self.view, key=node.is_key)
+        )
         server.websocket.enqueue_message(jscode)
 
 
@@ -315,3 +319,13 @@ class LivejsCbDelNode(sublime_plugin.TextCommand):
         jscode = '$.delete({})'.format(node.path)
         server.response_callbacks.append(None)
         server.websocket.enqueue_message(jscode)
+
+
+def select_node(view, response, key):
+    path = response
+    root = info_for(view).root
+    node = (root.key_node_at if key else root.value_node_at)(path)
+
+    view.sel().clear()
+    view.sel().add(node.region)
+    view.show(view.sel(), True)

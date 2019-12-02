@@ -68,8 +68,6 @@ def delete(action):
 
 @server.action_handler('insert')
 def insert(action):
-    print("action insert:", action['path'], action['key'], action['value'])
-    
     cbv = first_such(view for view in sublime.active_window().views()
                      if view.settings().get('livejs_view') == 'Code Browser')
     

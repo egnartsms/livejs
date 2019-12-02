@@ -243,14 +243,13 @@ window.root = (function () {
             newPos = newNodePos(array.length, pos, fwd);
 
          let tem = array[pos];
-
          array.splice(pos, 1);
          array.splice(newPos, 0, tem);
 
          let newPath = path.slice();
          newPath[newPath.length - 1] = newPos;
 
-         $.sendSuccess(null, [{
+         $.sendSuccess(newPath, [{
             type: 'delete',
             path: path
          }, {
@@ -278,8 +277,10 @@ window.root = (function () {
       },
 
       probe: {
-         firstName: "Iohann",
          xyz: [
+            function () {
+               console.log(/[a-z({\]((ab]/);
+            },
             [
                function () { return 24; },
                [
@@ -290,24 +291,22 @@ window.root = (function () {
                   },
                   "sake"
                ]
-            ],
-            function () {
-               console.log(/[a-z({\]((ab]/);
-            }
+            ]
          ],
+         firstName: "Iohann",
          funcs: {
-            squeak: function () { return 'squeak!' },
             pharo: function () { 
                console.log(Array.from(1,2,3));
                return 'taro';
-            }
+            },
+            squeak: function () { return 'squeak!' }
          },
-         versionNumber: [],
+         versionNumber: []
       },
 
       probe2: {
-         what: 'is',
-         your: 'name?'
+         what: "is",
+         your: "name?"
       }
    };
 

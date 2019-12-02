@@ -24,6 +24,13 @@ class PersistCursor(Cursor):
         self.pos = reg.b
         self.enter()
 
+    def sep_inter(self, nesting):
+        """If at top level, separate entries with two newlines instead of one"""
+        self.insert(',\n')
+        if nesting == ROOT_NESTING + 1:
+            self.insert('\n')
+        self.indent(nesting)
+
     @property
     def is_at_container_begin(self):
         return self.char in '[{'

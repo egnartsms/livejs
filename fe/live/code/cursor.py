@@ -79,15 +79,18 @@ class Cursor:
 
     def sep_initial(self, nesting):
         self.insert('\n')
-        self.indent(nesting + 1)
+        self.indent(nesting)
 
     def sep_inter(self, nesting):
         self.insert(',\n')
-        self.indent(nesting + 1)
+        self.indent(nesting)
 
     def sep_terminal(self, nesting):
         self.insert('\n')
-        self.indent(nesting)
+        self.indent(nesting - 1)
+
+    def sep_keyval(self, nesting):
+        self.insert(': ')
 
     def skip_sep(self):
         self.skip(r'\s*(,\s*)?')
