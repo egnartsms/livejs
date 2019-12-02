@@ -11,7 +11,7 @@ from live.eventloop import get_event_loop, Fd
 from live.websocket import WSConnection
 from live.config import config
 from live.http import recv_up_to_delimiter, Request, Response
-
+from live.util import stopwatch
 
 websocket = None
 
@@ -115,11 +115,8 @@ def handle_response(data, callback):
 
     for action in data['actions']:
         assert action['type'] in action_handlers
-        # print("Performing action:", action)
-        import time
-        start = time.perf_counter()
+        stopwatch.start('action_{}'.format(action['type']))
         action_handlers[action['type']](action)
-        print("Action", action['type'], "took, s:", time.perf_counter() - start)
 
     if callback is not None:
         callback(response=data['response'])

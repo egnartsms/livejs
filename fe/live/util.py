@@ -1,3 +1,6 @@
+import time
+
+
 def first_such(gen):
     return next(gen, None)
 
@@ -28,3 +31,22 @@ def serially(*iterables):
     while True:
         for iterator in iterators:
             yield next(iterator)
+
+
+class Stopwatch:
+    def __init__(self):
+        self.moments = {}
+
+    def start(self, name):
+        self.moments[name] = time.perf_counter()
+
+    def print(self, name, msg):
+        elapsed = time.perf_counter() - self.moments[name]
+        print(msg.format(name=name, elapsed=elapsed))
+
+    def printstop(self, name):
+        self.print(name, "stopwatch {name} finished in {elapsed}")
+        del self.moments[name]
+
+
+stopwatch = Stopwatch()

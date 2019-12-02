@@ -16,7 +16,8 @@ def replace_value(view, edit, path, new_value):
     while next(itr, None):
         pass
 
-    # Just saving does not work, we have to do it after the current command completes
+    # Just saving does not always work, we have to do it after the current command
+    # completes
     sublime.set_timeout(lambda: view.run_command('save'), 0)
 
 
@@ -27,7 +28,8 @@ def rename_key(view, edit, path, new_name):
     cur.erase(beg)
     cur.insert(new_name)
 
-    # Just saving does not work, we have to do it after the current command completes
+    # Just saving does not always work, we have to do it after the current command
+    # completes
     sublime.set_timeout(lambda: view.run_command('save'), 0)
 
 
@@ -51,7 +53,8 @@ def delete(view, edit, path):
     else:
         cur.erase(folw.pos)
 
-    # Just saving does not work, we have to do it after the current command completes
+    # Just saving does not always work, we have to do it after the current command
+    # completes
     sublime.set_timeout(lambda: view.run_command('save'), 0)
 
 
@@ -88,5 +91,6 @@ def insert(view, edit, path, key, value):
         insert_at(cur)
         cur.sep_inter(nesting)
 
-    # Just saving does not work, we have to do it after the current command completes
+    # Just saving does not always work, we have to do it after the current command
+    # completes
     sublime.set_timeout(lambda: view.run_command('save'), 0)

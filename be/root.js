@@ -276,7 +276,13 @@ window.root = (function () {
          }]);
       },
 
+      probe2: {
+         what: "is",
+         your: "name?"
+      },
+
       probe: {
+         firstName: "Iohann",
          xyz: [
             function () {
                console.log(/[a-z({\]((ab]/);
@@ -293,20 +299,21 @@ window.root = (function () {
                ]
             ]
          ],
-         firstName: "Iohann",
          funcs: {
-            pharo: function () { 
-               console.log(Array.from(1,2,3));
-               return 'taro';
+            sneak: 24,
+            python: function () {
+               return 'Python3';
             },
-            squeak: function () { return 'squeak!' }
+            js: function () {
+               return 'js';
+            },
+            pharo: function () { 
+               let tem = Array.from(1,2,3);
+               console.log(tem);
+               return tem;
+            }
          },
          versionNumber: []
-      },
-
-      probe2: {
-         what: "is",
-         your: "name?"
       }
    };
 
