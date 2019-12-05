@@ -4,20 +4,19 @@ import sublime_plugin
 __all__ = ['OnLoadListener']
 
 
-registry = {}  # {view.id(): <callback>}
+registry = {}  # {view.id(): [<callback>, ...]}
 
 
 def on_load(view, do):
     if not view.is_loading():
         do()
     else:
-        registry[view.id()] = do
+        registry.setdefault(view.id(), []).append(do)
 
 
 class OnLoadListener(sublime_plugin.EventListener):
     def on_load(self, view):
-        callback = registry.pop(view.id(), None)
-        if callback is not None:
+        for callback in registry.pop(view.id(), ()):
             callback()
 
     def on_close(self, view):
