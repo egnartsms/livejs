@@ -1,6 +1,7 @@
 import sublime
 
 import re
+import contextlib
 from collections import OrderedDict
 
 from live.util import tracking_last
@@ -62,10 +63,9 @@ def make_js_value_inserter(cur, jsval, nesting):
         cur.insert("[")
         cur.sep_initial(nesting + 1)
         for item, islast in tracking_last(arr):
-            x0 = cur.pos
+            cur.push_region()
             yield from insert_any(item, nesting + 1)
-            x1 = cur.pos
-            yield sublime.Region(x0, x1)
+            yield cur.pop_region()
             (cur.sep_terminal if islast else cur.sep_inter)(nesting + 1)
         cur.insert("]")
 
@@ -82,16 +82,15 @@ def make_js_value_inserter(cur, jsval, nesting):
         cur.insert("{")
         cur.sep_initial(nesting + 1)
         for (k, v), islast in tracking_last(obj.items()):
-            x0 = cur.pos
+            cur.push_region()
             cur.insert(k)
-            x1 = cur.pos
-            yield sublime.Region(x0, x1)
+            yield cur.pop_region()
 
             cur.sep_keyval(nesting + 1)
-            x0 = cur.pos
+
+            cur.push_region()
             yield from insert_any(v, nesting + 1)
-            x1 = cur.pos
-            yield sublime.Region(x0, x1)
+            yield cur.pop_region()
 
             (cur.sep_terminal if islast else cur.sep_inter)(nesting + 1)
         cur.insert("}")
@@ -125,3 +124,23 @@ def make_js_value_inserter(cur, jsval, nesting):
                 cur.insert('\n')
 
     yield from insert_any(jsval, nesting)
+
+
+@contextlib.contextmanager
+def read_only_set_to(view, new_status):
+    old_status = view.is_read_only()
+    view.set_read_only(new_status)
+    yield
+    view.set_read_only(old_status)
+
+
+def add_hidden_regions(view, key, regs):
+    """Marker region is a hidden"""
+    view.add_regions(key, regs, '', '', sublime.HIDDEN)
+
+
+@contextlib.contextmanager
+def hidden_region_list(view, key):
+    region_list = view.get_regions(key)
+    yield region_list
+    add_hidden_regions(view, key, region_list)

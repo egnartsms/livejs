@@ -1,53 +1,7 @@
-import sublime_plugin
 import sublime
 
-import contextlib
-
-from live.sublime_util.hacks import set_viewport_position
-from live.code.common import make_js_value_inserter
-from live.code.cursor import Cursor
-from live.util import serially, tracking_last
-
-
-__all__ = ['PerViewInfoDiscarder']
-
-
-# Information we associate with codebrowser views.  Keep in mind that it's not persisted.
-# On Sublime re-start, none of these data structures will be in memory, but the code
-# browser views will be persisted.
-per_view = dict()
-
-
-class ViewInfo:
-    root = None
-    node_being_edited = None
-
-    def __init__(self):
-        pass
-
-
-def info_for(view):
-    vid = view.id()
-    if vid not in per_view:
-        per_view[vid] = ViewInfo()
-
-    return per_view[vid]
-
-
-class PerViewInfoDiscarder(sublime_plugin.EventListener):
-    def on_close(self, view):
-        per_view.pop(view.id(), None)
-
-
-def add_regions(key, regs, view):
-    view.add_regions(key, regs, '', '', sublime.HIDDEN)
-
-
-@contextlib.contextmanager
-def region_list(key, view):
-    region_list = view.get_regions(key)
-    yield region_list
-    add_regions(key, region_list, view)
+from ..common import add_hidden_regions, hidden_region_list
+from live.util import serially
 
 
 class JsNode:
@@ -69,11 +23,13 @@ class JsNode:
         return not self.is_attached
 
     def attach_to(self, parent):
-        assert self.is_unattached
+        if self.is_attached:
+            raise RuntimeError
         self.parent = parent
 
     def detach(self):
-        assert self.is_attached
+        if self.is_unattached:
+            raise RuntimeError
         self.parent = None
 
     @property
@@ -139,6 +95,22 @@ class JsNode:
         JsKey overrides it to return a different key.
         """
         return self.parent.regkey_values
+
+    @property
+    def value_node_or_self(self):
+        """For all nodes except object keys, this is self."""
+        return self
+
+    @property
+    def keyval_match(self):
+        """If self is an object's key, return value node, and vice-versa.
+
+        For array elements, return None.
+        """
+        if self.parent.is_object:
+            return self.parent.key_nodes[self.position]
+        else:
+            return None
 
     @property
     def region(self):
@@ -231,6 +203,19 @@ class JsKey(JsNode):
     def _my_siblings(self):
         return self.parent.key_nodes
 
+    @property
+    def value_node_or_self(self):
+        """For all nodes except object keys, this is self."""
+        return self.parent.value_nodes[self.position]
+
+    @property
+    def keyval_match(self):
+        """If self is an object's key, return value node, and vice-versa.
+
+        For array elements, return None.
+        """
+        return self.value_node_or_self
+
 
 class JsComposite(JsNode):
     def __init__(self):
@@ -264,7 +249,8 @@ class JsComposite(JsNode):
         pieces.reverse()
         return '.'.join(pieces)
 
-    def __len__(self):
+    @property
+    def num_children(self):
         return len(self.value_nodes)
 
     def _add_retained_regions(self):
@@ -298,7 +284,7 @@ class JsComposite(JsNode):
         new_node.attach_to(self)
         self.value_nodes[pos] = new_node
 
-        with region_list(self.regkey_values, self.view) as regions:
+        with hidden_region_list(self.view, self.regkey_values) as regions:
             regions[pos] = new_reg
 
     def value_node_at(self, path):
@@ -355,9 +341,9 @@ class JsObject(JsComposite):
         return dotpath_join(self.dotpath, 'values')
 
     def _add_retained_regions(self):
-        add_regions(self.regkey_keys, self.key_regions, self.view)
+        add_hidden_regions(self.view, self.regkey_keys, self.key_regions)
         del self.key_regions
-        add_regions(self.regkey_values, self.value_regions, self.view)
+        add_hidden_regions(self.view, self.regkey_values, self.value_regions)
         del self.value_regions
 
     def _erase_regions(self):
@@ -382,26 +368,26 @@ class JsObject(JsComposite):
         self.value_nodes.insert(pos, value_node)
         value_node.attach_to(self)
 
-        with region_list(self.regkey_keys, self.view) as regions:
+        with hidden_region_list(self.view, self.regkey_keys) as regions:
             regions.insert(pos, key_region)
         
-        with region_list(self.regkey_values, self.view) as regions:
+        with hidden_region_list(self.view, self.regkey_values) as regions:
             regions.insert(pos, value_region)
 
     def delete_at(self, pos):
         assert self.is_online, "Why do we need to delete from an unattached node?"
 
-        with region_list(self.regkey_keys, self.view) as regions:
+        with hidden_region_list(self.view, self.regkey_keys) as regions:
             del regions[pos]
 
-        with region_list(self.regkey_values, self.view) as regions:
+        with hidden_region_list(self.view, self.regkey_values) as regions:
             del regions[pos]
 
         self.key_nodes.pop(pos).detach()
         self.value_nodes.pop(pos).detach()
 
     def replace_key_node_region_at(self, pos, region):
-        with region_list(self.regkey_keys, self.view) as regions:
+        with hidden_region_list(self.view, self.regkey_keys) as regions:
             regions[pos] = region
 
     def _child_textually_following_circ(self, child):
@@ -448,7 +434,7 @@ class JsArray(JsComposite):
         return dotpath_join(self.dotpath, 'values')
 
     def _add_retained_regions(self):
-        add_regions(self.regkey_values, self.value_regions, self.view)
+        add_hidden_regions(self.view, self.regkey_values, self.value_regions)
         del self.value_regions
 
     def _erase_regions(self):
@@ -468,13 +454,13 @@ class JsArray(JsComposite):
         self.value_nodes.insert(pos, node)
         node.attach_to(self)
 
-        with region_list(self.regkey_values, self.view) as regions:
+        with hidden_region_list(self.view, self.regkey_values) as regions:
             regions.insert(pos, region)
 
     def delete_at(self, pos):
         assert self.is_online, "Why do we need to delete from an unattached node?"
 
-        with region_list(self.regkey_values, self.view) as regions:
+        with hidden_region_list(self.view, self.regkey_values) as regions:
             del regions[pos]
 
         self.value_nodes.pop(pos).detach()
@@ -502,6 +488,9 @@ class ObjectEntries:
     def __getitem__(self, i):
         return ObjectEntry(self.node, i)
 
+    def __len__(self):
+        return self.node.num_children
+
 
 class ObjectEntry:
     __slots__ = ('node', 'i')
@@ -528,264 +517,3 @@ def dotpath_join(dotpath, item):
         return '{}.{}'.format(dotpath, item)
     else:
         return item
-
-
-def insert_js_value(view, inserter):
-    def insert_object():
-        node = JsObject()
-
-        while True:
-            cmd = next(inserter)
-            if cmd == 'pop':
-                break
-
-            key_region = cmd
-            value_node = insert_any(next(inserter))
-            value_region = next(inserter)
-            node.append(key_region, value_node, value_region)
-
-        return node
-
-    def insert_array():
-        node = JsArray()
-
-        while True:
-            cmd = next(inserter)
-            if cmd == 'pop':
-                break
-
-            child_node = insert_any(cmd)
-            child_region = next(inserter)
-            node.append(child_node, child_region)
-        
-        return node
-
-    def insert_any(cmd):
-        if cmd == 'push_object':
-            return insert_object()
-        elif cmd == 'push_array':
-            return insert_array()
-        elif cmd == 'leaf':
-            return JsLeaf()
-        else:
-            assert 0, "Unexpected cmd: {}".format(cmd)
-
-    return insert_any(next(inserter))
-
-
-def find_containing_node(xreg, view):
-    """Find innermost node that fully contains xreg
-
-    :return: node or None if not inside any node or spans >1 top-level nodes.
-    """
-    node = info_for(view).root
-
-    while not node.is_leaf:
-        for subnode, subreg in node.all_child_nodes_and_regions():
-            if subreg.contains(xreg):
-                node = subnode
-                break
-        else:
-            # xreg is not fully contained in any single child of node.  That means that
-            # node and reg are what we're looking for.
-            break
-
-    return None if node.is_root else node
-
-
-def find_node_by_exact_region(xreg, view):
-    node = info_for(view).root
-
-    while not node.is_leaf:
-        for subnode, subreg in node.all_child_nodes_and_regions():
-            if subreg == xreg:
-                return subnode
-            elif subreg.contains(xreg):
-                node = subnode
-                break
-        else:
-            break
-
-    return None
-
-
-class CbCursor(Cursor):
-    """Cursor with some CodeBrowser-specific bits of behavior added"""
-
-    def sep_initial(self, nesting):
-        if nesting == 0:
-            pass
-        else:
-            super().sep_initial(nesting)
-
-    def sep_inter(self, nesting):
-        if nesting == 0:
-            self.insert('\n\n')
-        else:
-            super().sep_inter(nesting)
-
-    def sep_terminal(self, nesting):
-        if nesting == 0:
-            self.insert('\n')
-        else:
-            super().sep_terminal(nesting)
-
-    def sep_keyval(self, nesting):
-        if nesting == 0:
-            self.insert(' = ')
-        else:
-            super().sep_keyval(nesting)
-
-
-def refresh(view, edit, response):
-    prev_pos = list(view.sel())
-    prev_viewport_pos = view.viewport_position()
-
-    if info_for(view).root is not None:
-        info_for(view).root._erase_regions_full_depth()
-        info_for(view).root = None
-
-    view.set_read_only(False)
-    view.erase(edit, sublime.Region(0, view.size()))
-    cur = CbCursor(0, view, edit)
-    root = JsObject()
-
-    cur.sep_initial(nesting=0)
-
-    for (key, value), islast in tracking_last(response):
-        x0 = cur.pos
-        cur.insert(key)
-        x1 = cur.pos
-        key_region = sublime.Region(x0, x1)
-
-        cur.sep_keyval(nesting=0)
-
-        x0 = cur.pos
-        value_node = insert_js_value(view, make_js_value_inserter(cur, value, 0))
-        x1 = cur.pos
-        value_region = sublime.Region(x0, x1)
-
-        root.append(key_region, value_node, value_region)
-        
-        (cur.sep_terminal if islast else cur.sep_inter)(nesting=0)
-
-    info_for(view).root = root
-    root.put_online(view)
-    
-    view.set_read_only(True)
-    view.window().focus_view(view)
-    view.sel().clear()
-    view.sel().add_all(prev_pos)
-
-    set_viewport_position(view, prev_viewport_pos, False)
-
-
-def replace_value_node(view, edit, path, new_value):
-    node = info_for(view).root.value_node_at(path)
-
-    assert node is info_for(view).node_being_edited
-
-    [reg] = view.get_regions('being_edited')
-    view.erase(edit, reg)
-    cur = CbCursor(reg.a, view, edit)
-    beg = cur.pos
-    new_node = insert_js_value(
-        view,
-        make_js_value_inserter(cur, new_value, node.nesting)
-    )
-    end = cur.pos
-
-    node.parent.replace_value_node_at(node.position, new_node, sublime.Region(beg, end))
-
-
-def replace_key_node(view, edit, path, new_name):
-    node = info_for(view).root.key_node_at(path)
-
-    assert node is info_for(view).node_being_edited
-
-    [reg] = view.get_regions('being_edited')
-    view.erase(edit, reg)
-    cur = CbCursor(reg.a, view, edit)
-    beg = cur.pos
-    cur.insert(new_name)
-    end = cur.pos
-
-    node.parent.replace_key_node_region_at(node.position, sublime.Region(beg, end))
-
-
-def delete_node(view, edit, path):
-    assert info_for(view).node_being_edited is None, \
-        "We don't know how to handle deletion of nodes while editing in Code Browser"
-
-    node = info_for(view).root.value_node_at(path)
-    parent, pos = node.parent, node.position
-    is_first, is_last = node.is_first, node.is_last
-
-    if is_first and is_last:
-        # TODO: deletion of all nodes from the root is not supported
-        diereg = sublime.Region(parent.begin + 1, parent.end - 1)
-    elif is_first:
-        diereg = sublime.Region(parent.entries[pos].begin,
-                                parent.entries[pos + 1].begin)
-    else:
-        diereg = sublime.Region(parent.entries[pos - 1].end,
-                                parent.entries[pos].end)
-
-    parent.delete_at(pos)
-    view.set_read_only(False)
-    view.erase(edit, diereg)
-    view.set_read_only(True)
-
-
-def insert_node(view, edit, path, key, value):
-    assert info_for(view).node_being_edited is None, \
-        "We don't know how to handle insertion of nodes while editing in Code Browser"
-
-    path, new_index = path[:-1], path[-1]
-    parent = info_for(view).root.value_node_at(path)
-    nesting = parent.nesting + 1
-
-    if (key is not None) != parent.is_object:
-        raise RuntimeError("Object/array mismatch")
-
-    def insert():
-        if not parent:
-            cur = CbCursor(parent.begin + 1, view, edit)
-            cur.sep_initial(nesting)
-            yield cur
-            cur.sep_terminal(nesting)
-        elif new_index >= len(parent):
-            cur = CbCursor(parent.entries[len(parent) - 1].end, view, edit)
-            cur.sep_inter(nesting)
-            yield cur
-        else:
-            cur = CbCursor(parent.entries[new_index].begin, view, edit)
-            yield cur
-            cur.sep_inter(nesting)
-
-    view.set_read_only(False)
-
-    gen = insert()
-    cur = next(gen)
-
-    if key is not None:
-        beg = cur.pos
-        cur.insert(key)
-        key_region = sublime.Region(beg, cur.pos)
-        cur.sep_keyval(nesting)
-    
-    beg = cur.pos
-    value_node = insert_js_value(
-        view,
-        make_js_value_inserter(cur, value, nesting)
-    )
-    value_region = sublime.Region(beg, cur.pos)
-
-    if key is not None:
-        parent.insert_at(new_index, key_region, value_node, value_region)
-    else:
-        parent.insert_at(new_index, value_node, value_region)
-
-    next(gen, None)
-
-    view.set_read_only(True)

@@ -50,3 +50,26 @@ class Stopwatch:
 
 
 stopwatch = Stopwatch()
+
+
+class Proxy:
+    __slots__ = 'target_getter',
+
+    def __init__(self, target_getter):
+        object.__setattr__(self, 'target_getter', target_getter)
+
+    def __getattribute__(self, name):
+        return getattr(_get_proxy_target(self), name)
+
+    def __setattr__(self, name, value):
+        setattr(_get_proxy_target(self), name, value)
+
+    def __delattr__(self, name):
+        delattr(_get_proxy_target(self), name)
+
+    def __call__(self, *args, **kwargs):
+        return _get_proxy_target(self)(*args, **kwargs)
+
+
+def _get_proxy_target(proxy):
+    return object.__getattribute__(proxy, 'target_getter')()

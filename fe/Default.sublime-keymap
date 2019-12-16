@@ -4,47 +4,6 @@
         "command": "livejs_cb_refresh"
     },
     {
-        "keys": ["e"],
-        "command": "livejs_cb_edit",
-        "context": [
-            {
-                "key": "livejs_view",
-                "operand": "Code Browser"
-            },
-            {
-                "key": "read_only"
-            }
-        ]
-    },
-    {
-        "keys": ["ctrl+enter"],
-        "command": "livejs_cb_commit",
-        "context": [
-            {
-                "key": "livejs_view",
-                "operand": "Code Browser"
-            },
-            {
-                "key": "read_only",
-                "operator": "not_equal"
-            }
-        ]
-    },
-    {
-        "keys": ["alt+c"],
-        "command": "livejs_cb_cancel_edit",
-        "context": [
-            {
-                "key": "livejs_view",
-                "operand": "Code Browser"
-            },
-            {
-                "key": "read_only",
-                "operator": "not_equal"
-            }
-        ]
-    },
-    {
         "keys": ["s"],
         "command": "livejs_cb_select",
         "context": [
@@ -53,7 +12,7 @@
                 "operand": "Code Browser"
             },
             {
-                "key": "read_only"
+                "key": "livejs_cb_view_mode"
             }
         ]
     },
@@ -71,10 +30,10 @@
                 "operand": "Code Browser"
             },
             {
-                "key": "read_only"
+                "key": "livejs_cb_view_mode"
             },
             {
-                "key": "livejs_exact_node_selected"
+                "key": "livejs_cb_exact_node_selected"
             }
         ]
     },
@@ -90,10 +49,10 @@
                 "operand": "Code Browser"
             },
             {
-                "key": "read_only"
+                "key": "livejs_cb_view_mode"
             },
             {
-                "key": "livejs_exact_node_selected"
+                "key": "livejs_cb_exact_node_selected"
             }
         ]
     },
@@ -109,10 +68,10 @@
                 "operand": "Code Browser"
             },
             {
-                "key": "read_only"
+                "key": "livejs_cb_view_mode"
             },
             {
-                "key": "livejs_exact_node_selected"
+                "key": "livejs_cb_exact_node_selected"
             }
         ]
     },
@@ -128,10 +87,10 @@
                 "operand": "Code Browser"
             },
             {
-                "key": "read_only"
+                "key": "livejs_cb_view_mode"
             },
             {
-                "key": "livejs_exact_node_selected"
+                "key": "livejs_cb_exact_node_selected"
             }
         ]
     },
@@ -145,10 +104,10 @@
                 "operand": "Code Browser"
             },
             {
-                "key": "read_only"
+                "key": "livejs_cb_view_mode"
             },
             {
-                "key": "livejs_exact_node_selected"
+                "key": "livejs_cb_exact_node_selected"
             }
         ]
     },
@@ -161,13 +120,14 @@
                 "operand": "Code Browser"
             },
             {
-                "key": "read_only"
+                "key": "livejs_cb_view_mode"
             },
             {
-                "key": "livejs_exact_node_selected"
+                "key": "livejs_cb_exact_node_selected"
             }
         ]
     },
+    // ctrl+right and alt+right are identical
     {
         "keys": ["ctrl+right"],
         "command": "livejs_cb_move_sel_inside",
@@ -180,10 +140,10 @@
                 "operand": "Code Browser"
             },
             {
-                "key": "read_only"
+                "key": "livejs_cb_view_mode"
             },
             {
-                "key": "livejs_exact_node_selected"
+                "key": "livejs_cb_exact_node_selected"
             }
         ]
     },
@@ -199,30 +159,14 @@
                 "operand": "Code Browser"
             },
             {
-                "key": "read_only"
+                "key": "livejs_cb_view_mode"
             },
             {
-                "key": "livejs_exact_node_selected"
+                "key": "livejs_cb_exact_node_selected"
             }
         ]
     },
-    // Deletion
-    {
-        "keys": ["d"],
-        "command": "livejs_cb_del_node",
-        "context": [
-            {
-                "key": "livejs_view",
-                "operand": "Code Browser"
-            },
-            {
-                "key": "read_only"
-            },
-            {
-                "key": "livejs_exact_node_selected"
-            }
-        ]
-    },
+    // Move up/down
     {
         "keys": ["ctrl+shift+down"],
         "command": "livejs_cb_move_node_fwd",
@@ -232,10 +176,10 @@
                 "operand": "Code Browser"
             },
             {
-                "key": "read_only"
+                "key": "livejs_cb_view_mode"
             },
             {
-                "key": "livejs_exact_node_selected"
+                "key": "livejs_cb_exact_node_selected"
             }
         ]
     },
@@ -248,10 +192,76 @@
                 "operand": "Code Browser"
             },
             {
-                "key": "read_only"
+                "key": "livejs_cb_view_mode"
             },
             {
-                "key": "livejs_exact_node_selected"
+                "key": "livejs_cb_exact_node_selected"
+            }
+        ]
+    },
+    // Changing nodes
+    {
+        "keys": ["e"],
+        "command": "livejs_cb_edit",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "livejs_cb_view_mode"
+            }
+        ]
+    },
+    {
+        "keys": ["ctrl+enter"],
+        "command": "livejs_cb_commit",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "livejs_cb_edit_mode"
+            }
+        ]
+    },
+    {
+        "keys": ["alt+c"],
+        "command": "livejs_cb_cancel_edit",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "livejs_cb_edit_mode"
+            }
+        ]
+    },
+    {
+        "keys": ["a"],
+        "command": "livejs_cb_add_node",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "livejs_cb_view_mode"
+            }
+        ]
+    },
+    {
+        "keys": ["d"],
+        "command": "livejs_cb_del_node",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            },
+            {
+                "key": "livejs_cb_view_mode"
             }
         ]
     }

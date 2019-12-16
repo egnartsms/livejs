@@ -3,7 +3,7 @@ import sublime
 import re
 import contextlib
 
-from live.config import config
+from live.gstate import config
 
 
 class UnexpectedContents(Exception):
@@ -26,6 +26,13 @@ class Cursor:
         self.pos = pos
         self.view = view
         self.edit = edit
+        self.retain_stack = []
+
+    def __getstate__(self):
+        """retain_stack is not copied"""
+        state = self.__dict__.copy()
+        state['retain_stack'] = []
+        return state
 
     @contextlib.contextmanager
     def curpos_preserved(self):
@@ -51,10 +58,22 @@ class Cursor:
     def indent(self, n):
         self.insert(n * config.s_indent)
 
+    def push_region(self):
+        self.retain_stack.append(self.pos)
+
+    def pop_region(self):
+        beg = self.retain_stack.pop()
+        end = self.pos
+        return sublime.Region(beg, end)
+
     def erase(self, upto):
         self.view.erase(self.edit, sublime.Region(self.pos, upto))
         if upto < self.pos:
             self.pos = upto
+
+    def pop_erase(self):
+        beg = self.retain_stack.pop()
+        self.erase(beg)
 
     def find(self, pattern):
         return self.view.find(pattern, self.pos)

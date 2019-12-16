@@ -1,5 +1,4 @@
-# Author: Johan Hanssen Seferidis
-# License: MIT
+"""Websocket server/client implementation (not intended for reuse)"""
 
 import struct
 import http.client as httpcli
@@ -8,9 +7,9 @@ import base64
 from collections import deque
 
 
-from live.http import Response, recv_next, recv_next_as_buf, send_buffer
-from live.eventloop import Fd
-from live.eventfd import EventFd
+from live.lowlvl.http import Response, recv_next, recv_next_as_buf, send_buffer
+from live.lowlvl.eventloop import Fd
+from live.lowlvl.eventfd import EventFd
 
 
 class OpCode:
@@ -25,11 +24,11 @@ class OpCode:
 MAGIC_STRING = b'258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 
 
-class WSConnection:
-    def __init__(self, req, msg_handler):
+class WebSocket:
+    def __init__(self, req, ws_handler):
         self.req = req
         self.sock = req.sock
-        self.msg_handler = msg_handler
+        self.ws_handler = ws_handler
         self.queue_write = deque()
         self.evt_write = EventFd()
 
@@ -43,20 +42,18 @@ class WSConnection:
             if self.evt_write.is_set():
                 while self.queue_write:
                     msg = self.queue_write.popleft()
-                    # print("Sending to BE:", msg)
                     yield from self.send_message(msg)
                 self.evt_write.clear()
             else:
                 msg = yield from self.read_message()
                 if msg is None:
-                    print("Client websocket closing")
                     break
 
                 try:
-                    self.msg_handler(self, msg)
-                except Exception:
-                    # TODO: think what to do here
-                    pass
+                    self.ws_handler(msg)
+                except Exception as e:
+                    print("Got exception when processing WS message:")
+                    print(e)
 
     def handshake(self):
         headers = self.req.headers
@@ -177,7 +174,7 @@ def read_frame(sock):
     opcode = b0 & 0x0F
     mask = bool(b1 & 0x80)
     if not mask:
-        raise RuntimeError("Client sent unmask frame")
+        raise RuntimeError("Client sent unmasked frame")
     payload_len = b1 & 0x7F
     if payload_len < 126:
         pass

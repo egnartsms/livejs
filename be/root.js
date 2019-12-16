@@ -80,6 +80,12 @@ window.root = (function () {
          }
       },
 
+      insertProp: function (obj, key, value, pos) {
+         let ordkeys = $.ensureOrdkeys(obj);
+         ordkeys.splice(pos, 0, key);
+         obj[key] = value;
+      },
+
       prepareForSerialization: function prepare(obj) {
          switch (typeof obj) {
             case 'function':
@@ -276,6 +282,48 @@ window.root = (function () {
          }]);
       },
 
+      addObjectEntry: function (parentPath, pos, key, valueClosure) {
+         let value;
+
+         try {
+            value = valueClosure.call(null);
+         }
+         catch (e) {
+            $.sendFailure(`Failed to evaluate a new value:\n ${e.stack}`)
+            return;
+         }
+
+         // TODO: fix this ugliness
+         let {parent, key: pkey} = $.path2ParentnKey(parentPath);
+         parent = parent[pkey];
+
+         if (Array.isArray(parent)) {
+            parent.splice(pos, 0, value);
+
+            let newPath = parentPath.slice();
+            newPath.push(pos);
+
+            $.sendSuccess(null, [{
+               type: 'insert',
+               path: newPath,
+               key: null,
+               value: $.prepareForSerialization(value)
+            }]);
+         }
+         else {
+            $.insertProp(parent, key, value, pos);   
+            
+            let newPath = parentPath.slice();
+            newPath.push(pos);
+            $.sendSuccess(null, [{
+               type: 'insert',
+               path: newPath,
+               key: key,
+               value: $.prepareForSerialization(value)
+            }]);
+         }
+      },
+
       probe2: {
          what: "is",
          your: "name?"
@@ -283,6 +331,11 @@ window.root = (function () {
 
       probe: {
          firstName: "Iohann",
+         reHero: /hero/,
+         invalid: function (val) {
+            return Array.isArray(val) && val[0] > 0;
+         },
+         lastName: "Black",
          xyz: [
             function () {
                console.log(/[a-z({\]((ab]/);
@@ -297,23 +350,20 @@ window.root = (function () {
                   },
                   "sake"
                ]
-            ]
+            ],
+            "New Value"
          ],
          funcs: {
-            sneak: 24,
-            python: function () {
-               return 'Python3';
-            },
             js: function () {
                return 'js';
             },
-            pharo: function () { 
-               let tem = Array.from(1,2,3);
-               console.log(tem);
-               return tem;
+            livejs: function () {
+               return 'livejs';
+            },
+            python: function () {
+               return 'Python3';
             }
-         },
-         versionNumber: []
+         }
       }
    };
 

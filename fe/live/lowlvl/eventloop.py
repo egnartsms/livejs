@@ -3,7 +3,7 @@ import select
 import threading
 import weakref
 
-from live.eventfd import EventFd
+from live.lowlvl.eventfd import EventFd
 
 
 class Fd:

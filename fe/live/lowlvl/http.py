@@ -3,7 +3,7 @@ import re
 import os
 import http.client
 
-from live.eventloop import Fd
+from live.lowlvl.eventloop import Fd
 
 
 SOCKET_READ_PORTION = 4096

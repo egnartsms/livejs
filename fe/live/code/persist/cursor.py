@@ -1,8 +1,8 @@
 import sublime
 import sublime_plugin
 
-from live.config import config
-from live.code.cursor import Cursor, UnexpectedContents
+from live.gstate import config
+from live.code.cursor import Cursor as BaseCursor, UnexpectedContents
 
 
 ROOT_NESTING = 1
@@ -10,7 +10,7 @@ ROOT_NESTING = 1
 re_beginning = r'^[ ]{{{nspaces}}}.+?(?=\{{)'.format(nspaces=ROOT_NESTING * config.indent)
 
 
-class PersistCursor(Cursor):
+class Cursor(BaseCursor):
     """Initialized to point right after the root object's opening brace"""
 
     def __init__(self, view, edit):

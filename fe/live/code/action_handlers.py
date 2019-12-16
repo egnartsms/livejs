@@ -1,15 +1,24 @@
+import sublime
+
 import os.path
 from functools import partial
 
-import sublime
-
-
-from live.config import config
+from live.gstate import config
 from live.util import first_such
-from live import server
-from live.code import persist, codebrowser
 from live.sublime_util.technical_command import thru_technical_command
 from live.sublime_util.on_view_loaded import on_load
+from .codebrowser import operations as codebrowser
+from .persist import operations as persist
+
+
+action_handlers = {}
+
+
+def action_handler(fn):
+    action_type = fn.__name__
+    assert action_type not in action_handlers
+    action_handlers[action_type] = fn
+    return fn
 
 
 def get_root_view(window):
@@ -22,7 +31,7 @@ def get_root_view(window):
     return root_view
 
 
-@server.action_handler('replace')
+@action_handler
 def replace(action):
     cbv = first_such(view for view in sublime.active_window().views()
                      if view.settings().get('livejs_view') == 'Code Browser')
@@ -38,7 +47,7 @@ def replace(action):
     on_load(root_view, cmd)
 
 
-@server.action_handler('rename_key')
+@action_handler
 def rename_key(action):
     cbv = first_such(view for view in sublime.active_window().views()
                      if view.settings().get('livejs_view') == 'Code Browser')
@@ -54,7 +63,7 @@ def rename_key(action):
     on_load(root_view, cmd)
 
 
-@server.action_handler('delete')
+@action_handler
 def delete(action):
     cbv = first_such(view for view in sublime.active_window().views()
                      if view.settings().get('livejs_view') == 'Code Browser')
@@ -62,11 +71,12 @@ def delete(action):
     thru_technical_command(cbv, codebrowser.delete_node)(path=action['path'])
 
     root_view = get_root_view(sublime.active_window())
-    cmd = partial(thru_technical_command(root_view, persist.delete), path=action['path'])
+    cmd = partial(thru_technical_command(root_view, persist.delete),
+                  path=action['path'])
     on_load(root_view, cmd)
 
 
-@server.action_handler('insert')
+@action_handler
 def insert(action):
     cbv = first_such(view for view in sublime.active_window().views()
                      if view.settings().get('livejs_view') == 'Code Browser')

@@ -3,14 +3,14 @@ from copy import copy
 import sublime
 
 from live.code.common import make_js_value_inserter
-from live.code.persist_cursor import PersistCursor, ROOT_NESTING
+from .cursor import Cursor, ROOT_NESTING
 
 
 def replace_value(view, edit, path, new_value):
-    cur = PersistCursor.at_value(path, view, edit)
-    beg = cur.pos
+    cur = Cursor.at_value(path, view, edit)
+    cur.push_region()
     cur.moveto_entry_end()
-    cur.erase(beg)
+    cur.pop_erase()
     
     itr = make_js_value_inserter(cur, new_value, ROOT_NESTING + len(path))
     while next(itr, None):
@@ -22,10 +22,10 @@ def replace_value(view, edit, path, new_value):
 
 
 def rename_key(view, edit, path, new_name):
-    cur = PersistCursor.at_key(path, view, edit)
-    beg = cur.pos
+    cur = Cursor.at_key(path, view, edit)
+    cur.push_region()
     cur.skip('[^:]+')
-    cur.erase(beg)
+    cur.pop_erase()
     cur.insert(new_name)
 
     # Just saving does not always work, we have to do it after the current command
@@ -34,7 +34,7 @@ def rename_key(view, edit, path, new_name):
 
 
 def delete(view, edit, path):
-    cur = PersistCursor.at_entry(path, view, edit)
+    cur = Cursor.at_entry(path, view, edit)
     
     prec = copy(cur)
     prec.skip_sep_bwd()
@@ -68,7 +68,7 @@ def insert(view, edit, path, key, value):
         for _ in make_js_value_inserter(cur, value, nesting):
             pass
 
-    cur, found = PersistCursor.at_entry_or_end(path, view, edit)
+    cur, found = Cursor.at_entry_or_end(path, view, edit)
     if (key is not None) != cur.is_inside_object:
         raise RuntimeError("Object/array insert mismatch")
 
