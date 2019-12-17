@@ -62,7 +62,7 @@ def find_containing_node(view, xreg, strict=False):
     :param strict: if True, the xreg must be completely inside the node. If False, it may
     be adjacent to either beginning or end of a node and is still considered to lie within
     it.
-    :return: node or None if not inside any node or spans >1 top-level nodes.
+    :return: node (may be a root node)
     """
     if strict:
         def lies_within(reg):
@@ -83,7 +83,7 @@ def find_containing_node(view, xreg, strict=False):
             # node and reg are what we're looking for.
             break
 
-    return None if node.is_root else node
+    return node
 
 
 def find_node_by_exact_region(view, xreg):
@@ -142,8 +142,8 @@ def get_single_selected_node(view):
 
 
 def set_edit_region(view, reg, enclosing=None):
-    view.add_regions('edit', [reg], 'region.greenish', '',
-                     sublime.DRAW_NO_FILL | sublime.DRAW_EMPTY)
+    view.add_regions('edit', [reg], 'region.bluish livejs.edit', '',
+                     sublime.DRAW_EMPTY | sublime.DRAW_NO_OUTLINE)
     if enclosing is None:
         enclosing = reg
     add_hidden_regions(view, 'enclosing_edit', [enclosing])
@@ -173,7 +173,6 @@ def edit_node(node):
     view = node.view
     view.set_read_only(False)
     set_edit_region(view, node.region)
-    set_selection(view, to_reg=node.region)
     info_for(view).edit_node(node)
 
 
@@ -365,7 +364,7 @@ def insert_node(view, edit, path, key, value):
     if vinfo.is_editing_new_node and vinfo.new_node_parent is parent and\
             vinfo.new_node_position == new_index:
         # In this Code Browser view we were editing the new node which is now being
-        # inserted in here.
+        # inserted.  This is typical after the user commits.
         view.erase(edit, enclosing_edit_region(view))
         done_editing(view)
 

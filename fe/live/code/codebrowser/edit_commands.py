@@ -11,7 +11,6 @@ from live.sublime_util.selection import set_selection
 from .view_info import info_for
 from .operations import (
     CODE_BROWSER_VIEW_NAME,
-    set_edit_region,
     edit_region_contents,
     edit_node,
     enclosing_edit_region,
@@ -24,7 +23,6 @@ from .operations import (
     find_insert_position,
     get_single_selected_node
 )
-from .cursor import Cursor
 
 
 __all__ = [
@@ -56,9 +54,16 @@ class LivejsCbRefresh(sublime_plugin.WindowCommand):
 
 class LivejsCbEdit(sublime_plugin.TextCommand):
     def run(self, edit):
-        node = get_single_selected_node(self.view)
-        if node is None:
-            self.view.run_command('livejs_cb_select')
+        if len(self.view.sel()) != 1:
+            self.view.window().status_message("Cannot determine what to edit "
+                                              "(multiple cursors)")
+            return
+
+        reg = self.view.sel()[0]
+        node = find_containing_node(self.view, reg, strict=False)
+        if node.is_root:
+            self.view.window().status_message("Cannot determine what to edit "
+                                              "(the cursor is at top level)")
             return
 
         edit_node(node)
@@ -82,25 +87,32 @@ class LivejsCbCommit(sublime_plugin.TextCommand):
         vinfo = info_for(self.view)
         js = edit_region_contents(self.view)
         if vinfo.new_node_parent.is_object:
-            mo = re.match(r'([a-zA-Z0-9_$]+)\s*:(.+)$', js, re.DOTALL)
+            keyval_sep = r'=' if vinfo.new_node_parent.is_root else r':'
+            mo = re.match(r'([a-zA-Z0-9_$]+)\s*{}\s*(.+)$'.format(keyval_sep),
+                          js, re.DOTALL)
             if mo is None:
                 self.view.window().status_message("Invalid object entry")
                 return False
 
             key, value = mo.group(1), mo.group(2)
+            js = '''
+                $.addObjectEntry({parent_path}, {pos}, "{key}",
+                                 (function () {{ return ({value}) }}))
+            '''.format(
+                parent_path=vinfo.new_node_parent.path,
+                pos=vinfo.new_node_position,
+                key=key,
+                value=value
+            )
         else:
-            key, value = '', js
-
-        js = '''
-            $.addObjectEntry({parent_path}, {pos}, "{key}",
-                             (function () {{ return ({value}) }}))
-        '''
-        js = js.format(
-            parent_path=vinfo.new_node_parent.path,
-            pos=vinfo.new_node_position,
-            key=key,
-            value=value
-        )
+            js = '''
+                $.addArrayEntry({parent_path}, {pos},
+                                (function () {{ return ({value}) }}))
+            '''.format(
+                parent_path=vinfo.new_node_parent.path,
+                pos=vinfo.new_node_position,
+                value=value
+            )
 
         ws_handler.request(js)
 
@@ -193,7 +205,7 @@ class LivejsCbDelNode(sublime_plugin.TextCommand):
             self.view.run_command('livejs_cb_select')
             return
 
-        js = '$.delete({})'.format(node.path)
+        js = '$.deleteEntry({})'.format(node.path)
         ws_handler.request(js)
 
 
@@ -206,10 +218,6 @@ class LivejsCbAddNode(sublime_plugin.TextCommand):
         reg = self.view.sel()[0]
         parent = find_containing_node(self.view, reg, strict=True)
         
-        if parent is None:
-            self.view.window().status_message("Not inside any node")
-            return
-
         if parent.is_leaf:
             self.view.window().status_message("Cannot add here")
             return

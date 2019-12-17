@@ -55,7 +55,7 @@ class JsNode:
 
     @property
     def is_root(self):
-        return self.is_unattached
+        return self.parent is None
 
     @property
     def position(self):
@@ -114,7 +114,10 @@ class JsNode:
 
     @property
     def region(self):
-        return self.view.get_regions(self._parent_regkey)[self.position]
+        if self.is_root:
+            return sublime.Region(-1, self.view.size())
+        else:
+            return self.view.get_regions(self._parent_regkey)[self.position]
 
     @property
     def begin(self):

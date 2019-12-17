@@ -19,7 +19,7 @@ class LivejsCbSelect(sublime_plugin.TextCommand):
 
         r0 = self.view.sel()[0]
         node = ops.find_containing_node(self.view, r0)
-        if node is None:
+        if node.is_root:
             self.view.window().status_message("Could not determine the node to select: "
                                               "selected region is not entirely inside a "
                                               "node")

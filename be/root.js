@@ -1,3 +1,5 @@
+'use strict';
+
 window.root = (function () {
    let $ = {
       nontrackedKeys: [
@@ -46,6 +48,29 @@ window.root = (function () {
          }
       },
 
+      send: function (msg) {
+         $.socket.send(JSON.stringify(msg));
+      },
+
+      sendFailure: function (message) {
+         $.send({
+            success: false,
+            message: message
+         });
+      },
+
+      sendSuccess: function (response, actions=null) {
+         $.send({
+            success: true,
+            response: response,
+            actions: actions || []
+         });
+      },
+
+      hasOwnProperty: function (obj, prop) {
+         return Object.prototype.hasOwnProperty.call(obj, prop);
+      },
+
       orderedKeysMap: new WeakMap,
 
       ensureOrdkeys: function (obj) {
@@ -61,8 +86,10 @@ window.root = (function () {
          return $.orderedKeysMap.get(obj) || Object.keys(obj);
       },
 
-      entries: function (obj) {
-         return $.keys(obj).map(key => [key, obj[key]]);
+      entries: function* (obj) {
+         for (let key of $.keys(obj)) {
+            yield [key, obj[key]];
+         }
       },
 
       deleteProp: function (obj, prop) {
@@ -73,17 +100,32 @@ window.root = (function () {
                return;
             }
             ordkeys.splice(index, 1);
-            delete obj[prop];
          }
-         else {
-            delete obj[prop];
+      
+         delete obj[prop];
+      },
+
+      setProp: function (obj, key, value) {
+         let ordkeys = $.orderedKeysMap.get(obj);
+         if (ordkeys && !ordkeys.includes(key)) {
+            ordkeys.push(key);
          }
+         obj[key] = value;
       },
 
       insertProp: function (obj, key, value, pos) {
          let ordkeys = $.ensureOrdkeys(obj);
+         let existingIdx = ordkeys.indexOf(key);
+      
          ordkeys.splice(pos, 0, key);
          obj[key] = value;
+      
+         if (existingIdx !== -1) {
+            if (existingIdx >= pos) {
+               existingIdx += 1;
+            }
+            ordkeys.splice(existingIdx, 1);
+         }
       },
 
       prepareForSerialization: function prepare(obj) {
@@ -133,53 +175,67 @@ window.root = (function () {
             throw new Error(`Cannot serialize objects with non-standard prototype`);
          }
 
-         return Object.fromEntries(
-            $.entries(obj).map(([k, v]) => [k, prepare(v)])
-            );
+         return Object.fromEntries($.keys(obj).map(k => [k, prepare(obj[k])]));
       },
 
-      send: function (msg) {
-         $.socket.send(JSON.stringify(msg));
-      },
-
-      sendFailure: function (message) {
-         $.send({
-            success: false,
-            message: message
-         });
-      },
-
-      sendSuccess: function (response, actions=null) {
-         $.send({
-            success: true,
-            response: response,
-            actions: actions || []
-         });
-      },
-
-      path2ParentnKey: function (path) {
-         let parent, child = $;
-
-         for (let i = 0; i < path.length; i += 1) {
-            parent = child;
-            [key, child] = $.nthEntry(parent, path[i]);
-         }
-
-         return {parent, key};
-      },
-
-      nthEntry: function (obj, n) {
+      nthValue: function (obj, n) {
          if (Array.isArray(obj)) {
-            return [String(n), obj[n]];
+            return obj[n];
          }
          else {
-            return $.entries(obj)[n];
+            return obj[$.keys(obj)[n]];
+         }
+      },
+
+      valueAt: function (path) {
+         let value = $;
+
+         for (let n of path) {
+            value = $.nthValue(value, n);
+         }
+
+         return value;
+      },
+
+      parentKeyAt: function (path) {
+         if (path.length === 0) {
+            throw new Error(`Path cannot be empty`);
+         }
+
+         let 
+            parentPath = path.slice(0, -1),
+            lastPos = path[path.length - 1],
+            parent = $.valueAt(parentPath);
+
+         if (Array.isArray(parent)) {
+            return {parent, key: lastPos};
+         }
+         else {
+            return {parent, key: $.keys(parent)[lastPos]};
+         }
+      },
+
+      keyAt: function (path) {
+         let {parent, key} = $.parentKeyAt(path);
+         $.checkObject(parent);
+         return key;
+      },
+
+      checkObject: function (obj) {
+         if (Object.getPrototypeOf(obj) !== Object.prototype) {
+            throw new Error(`Object/array mismatch: expected object, got ${obj}`);
+         }
+      },
+
+      checkArray: function (obj) {
+         if (!Array.isArray(obj)) {
+            throw new Error(`Object/array mismatch: expected array, got ${obj}`)
          }
       },
 
       sendAllEntries: function () {
          let result = [];
-         for (let [key, value] of Object.entries($)) {
+         for (let [key, value] of $.entries($)) {
             if ($.nontrackedKeys.includes(key)) {
                result.push([key, $.prepareForSerialization('new Object()')])
             }
@@ -192,27 +248,18 @@ window.root = (function () {
       },
 
       sendValueAt: function (path) {
-         let {parent, key} = $.path2ParentnKey(path);
-         $.sendSuccess($.prepareForSerialization(parent[key]));
+         $.sendSuccess($.prepareForSerialization($.valueAt(path)));
       },
 
       sendKeyAt: function (path) {
-         let {parent, key} = $.path2ParentnKey(path);
-         $.sendSuccess(key);
+         $.sendSuccess($.keyAt(path));
       },
 
       replace: function (path, newValueClosure) {
-         let newValue;
-
-         try {
+         let 
+            {parent, key} = $.parentKeyAt(path),
             newValue = newValueClosure.call(null);
-         }
-         catch (e) {
-            $.sendFailure(`Failed to evaluate a new value:\n ${e.stack}`)
-            return;
-         }
 
-         let {parent, key} = $.path2ParentnKey(path);
          parent[key] = newValue;
 
          $.sendSuccess(null, [{
@@ -223,11 +270,19 @@ window.root = (function () {
       },
 
       renameKey: function (path, newName) {
-         let {parent, key} = $.path2ParentnKey(path);
+         let {parent, key} = $.parentKeyAt(path);
+
+         $.checkObject(parent);
+         if ($.hasOwnProperty(parent, newName)) {
+            $.sendFailure(`Cannot rename to ${newName}: duplicate property name`);
+            return;
+         }
+
          let ordkeys = $.ensureOrdkeys(parent);
          ordkeys[ordkeys.indexOf(key)] = newName;
          parent[newName] = parent[key];
          delete parent[key];
+
          $.sendSuccess(null, [{
             type: 'rename_key',
             path,
@@ -236,25 +291,21 @@ window.root = (function () {
       },
 
       move: function (path, fwd) {
-         function newNodePos(len, i, fwd) {
-            return fwd ? (i === len - 1 ? 0 : i + 1) : 
-                         (i === 0 ? len - 1 : i - 1);
+         let {parent, key} = $.parentKeyAt(path);
+         let value = parent[key];
+         let newPos;
+      
+         if (Array.isArray(parent)) {
+            newPos = $.moveArrayItem(parent, key, fwd);
          }
-
-         let
-            {parent, key} = $.path2ParentnKey(path),
-            value = parent[key],
-            pos = path[path.length - 1],
-            array = Array.isArray(parent) ? parent : $.ensureOrdkeys(parent),
-            newPos = newNodePos(array.length, pos, fwd);
-
-         let tem = array[pos];
-         array.splice(pos, 1);
-         array.splice(newPos, 0, tem);
-
-         let newPath = path.slice();
-         newPath[newPath.length - 1] = newPos;
-
+         else {
+            let props = $.ensureOrdkeys(parent);
+            newPos = $.moveArrayItem(props, props.indexOf(key), fwd);
+         }
+      
+         let newPath = path.slice(0, -1);
+         newPath.push(newPos);
+      
          $.sendSuccess(newPath, [{
             type: 'delete',
             path: path
@@ -263,11 +314,27 @@ window.root = (function () {
             path: newPath,
             key: Array.isArray(parent) ? null : key,
             value: $.prepareForSerialization(value)
-         }]);
+         }]);   
       },
 
-      delete: function (path) {
-         let {parent, key} = $.path2ParentnKey(path);
+      moveArrayItem: function (array, pos, fwd) {
+         let
+            value = array[pos],
+            newPos = $.moveNewPos(array.length, pos, fwd);
+      
+         array.splice(pos, 1);
+         array.splice(newPos, 0, value);
+      
+         return newPos;
+      },
+
+      moveNewPos: function (len, i, fwd) {
+         return fwd ? (i === len - 1 ? 0 : i + 1) : 
+                      (i === 0 ? len - 1 : i - 1);
+      },
+
+      deleteEntry: function (path) {
+         let {parent, key} = $.parentKeyAt(path);
 
          if (Array.isArray(parent)) {
             parent.splice(path[path.length - 1], 1);
@@ -282,46 +349,39 @@ window.root = (function () {
          }]);
       },
 
+      addArrayEntry: function (parentPath, pos, valueClosure) {
+         let parent = $.valueAt(parentPath);
+         let value = valueClosure.call(null);
+      
+         $.checkArray(parent);
+      
+         parent.splice(pos, 0, value);
+      
+         $.sendSuccess(null, [{
+            type: 'insert',
+            path: parentPath.concat(pos),
+            key: null,
+            value: $.prepareForSerialization(value)
+         }]);
+      },
+
       addObjectEntry: function (parentPath, pos, key, valueClosure) {
-         let value;
-
-         try {
-            value = valueClosure.call(null);
+         let value = valueClosure.call(null);
+         let parent = $.valueAt(parentPath);
+      
+         $.checkObject(parent);
+         if ($.hasOwnProperty(parent, key)) {
+            throw new Error(`Cannot insert property ${key}: it already exists`);
          }
-         catch (e) {
-            $.sendFailure(`Failed to evaluate a new value:\n ${e.stack}`)
-            return;
-         }
-
-         // TODO: fix this ugliness
-         let {parent, key: pkey} = $.path2ParentnKey(parentPath);
-         parent = parent[pkey];
-
-         if (Array.isArray(parent)) {
-            parent.splice(pos, 0, value);
-
-            let newPath = parentPath.slice();
-            newPath.push(pos);
-
-            $.sendSuccess(null, [{
-               type: 'insert',
-               path: newPath,
-               key: null,
-               value: $.prepareForSerialization(value)
-            }]);
-         }
-         else {
-            $.insertProp(parent, key, value, pos);   
-            
-            let newPath = parentPath.slice();
-            newPath.push(pos);
-            $.sendSuccess(null, [{
-               type: 'insert',
-               path: newPath,
-               key: key,
-               value: $.prepareForSerialization(value)
-            }]);
-         }
+      
+         $.insertProp(parent, key, value, pos);   
+      
+         $.sendSuccess(null, [{
+            type: 'insert',
+            path: parentPath.concat(pos),
+            key: key,
+            value: $.prepareForSerialization(value)
+         }]);
       },
 
       probe2: {
@@ -330,8 +390,8 @@ window.root = (function () {
       },
 
       probe: {
-         firstName: "Iohann",
          reHero: /hero/,
+         firstName: "Iohann",
          invalid: function (val) {
             return Array.isArray(val) && val[0] > 0;
          },
@@ -354,6 +414,8 @@ window.root = (function () {
             "New Value"
          ],
          funcs: {
+            x2: "v2",
+            x1: "v1",
             js: function () {
                return 'js';
             },
