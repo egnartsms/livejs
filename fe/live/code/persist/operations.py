@@ -1,9 +1,11 @@
 from copy import copy
 
-import sublime
-
 from live.code.common import make_js_value_inserter
 from .cursor import Cursor, ROOT_NESTING
+from .saver import Saver
+
+
+saver = Saver()
 
 
 def replace_value(view, edit, path, new_value):
@@ -16,9 +18,7 @@ def replace_value(view, edit, path, new_value):
     while next(itr, None):
         pass
 
-    # Just saving does not always work, we have to do it after the current command
-    # completes
-    sublime.set_timeout(lambda: view.run_command('save'), 0)
+    saver.request_save(view)
 
 
 def rename_key(view, edit, path, new_name):
@@ -28,9 +28,7 @@ def rename_key(view, edit, path, new_name):
     cur.pop_erase()
     cur.insert(new_name)
 
-    # Just saving does not always work, we have to do it after the current command
-    # completes
-    sublime.set_timeout(lambda: view.run_command('save'), 0)
+    saver.request_save(view)
 
 
 def delete(view, edit, path):
@@ -53,9 +51,7 @@ def delete(view, edit, path):
     else:
         cur.erase(folw.pos)
 
-    # Just saving does not always work, we have to do it after the current command
-    # completes
-    sublime.set_timeout(lambda: view.run_command('save'), 0)
+    saver.request_save(view)
 
 
 def insert(view, edit, path, key, value):
@@ -91,6 +87,4 @@ def insert(view, edit, path, key, value):
         insert_at(cur)
         cur.sep_inter(nesting)
 
-    # Just saving does not always work, we have to do it after the current command
-    # completes
-    sublime.set_timeout(lambda: view.run_command('save'), 0)
+    saver.request_save(view)

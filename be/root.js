@@ -384,22 +384,8 @@ window.root = (function () {
          }]);
       },
 
-      probe2: {
-         what: "is",
-         your: "name?"
-      },
-
       probe: {
-         reHero: /hero/,
-         firstName: "Iohann",
-         invalid: function (val) {
-            return Array.isArray(val) && val[0] > 0;
-         },
-         lastName: "Black",
          xyz: [
-            function () {
-               console.log(/[a-z({\]((ab]/);
-            },
             [
                function () { return 24; },
                [
@@ -411,8 +397,15 @@ window.root = (function () {
                   "sake"
                ]
             ],
+            function () {
+               console.log(/[a-z({\]((ab]/);
+            },
             "New Value"
          ],
+         lastName: "Black",
+         invalid: function (val) {
+            return Array.isArray(val) && val[0] > 0;
+         },
          funcs: {
             x2: "v2",
             x1: "v1",
@@ -425,7 +418,9 @@ window.root = (function () {
             python: function () {
                return 'Python3';
             }
-         }
+         },
+         firstName: "Iohann",
+         reHero: /hero/
       }
    };
 
