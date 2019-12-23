@@ -1,7 +1,7 @@
 """Helpers: async Socket server and client, needed to test the Eventloop"""
 import socket
 
-from live.eventloop import get_event_loop, Fd
+from live.lowlvl.eventloop import get_event_loop, Fd
 
 
 MSG_SEPARATOR = b'!end'

@@ -3,7 +3,7 @@ import re
 import threading
 import socket
 
-from live.eventloop import EventLoop
+from live.lowlvl.eventloop import EventLoop
 from tests.async_server_client import (
     serve,
     connect,
