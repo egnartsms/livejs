@@ -1,0 +1,20 @@
+%YAML 1.2
+---
+name: LiveJS REPL
+hidden: true
+scope: source.livejs-repl
+
+contexts:
+  main:
+    - match: ^.+?>
+      scope: punctuation.separator.livejs-repl
+      push: Packages/JavaScript/JavaScript.sublime-syntax
+      with_prototype:
+        - match: (?=^<)
+          pop: true
+    - match: ^<
+      scope: punctuation.separator.livejs-repl
+      push: Packages/JavaScript/JavaScript.sublime-syntax
+      with_prototype:
+        - match: (?=^.+?>)
+          pop: true
