@@ -85,11 +85,11 @@ class LivejsCbCommit(sublime_plugin.TextCommand):
 
     def _commit_new_node_edit(self):
         vinfo = info_for(self.view)
-        js = edit_region_contents(self.view)
+        js_entered = edit_region_contents(self.view)
         if vinfo.new_node_parent.is_object:
             keyval_sep = r'=' if vinfo.new_node_parent.is_root else r':'
             mo = re.match(r'([a-zA-Z0-9_$]+)\s*{}\s*(.+)$'.format(keyval_sep),
-                          js, re.DOTALL)
+                          js_entered, re.DOTALL)
             if mo is None:
                 self.view.window().status_message("Invalid object entry")
                 return False
@@ -111,7 +111,7 @@ class LivejsCbCommit(sublime_plugin.TextCommand):
             '''.format(
                 parent_path=vinfo.new_node_parent.path,
                 pos=vinfo.new_node_position,
-                value=value
+                value=js_entered
             )
 
         ws_handler.request(js)
@@ -217,7 +217,7 @@ class LivejsCbAddNode(sublime_plugin.TextCommand):
 
         reg = self.view.sel()[0]
         parent = find_containing_node(self.view, reg, strict=True)
-        
+
         if parent.is_leaf:
             self.view.window().status_message("Cannot add here")
             return

@@ -122,11 +122,6 @@ class Response:
         self.add_header('Content-Length', '0')
         yield from send_buffer(self.sock, self.collect_headers())
 
-    def send_exp(self):
-        headers = self.collect_headers()
-        print("headers:", headers)
-        yield from send_buffer(self.sock, self.collect_headers())
-
 
 def ensure_encoded(obj):
     if isinstance(obj, bytes):

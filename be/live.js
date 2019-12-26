@@ -1,15 +1,26 @@
-'use strict';
+window.live = (function () {
+   'use strict';
 
-window.root = (function () {
    let $ = {
       nontrackedKeys: [
-         'socket',
-         'orderedKeysMap'
+         "socket",
+         "orderedKeysMap",
+         "modules",
+         "eval"
       ],
 
       socket: null,
 
-      initOnLoad: function () {
+      init: function () {
+         $.modules = Object.create(null);
+         $.modules['live'] = {
+            name: 'live',
+            path: null,
+            value: $
+         };
+         $.eval = window.eval;
+         $.orderedKeysMap = new WeakMap;
+         
          $.resetSocket();
       },
 
@@ -32,7 +43,7 @@ window.root = (function () {
          let func;
 
          try {
-            func = new Function('$', e.data);
+            func = new Function('$', "'use strict';\n" + e.data);
          }
          catch (e) {
             $.sendFailure(`Failed to compile JS code:\n ${e}`);
@@ -71,7 +82,7 @@ window.root = (function () {
          return Object.prototype.hasOwnProperty.call(obj, prop);
       },
 
-      orderedKeysMap: new WeakMap,
+      orderedKeysMap: null,
 
       ensureOrdkeys: function (obj) {
          let ordkeys = $.orderedKeysMap.get(obj);
@@ -384,48 +395,27 @@ window.root = (function () {
          }]);
       },
 
-      probe: {
-         xyz: [
-            [
-               function () { return 24; },
-               [
-                  "b",
-                  {
-                     some: 10,
-                     woo: 20
-                  },
-                  "sake"
-               ]
-            ],
-            function () {
-               console.log(/[a-z({\]((ab]/);
-            },
-            "New Value"
-         ],
-         lastName: "Black",
-         invalid: function (val) {
-            return Array.isArray(val) && val[0] > 0;
-         },
-         funcs: {
-            x2: "v2",
-            x1: "v1",
-            js: function () {
-               return 'js';
-            },
-            livejs: function () {
-               return 'livejs';
-            },
-            python: function () {
-               return 'Python3';
-            }
-         },
-         firstName: "Iohann",
-         reHero: /hero/
+      eval: null,
+
+      modules: null,
+
+      addModule: function (name, source, path) {
+         if ($.hasOwnProperty($.modules, name)) {
+            throw new Error(`Module '${name}' already exists`);
+         }
+      
+         let value = $.eval(source);
+         $.modules[name] = {
+            value: value,
+            name: name,
+            path: path
+         };
+      
+         $.sendSuccess(null);
       }
    };
 
+   $.init();
+
    return $;
 })();
-
-
-window.root.initOnLoad();

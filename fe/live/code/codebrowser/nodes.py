@@ -115,7 +115,7 @@ class JsNode:
     @property
     def region(self):
         if self.is_root:
-            return sublime.Region(-1, self.view.size())
+            return sublime.Region(-1, self.view.size() + 1)
         else:
             return self.view.get_regions(self._parent_regkey)[self.position]
 

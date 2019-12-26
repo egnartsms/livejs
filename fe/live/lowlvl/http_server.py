@@ -7,10 +7,10 @@ import os
 import http.client as httpcli
 
 
-from live.lowlvl.eventloop import get_event_loop, Fd
-from live.lowlvl.websocket import WebSocket
 from live.gstate import config
+from live.lowlvl.eventloop import get_event_loop, Fd
 from live.lowlvl.http import recv_up_to_delimiter, Request, Response
+from live.lowlvl.websocket import WebSocket
 
 
 def serve(port, ws_handler):

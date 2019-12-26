@@ -4,7 +4,7 @@
         "command": "toggle_server"
     },
     {
-        "caption": "Say Hi",
-        "command": "insert_it"
+        "caption": "LiveJS: Add module",
+        "command": "add_module"
     }
 ]

@@ -21,14 +21,14 @@ def action_handler(fn):
     return fn
 
 
-def get_root_view(window):
-    filename = os.path.join(config.be_root, config.root_module)
-    root_view = window.find_open_file(filename)
-    if root_view is None:
+def get_module_view(window):
+    filename = os.path.join(config.be_root, config.live_module_filename)
+    view = window.find_open_file(filename)
+    if view is None:
         focused_view = window.active_view()
-        root_view = window.open_file(filename)
+        view = window.open_file(filename)
         window.focus_view(focused_view)
-    return root_view
+    return view
 
 
 @action_handler
@@ -41,10 +41,10 @@ def replace(action):
         new_value=action['newValue']
     )
 
-    root_view = get_root_view(sublime.active_window())
-    cmd = partial(thru_technical_command(root_view, persist.replace_value),
+    view = get_module_view(sublime.active_window())
+    cmd = partial(thru_technical_command(view, persist.replace_value),
                   path=action['path'], new_value=action['newValue'])
-    on_load(root_view, cmd)
+    on_load(view, cmd)
 
 
 @action_handler
@@ -57,10 +57,10 @@ def rename_key(action):
         new_name=action['newName']
     )
 
-    root_view = get_root_view(sublime.active_window())
-    cmd = partial(thru_technical_command(root_view, persist.rename_key),
+    view = get_module_view(sublime.active_window())
+    cmd = partial(thru_technical_command(view, persist.rename_key),
                   path=action['path'], new_name=action['newName'])
-    on_load(root_view, cmd)
+    on_load(view, cmd)
 
 
 @action_handler
@@ -70,10 +70,10 @@ def delete(action):
     
     thru_technical_command(cbv, codebrowser.delete_node)(path=action['path'])
 
-    root_view = get_root_view(sublime.active_window())
-    cmd = partial(thru_technical_command(root_view, persist.delete),
+    view = get_module_view(sublime.active_window())
+    cmd = partial(thru_technical_command(view, persist.delete),
                   path=action['path'])
-    on_load(root_view, cmd)
+    on_load(view, cmd)
 
 
 @action_handler
@@ -85,9 +85,9 @@ def insert(action):
         path=action['path'], key=action['key'], value=action['value']
     )
 
-    root_view = get_root_view(sublime.active_window())
+    view = get_module_view(sublime.active_window())
     cmd = partial(
-        thru_technical_command(root_view, persist.insert),
+        thru_technical_command(view, persist.insert),
         path=action['path'], key=action['key'], value=action['value']
     )
-    on_load(root_view, cmd)
+    on_load(view, cmd)

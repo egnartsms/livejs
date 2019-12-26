@@ -232,9 +232,9 @@ def done_editing(view):
 
 def invalidate_codebrowser(view):
     def go(view, edit):
-        view.replace(edit, sublime.Region(0, view.size()),
-                     "<<<<< Codebrowser contents outdated. Please refresh! >>>>>")
-        view.set_read_only(True)
+        with read_only_set_to(view, False):
+            view.replace(edit, sublime.Region(0, view.size()),
+                         "<<<<< Codebrowser contents outdated. Please refresh! >>>>>")
 
     thru_technical_command(view, go)()
 
