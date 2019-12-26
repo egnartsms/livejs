@@ -21,7 +21,7 @@ class AddModule(sublime_plugin.WindowCommand):
             sublime.error_message("This view does not correspond to a real file on disk")
             return
 
-        intuitive_module_name = os.path.basename(view.file_name())
+        intuitive_module_name = os.path.splitext(os.path.basename(view.file_name()))[0]
         self.window.show_input_panel(
             'New module name:', intuitive_module_name,
             partial(self.on_module_name_entered, view), None, None
