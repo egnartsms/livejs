@@ -5,6 +5,7 @@ import collections
 
 from live.util import stopwatch
 from live.code.action_handlers import action_handlers
+from live.modules.operations import synch_modules_with_be
 
 
 class WsHandler:
@@ -23,6 +24,7 @@ class WsHandler:
             raise RuntimeError("WsHandler attempted to connect while already connected")
         self.websocket = websocket
         print("LiveJS: BE websocket connected")
+        sublime.set_timeout(synch_modules_with_be, 0)
 
     def disconnect(self):
         if not self.is_connected:

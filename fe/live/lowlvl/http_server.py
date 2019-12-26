@@ -56,8 +56,6 @@ def handle_http_request(sock, ws_handler):
 
     :return: True if another request should be handled through this connection
     """
-    global websocket
-
     buf = bytearray()
 
     headers = yield from recv_up_to_delimiter(sock, buf, b'\r\n\r\n')

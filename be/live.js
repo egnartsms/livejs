@@ -399,17 +399,27 @@ window.live = (function () {
 
       modules: null,
 
-      addModule: function (name, source, path) {
-         if ($.hasOwnProperty($.modules, name)) {
-            throw new Error(`Module '${name}' already exists`);
+      sendModules: function () {
+         $.sendSuccess(
+            Object.values($.modules).map(m => ({name: m.name, path: m.path}))
+         );
+      },
+
+      loadModules: function (modules) {
+         // modules: [{name, path, source}]
+         if (modules.some(({name}) => $.hasOwnProperty($.modules, name))) {
+            throw new Error(`Cannot add modules: duplicate name(s)`);
          }
       
-         let value = $.eval(source);
-         $.modules[name] = {
-            value: value,
-            name: name,
-            path: path
-         };
+         let values = modules.map(({source}) => $.eval(source));
+      
+         for (let i = 0; i < modules.length; i += 1) {
+            $.modules[modules[i]['name']] = {
+               name: modules[i]['name'],
+               path: modules[i]['path'],
+               value: values[i]
+            };
+         }
       
          $.sendSuccess(null);
       }

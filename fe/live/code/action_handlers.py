@@ -22,11 +22,10 @@ def action_handler(fn):
 
 
 def get_module_view(window):
-    filename = os.path.join(config.be_root, config.live_module_filename)
-    view = window.find_open_file(filename)
+    view = window.find_open_file(config.live_module_filepath)
     if view is None:
         focused_view = window.active_view()
-        view = window.open_file(filename)
+        view = window.open_file(config.live_module_filepath)
         window.focus_view(focused_view)
     return view
 
