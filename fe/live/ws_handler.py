@@ -87,7 +87,6 @@ class WsHandler:
             try:
                 reqtype, reqargs = self.cont.send(response['value'])
             except StopIteration:
-                print("cont exhausted")
                 self.cont = None
             except:
                 traceback.print_exc()

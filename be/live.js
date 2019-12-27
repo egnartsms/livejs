@@ -17,7 +17,6 @@ window.live = (function () {
             path: null,
             value: $
          };
-         $.eval = window.eval;
          $.orderedKeysMap = new WeakMap;
          
          $.resetSocket();
@@ -79,9 +78,13 @@ window.live = (function () {
          });
       },
 
-      eval: function (code) {
+      evalFBody: function (code) {
          let func = new Function('$', "'use strict';\n" + code);
          return func.call(null, $);
+      },
+
+      evalExpr: function (code) {
+         return $.evalFBody(`return (${code});`);
       },
 
       hasOwnProperty: function (obj, prop) {
@@ -289,11 +292,11 @@ window.live = (function () {
          
             $.respondSuccess(result);
          },
-         
+
          replace: function ({path, codeNewValue}) {
             let 
                {parent, key} = $.parentKeyAt(path),
-               newValue = $.eval(codeNewValue);
+               newValue = $.evalExpr(codeNewValue);
 
             parent[key] = newValue;
 
@@ -329,7 +332,7 @@ window.live = (function () {
 
          addArrayEntry: function ({parentPath, pos, codeValue}) {
             let parent = $.valueAt(parentPath);
-            let value = $.eval(codeValue);
+            let value = $.evalExpr(codeValue);
          
             $.checkArray(parent);
          
@@ -346,7 +349,7 @@ window.live = (function () {
 
          addObjectEntry: function ({parentPath, pos, key, codeValue}) {
             let parent = $.valueAt(parentPath);
-            let value = $.eval(codeValue);
+            let value = $.evalExpr(codeValue);
          
             $.checkObject(parent);
             if ($.hasOwnProperty(parent, key)) {
@@ -424,7 +427,7 @@ window.live = (function () {
                throw new Error(`Cannot add modules: duplicate name(s)`);
             }
          
-            let values = modules.map(({source}) => $.eval(source));
+            let values = modules.map(({source}) => $.evalExpr(source));
          
             for (let i = 0; i < modules.length; i += 1) {
                $.modules[modules[i]['name']] = {

@@ -173,10 +173,8 @@ class LivejsCbMoveNodeFwd(sublime_plugin.TextCommand):
             'path': node.path,
             'fwd': True
         }
-        print("new_path:", new_path)
         root = info_for(self.view).root
         node = (root.key_node_at if node.is_key else root.value_node_at)(new_path)
-        print("new_node:", node)
         set_selection(self.view, to_reg=node.region, show=True)
 
 
