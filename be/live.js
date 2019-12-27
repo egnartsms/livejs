@@ -5,8 +5,7 @@ window.live = (function () {
       nontrackedKeys: [
          "socket",
          "orderedKeysMap",
-         "modules",
-         "eval"
+         "modules"
       ],
 
       socket: null,
@@ -39,43 +38,50 @@ window.live = (function () {
          $.socket.onclose = $.onSocketClose;
       },
 
-      onSocketMessage: function (e) {
-         let func;
-
+      onSocketMessage: function (evt) {
+         let request = JSON.parse(evt.data);
+      
          try {
-            func = new Function('$', "'use strict';\n" + e.data);
+            $.requestHandlers[request['type']].call(null, request['args']);
          }
          catch (e) {
-            $.sendFailure(`Failed to compile JS code:\n ${e}`);
-            return;
-         }
-
-         try { 
-            func.call(null, $);
-         }
-         catch (e) {
-            $.sendFailure(`Unhandled exception:\n ${e.stack}`);
-            return;
+            $.respondFailure(`LiveJS request failed:\n${e.stack}`);
          }
       },
 
-      send: function (msg) {
-         $.socket.send(JSON.stringify(msg));
+      send: function (message) {
+         $.socket.send(JSON.stringify(message));
       },
 
-      sendFailure: function (message) {
+      respondFailure: function (message) {
          $.send({
+            type: 'response',
             success: false,
             message: message
          });
       },
 
-      sendSuccess: function (response, actions=null) {
+      respondSuccess: function (value=null) {
          $.send({
+            type: 'response',
             success: true,
-            response: response,
-            actions: actions || []
+            value: value
          });
+      },
+
+      persist: function (requests) {
+         if (!Array.isArray(requests)) {
+            requests = [requests];
+         }
+         $.send({
+            type: 'persist',
+            requests: requests
+         });
+      },
+
+      eval: function (code) {
+         let func = new Function('$', "'use strict';\n" + code);
+         return func.call(null, $);
       },
 
       hasOwnProperty: function (obj, prop) {
@@ -244,90 +250,6 @@ window.live = (function () {
          }
       },
 
-      sendAllEntries: function () {
-         let result = [];
-         for (let [key, value] of $.entries($)) {
-            if ($.nontrackedKeys.includes(key)) {
-               result.push([key, $.prepareForSerialization('new Object()')])
-            }
-            else {
-               result.push([key, $.prepareForSerialization(value)]);   
-            }
-         }
-
-         $.sendSuccess(result);
-      },
-
-      sendValueAt: function (path) {
-         $.sendSuccess($.prepareForSerialization($.valueAt(path)));
-      },
-
-      sendKeyAt: function (path) {
-         $.sendSuccess($.keyAt(path));
-      },
-
-      replace: function (path, newValueClosure) {
-         let 
-            {parent, key} = $.parentKeyAt(path),
-            newValue = newValueClosure.call(null);
-
-         parent[key] = newValue;
-
-         $.sendSuccess(null, [{
-            type: 'replace',
-            path: path,
-            newValue: $.prepareForSerialization(newValue)
-         }]);
-      },
-
-      renameKey: function (path, newName) {
-         let {parent, key} = $.parentKeyAt(path);
-
-         $.checkObject(parent);
-         if ($.hasOwnProperty(parent, newName)) {
-            $.sendFailure(`Cannot rename to ${newName}: duplicate property name`);
-            return;
-         }
-
-         let ordkeys = $.ensureOrdkeys(parent);
-         ordkeys[ordkeys.indexOf(key)] = newName;
-         parent[newName] = parent[key];
-         delete parent[key];
-
-         $.sendSuccess(null, [{
-            type: 'rename_key',
-            path,
-            newName
-         }])
-      },
-
-      move: function (path, fwd) {
-         let {parent, key} = $.parentKeyAt(path);
-         let value = parent[key];
-         let newPos;
-      
-         if (Array.isArray(parent)) {
-            newPos = $.moveArrayItem(parent, key, fwd);
-         }
-         else {
-            let props = $.ensureOrdkeys(parent);
-            newPos = $.moveArrayItem(props, props.indexOf(key), fwd);
-         }
-      
-         let newPath = path.slice(0, -1);
-         newPath.push(newPos);
-      
-         $.sendSuccess(newPath, [{
-            type: 'delete',
-            path: path
-         }, {
-            type: 'insert',
-            path: newPath,
-            key: Array.isArray(parent) ? null : key,
-            value: $.prepareForSerialization(value)
-         }]);   
-      },
-
       moveArrayItem: function (array, pos, fwd) {
          let
             value = array[pos],
@@ -344,84 +266,176 @@ window.live = (function () {
                       (i === 0 ? len - 1 : i - 1);
       },
 
-      deleteEntry: function (path) {
-         let {parent, key} = $.parentKeyAt(path);
-
-         if (Array.isArray(parent)) {
-            parent.splice(path[path.length - 1], 1);
-         }
-         else {
-            $.deleteProp(parent, key);
-         }
-
-         $.sendSuccess(null, [{
-            type: 'delete',
-            path: path
-         }]);
-      },
-
-      addArrayEntry: function (parentPath, pos, valueClosure) {
-         let parent = $.valueAt(parentPath);
-         let value = valueClosure.call(null);
-      
-         $.checkArray(parent);
-      
-         parent.splice(pos, 0, value);
-      
-         $.sendSuccess(null, [{
-            type: 'insert',
-            path: parentPath.concat(pos),
-            key: null,
-            value: $.prepareForSerialization(value)
-         }]);
-      },
-
-      addObjectEntry: function (parentPath, pos, key, valueClosure) {
-         let value = valueClosure.call(null);
-         let parent = $.valueAt(parentPath);
-      
-         $.checkObject(parent);
-         if ($.hasOwnProperty(parent, key)) {
-            throw new Error(`Cannot insert property ${key}: it already exists`);
-         }
-      
-         $.insertProp(parent, key, value, pos);   
-      
-         $.sendSuccess(null, [{
-            type: 'insert',
-            path: parentPath.concat(pos),
-            key: key,
-            value: $.prepareForSerialization(value)
-         }]);
-      },
-
-      eval: null,
-
       modules: null,
 
-      sendModules: function () {
-         $.sendSuccess(
-            Object.values($.modules).map(m => ({name: m.name, path: m.path}))
-         );
-      },
+      requestHandlers: {
+         getKeyAt: function ({path}) {
+            $.respondSuccess($.keyAt(path));
+         },
+         getValueAt: function ({path}) {
+            $.respondSuccess($.prepareForSerialization($.valueAt(path)));
+         },
 
-      loadModules: function (modules) {
-         // modules: [{name, path, source}]
-         if (modules.some(({name}) => $.hasOwnProperty($.modules, name))) {
-            throw new Error(`Cannot add modules: duplicate name(s)`);
+         sendAllEntries: function () {
+            let result = [];
+            for (let [key, value] of $.entries($)) {
+               if ($.nontrackedKeys.includes(key)) {
+                  result.push([key, $.prepareForSerialization('new Object()')])
+               }
+               else {
+                  result.push([key, $.prepareForSerialization(value)]);   
+               }
+            }
+         
+            $.respondSuccess(result);
+         },
+         
+         replace: function ({path, codeNewValue}) {
+            let 
+               {parent, key} = $.parentKeyAt(path),
+               newValue = $.eval(codeNewValue);
+
+            parent[key] = newValue;
+
+            $.persist({
+               type: 'replace',
+               path: path,
+               newValue: $.prepareForSerialization(newValue)
+            });
+            $.respondSuccess();
+         },
+
+         renameKey: function ({path, newName}) {
+            let {parent, key} = $.parentKeyAt(path);
+
+            $.checkObject(parent);
+            if ($.hasOwnProperty(parent, newName)) {
+               $.respondFailure(`Cannot rename to ${newName}: duplicate property name`);
+               return;
+            }
+
+            let ordkeys = $.ensureOrdkeys(parent);
+            ordkeys[ordkeys.indexOf(key)] = newName;
+            parent[newName] = parent[key];
+            delete parent[key];
+
+            $.persist({
+               type: 'rename_key',
+               path,
+               newName
+            });
+            $.respondSuccess();
+         },
+
+         addArrayEntry: function ({parentPath, pos, codeValue}) {
+            let parent = $.valueAt(parentPath);
+            let value = $.eval(codeValue);
+         
+            $.checkArray(parent);
+         
+            parent.splice(pos, 0, value);
+         
+            $.persist({
+               type: 'insert',
+               path: parentPath.concat(pos),
+               key: null,
+               value: $.prepareForSerialization(value)
+            });
+            $.respondSuccess();
+         },
+
+         addObjectEntry: function ({parentPath, pos, key, codeValue}) {
+            let parent = $.valueAt(parentPath);
+            let value = $.eval(codeValue);
+         
+            $.checkObject(parent);
+            if ($.hasOwnProperty(parent, key)) {
+               throw new Error(`Cannot insert property ${key}: it already exists`);
+            }
+         
+            $.insertProp(parent, key, value, pos);   
+         
+            $.persist({
+               type: 'insert',
+               path: parentPath.concat(pos),
+               key: key,
+               value: $.prepareForSerialization(value)
+            });
+            $.respondSuccess();
+         },
+
+         move: function ({path, fwd}) {
+            let {parent, key} = $.parentKeyAt(path);
+            let value = parent[key];
+            let newPos;
+         
+            if (Array.isArray(parent)) {
+               newPos = $.moveArrayItem(parent, key, fwd);
+            }
+            else {
+               let props = $.ensureOrdkeys(parent);
+               newPos = $.moveArrayItem(props, props.indexOf(key), fwd);
+            }
+         
+            let newPath = path.slice(0, -1);
+            newPath.push(newPos);
+         
+            $.persist([
+               {
+                  type: 'delete',
+                  path: path
+               }, 
+               {
+                  type: 'insert',
+                  path: newPath,
+                  key: Array.isArray(parent) ? null : key,
+                  value: $.prepareForSerialization(value)
+               }
+            ]);
+            $.respondSuccess(newPath);
+         },
+
+         deleteEntry: function ({path}) {
+            let {parent, key} = $.parentKeyAt(path);
+
+            if (Array.isArray(parent)) {
+               parent.splice(path[path.length - 1], 1);
+            }
+            else {
+               $.deleteProp(parent, key);
+            }
+
+            $.persist({
+               type: 'delete',
+               path: path
+            });
+            $.respondSuccess();
+         },
+
+         sendModules: function () {
+            $.respondSuccess(
+               Object.values($.modules).map(m => ({name: m.name, path: m.path}))
+            );
+         },
+
+         loadModules: function ({modules}) {
+            // modules: [{name, path, source}]
+            if (modules.some(({name}) => $.hasOwnProperty($.modules, name))) {
+               throw new Error(`Cannot add modules: duplicate name(s)`);
+            }
+         
+            let values = modules.map(({source}) => $.eval(source));
+         
+            for (let i = 0; i < modules.length; i += 1) {
+               $.modules[modules[i]['name']] = {
+                  name: modules[i]['name'],
+                  path: modules[i]['path'],
+                  value: values[i]
+               };
+            }
+         
+            $.respondSuccess();
          }
-      
-         let values = modules.map(({source}) => $.eval(source));
-      
-         for (let i = 0; i < modules.length; i += 1) {
-            $.modules[modules[i]['name']] = {
-               name: modules[i]['name'],
-               path: modules[i]['path'],
-               value: values[i]
-            };
-         }
-      
-         $.sendSuccess(null);
       }
    };
 

@@ -6,8 +6,9 @@ from functools import partial
 
 from live.util import first_such
 from live.gstate import ws_handler
-from live.sublime_util.technical_command import thru_technical_command
+from live.sublime_util.technical_command import run_technical_command
 from live.sublime_util.selection import set_selection
+from live.comm import communicates_with_be
 from .view_info import info_for
 from .operations import (
     CODE_BROWSER_VIEW_NAME,
@@ -32,6 +33,7 @@ __all__ = [
 
 
 class LivejsCbRefresh(sublime_plugin.WindowCommand):
+    @communicates_with_be
     def run(self):
         if not ws_handler.is_connected:
             sublime.error_message("BE is not connected")
@@ -49,7 +51,8 @@ class LivejsCbRefresh(sublime_plugin.WindowCommand):
 
         done_editing(cbv)
 
-        ws_handler.request('$.sendAllEntries()', thru_technical_command(cbv, refresh))
+        entries = yield 'sendAllEntries', {}
+        run_technical_command(cbv, partial(refresh, entries=entries))
 
 
 class LivejsCbEdit(sublime_plugin.TextCommand):
@@ -94,51 +97,46 @@ class LivejsCbCommit(sublime_plugin.TextCommand):
                 self.view.window().status_message("Invalid object entry")
                 return False
 
-            key, value = mo.group(1), mo.group(2)
-            js = '''
-                $.addObjectEntry({parent_path}, {pos}, "{key}",
-                                 (function () {{ return ({value}) }}))
-            '''.format(
-                parent_path=vinfo.new_node_parent.path,
-                pos=vinfo.new_node_position,
-                key=key,
-                value=value
-            )
+            ws_handler.request1way('addObjectEntry', {
+                'parentPath': vinfo.new_node_parent.path,
+                'pos': vinfo.new_node_position,
+                'key': mo.group(1),
+                'codeValue': mo.group(2)
+            })
         else:
-            js = '''
-                $.addArrayEntry({parent_path}, {pos},
-                                (function () {{ return ({value}) }}))
-            '''.format(
-                parent_path=vinfo.new_node_parent.path,
-                pos=vinfo.new_node_position,
-                value=js_entered
-            )
-
-        ws_handler.request(js)
+            ws_handler.request1way('addArrayEntry', {
+                'parentPath': vinfo.new_node_parent.path,
+                'pos': vinfo.new_node_position,
+                'codeValue': js_entered
+            })
 
         return True
 
     def _commit_node_edit(self):
         vinfo = info_for(self.view)
         node = vinfo.node_being_edited
-        js = edit_region_contents(self.view)
+        js_entered = edit_region_contents(self.view)
 
         if node.is_key:
-            if not re.match(r'[a-zA-Z0-9_$]+$', js):
+            if not re.match(r'[a-zA-Z0-9_$]+$', js_entered):
                 self.view.window().status_message("Invalid JS identifier")
                 return False
-            js = '$.renameKey({}, "{}")'.format(node.path, js)
-        else:
-            js = (
-                '$.replace({}, (function () {{ return ({}); }}));'.format(node.path, js)
-            )
 
-        ws_handler.request(js)
+            ws_handler.request1way('renameKey', {
+                'path': node.path,
+                'newName': js_entered
+            })
+        else:
+            ws_handler.request1way('replace', {
+                'path': node.path,
+                'codeNewValue': js_entered
+            })
 
         return True
 
 
 class LivejsCbCancelEdit(sublime_plugin.TextCommand):
+    @communicates_with_be
     def run(self, edit):
         vinfo = info_for(self.view)
         if not vinfo.is_editing:
@@ -147,55 +145,55 @@ class LivejsCbCancelEdit(sublime_plugin.TextCommand):
         if vinfo.is_editing_new_node:
             self.view.erase(edit, enclosing_edit_region(self.view))
             done_editing(self.view)
+            return
+
+        node = vinfo.node_being_edited
+        if node.is_key:
+            new_name = yield 'getKeyAt', {'path': node.path}
+            run_technical_command(
+                self.view,
+                partial(replace_key_node, path=node.path, new_name=new_name)
+            )
         else:
-            node = vinfo.node_being_edited
-            if node.is_key:
-                js = '$.sendKeyAt({})'.format(node.path)
-            else:
-                js = '$.sendValueAt({})'.format(node.path)
-
-            ws_handler.request(js, partial(on_edit_aborted, view=self.view))
-
-
-def on_edit_aborted(view, response):
-    node = info_for(view).node_being_edited
-    
-    if node.is_key:
-        thru_technical_command(view, replace_key_node)(
-            path=node.path, new_name=response
-        )
-    else:
-        thru_technical_command(view, replace_value_node)(
-            path=node.path, new_value=response
-        )
+            new_value = yield 'getValueAt', {'path': node.path}
+            run_technical_command(
+                self.view,
+                partial(replace_value_node, path=node.path, new_value=new_value)
+            )
 
 
 class LivejsCbMoveNodeFwd(sublime_plugin.TextCommand):
+    @communicates_with_be
     def run(self, edit):
         node = get_single_selected_node(self.view)
         if node is None:
             return  # should not normally happen, protected by key binding context
 
-        js = '$.move({}, true)'.format(node.path)
-        ws_handler.request(js, partial(select_node, view=self.view, key=node.is_key))
+        new_path = yield 'move', {
+            'path': node.path,
+            'fwd': True
+        }
+        print("new_path:", new_path)
+        root = info_for(self.view).root
+        node = (root.key_node_at if node.is_key else root.value_node_at)(new_path)
+        print("new_node:", node)
+        set_selection(self.view, to_reg=node.region, show=True)
 
 
 class LivejsCbMoveNodeBwd(sublime_plugin.TextCommand):
+    @communicates_with_be
     def run(self, edit):
         node = get_single_selected_node(self.view)
         if node is None:
             return  # should not normally happen, protected by key binding context
 
-        js = '$.move({}, false)'.format(node.path)
-        ws_handler.request(js, partial(select_node, view=self.view, key=node.is_key))
-
-
-def select_node(view, response, key):
-    path = response
-    root = info_for(view).root
-    node = (root.key_node_at if key else root.value_node_at)(path)
-
-    set_selection(view, to_reg=node.region, show=True)
+        new_path = yield 'move', {
+            'path': node.path,
+            'fwd': False
+        }
+        root = info_for(self.view).root
+        node = (root.key_node_at if node.is_key else root.value_node_at)(new_path)
+        set_selection(self.view, to_reg=node.region, show=True)
 
 
 class LivejsCbDelNode(sublime_plugin.TextCommand):
@@ -205,8 +203,9 @@ class LivejsCbDelNode(sublime_plugin.TextCommand):
             self.view.run_command('livejs_cb_select')
             return
 
-        js = '$.deleteEntry({})'.format(node.path)
-        ws_handler.request(js)
+        ws_handler.request1way('deleteEntry', {
+            'path': node.path
+        })
 
 
 class LivejsCbAddNode(sublime_plugin.TextCommand):

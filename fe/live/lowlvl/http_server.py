@@ -8,9 +8,10 @@ import http.client as httpcli
 
 
 from live.gstate import config
-from live.lowlvl.eventloop import get_event_loop, Fd
-from live.lowlvl.http import recv_up_to_delimiter, Request, Response
-from live.lowlvl.websocket import WebSocket
+from .eventloop import get_event_loop, Fd
+from .sockutil import recv_up_to_delimiter, SocketClosedPrematurely
+from .http import Request, Response
+from .websocket import WebSocket
 
 
 def serve(port, ws_handler):
@@ -44,8 +45,13 @@ def handle_http_request_wrapper(sock, ws_handler):
     """Make sure sock is properly closed"""
     try:
         yield None
-        while (yield from handle_http_request(sock, ws_handler)):
-            pass
+
+        moveon = True
+        while moveon:
+            try:
+                moveon = yield from handle_http_request(sock, ws_handler)
+            except SocketClosedPrematurely:
+                moveon = False
     finally:
         sock.shutdown(socket.SHUT_RDWR)
         sock.close()
@@ -59,9 +65,6 @@ def handle_http_request(sock, ws_handler):
     buf = bytearray()
 
     headers = yield from recv_up_to_delimiter(sock, buf, b'\r\n\r\n')
-    if headers is None:
-        return False
-
     req = Request.from_network(sock, headers)
 
     if req.path == '/wsconnect':

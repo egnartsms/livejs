@@ -1,7 +1,6 @@
 import os
 import traceback
 
-import sublime
 import sublime_plugin
 
 from live.lowlvl.http_server import serve
@@ -10,7 +9,7 @@ from live.gstate import config
 from live.ws_handler import ws_handler
 from live.code import *  # noqa
 from live.sublime_util import *  # noqa
-from live.modules.commands import *  # noqa
+from live.modules import *  # noqa
 
 
 g_el = EventLoop()

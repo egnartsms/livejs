@@ -4,12 +4,13 @@ import struct
 import http.client as httpcli
 import hashlib
 import base64
-from collections import deque
+import traceback
 
-
-from live.lowlvl.http import Response, recv_next, recv_next_as_buf, send_buffer
-from live.lowlvl.eventloop import Fd
-from live.lowlvl.eventfd import EventFd
+from live.util import take_over_list_items
+from .sockutil import recv_next, recv_next_as_buf, send_buffer
+from .http import Response
+from .eventloop import Fd
+from .eventfd import EventFd
 
 
 class OpCode:
@@ -28,32 +29,30 @@ class WebSocket:
     def __init__(self, req, ws_handler):
         self.req = req
         self.sock = req.sock
+        self.rbuf = bytearray()
         self.ws_handler = ws_handler
-        self.queue_write = deque()
-        self.evt_write = EventFd()
+        self.message_queue = []
+        self.evt_write_messages = EventFd()
 
     def __iter__(self):
         ok = yield from self.handshake()
         if not ok:
             return
 
-        while True:
-            yield Fd.read(self.sock), Fd.read(self.evt_write)
-            if self.evt_write.is_set():
-                while self.queue_write:
-                    msg = self.queue_write.popleft()
-                    yield from self.send_message(msg)
-                self.evt_write.clear()
-            else:
-                msg = yield from self.read_message()
-                if msg is None:
-                    break
+        should_continue = True
 
-                try:
-                    self.ws_handler(msg)
-                except Exception as e:
-                    print("Got exception when processing WS message:")
-                    print(e)
+        while should_continue:
+            if self.rbuf:
+                should_continue = yield from self.process_message()
+                continue
+
+            yield Fd.read(self.sock), Fd.read(self.evt_write_messages)
+            if self.evt_write_messages.is_set():
+                self.evt_write_messages.clear()
+                for message in take_over_list_items(self.message_queue):
+                    yield from self.send_message(message)
+            else:
+                should_continue = yield from self.process_message()
 
     def handshake(self):
         headers = self.req.headers
@@ -81,29 +80,79 @@ class WebSocket:
         yield from resp.send_empty()
         return True
 
+    def process_message(self):
+        message = yield from self.read_message()
+        if message is None:
+            return False
+
+        try:
+            self.ws_handler(message)
+        except Exception:
+            traceback.print_exc()
+
+        return True
+
     def read_message(self):
-        frame = yield from read_frame(self.sock)
-        if frame.opcode == OpCode.PING:
-            self.send_message(Frame(fin=True, opcode=OpCode.PONG, payload=frame.payload))
-        elif frame.opcode == OpCode.PONG:
-            pass
-        elif frame.opcode == OpCode.CLOSE:
-            return None
-        else:
-            if frame.fin:
-                return maybe_str(frame.payload, frame.opcode)
+        """Read the next message from socket
 
-            opcode = frame.opcode
-            pieces = [frame.payload]
+        Process PING messages locally so the caller doesn't have to handle them.
+        :return: bytes, str or None (when CLOSE frame arrives)
+        """
+        while True:
+            frame = yield from self.read_frame()
 
-            while not frame.fin:
-                frame = yield from read_frame(self.sock)
-                pieces.append(maybe_str(frame.payload, opcode))
-
-            if opcode == OpCode.BINARY:
-                return b''.join(pieces)
+            if frame.opcode == OpCode.PING:
+                yield from self.send_message(
+                    Frame(fin=True, opcode=OpCode.PONG, payload=frame.payload)
+                )
+            elif frame.opcode == OpCode.PONG:
+                pass
+            elif frame.opcode == OpCode.CLOSE:
+                return None
             else:
-                return ''.join(pieces)
+                if frame.fin:
+                    return maybe_str(frame.payload, frame.opcode)
+
+                opcode = frame.opcode
+                pieces = [frame.payload]
+
+                while not frame.fin:
+                    frame = yield from self.read_frame()
+                    pieces.append(maybe_str(frame.payload, opcode))
+
+                if opcode == OpCode.BINARY:
+                    return b''.join(pieces)
+                else:
+                    return ''.join(pieces)
+
+    def read_frame(self):
+        b0, b1 = yield from self.recv_next(2)
+        fin = bool(b0 & 0x80)
+        opcode = b0 & 0x0F
+        mask = bool(b1 & 0x80)
+        if not mask:
+            raise RuntimeError("Client sent unmasked frame")
+        payload_len = b1 & 0x7F
+        if payload_len < 126:
+            pass
+        elif payload_len == 126:
+            (payload_len,) = struct.unpack('>H', (yield from self.recv_next(2)))
+        else:
+            (payload_len,) = struct.unpack('>Q', (yield from self.recv_next(8)))
+
+        mask_key = yield from self.recv_next(4)
+        payload = yield from self.recv_next_as_buf(payload_len)
+
+        for i in range(len(payload)):
+            payload[i] = payload[i] ^ mask_key[i % 4]
+
+        return Frame(fin=fin, opcode=opcode, payload=payload)
+
+    def recv_next(self, n):
+        return (yield from recv_next(self.sock, self.rbuf, n))
+
+    def recv_next_as_buf(self, n):
+        return (yield from recv_next_as_buf(self.sock, self.rbuf, n))
 
     def send_message(self, msg):
         msg = msg.encode('utf8')
@@ -125,8 +174,8 @@ class WebSocket:
 
     def enqueue_message(self, msg):
         assert isinstance(msg, str)
-        self.queue_write.append(msg)
-        self.evt_write.set()
+        self.message_queue.append(msg)
+        self.evt_write_messages.set()
 
 
 def sec_websocket_accept(wskey):
@@ -165,28 +214,3 @@ def maybe_str(payload, opcode):
         return payload
     else:
         return payload.decode('utf-8')
-
-
-def read_frame(sock):
-    buf = bytearray()
-    b0, b1 = yield from recv_next(sock, buf, 2)
-    fin = bool(b0 & 0x80)
-    opcode = b0 & 0x0F
-    mask = bool(b1 & 0x80)
-    if not mask:
-        raise RuntimeError("Client sent unmasked frame")
-    payload_len = b1 & 0x7F
-    if payload_len < 126:
-        pass
-    elif payload_len == 126:
-        (payload_len,) = struct.unpack('>H', (yield from recv_next(sock, buf, 2)))
-    else:
-        (payload_len,) = struct.unpack('>Q', (yield from recv_next(sock, buf, 8)))
-
-    mask_key = yield from recv_next(sock, buf, 4)
-    payload = yield from recv_next_as_buf(sock, buf, payload_len)
-
-    for i in range(len(payload)):
-        payload[i] = payload[i] ^ mask_key[i % 4]
-
-    return Frame(fin=fin, opcode=opcode, payload=payload)

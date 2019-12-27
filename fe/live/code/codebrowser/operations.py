@@ -1,7 +1,7 @@
 import sublime
 
 from live.sublime_util.hacks import set_viewport_position
-from live.sublime_util.technical_command import thru_technical_command
+from live.sublime_util.technical_command import run_technical_command
 from live.sublime_util.selection import set_selection
 from live.util import tracking_last
 from ..common import read_only_set_to, make_js_value_inserter, add_hidden_regions
@@ -236,10 +236,10 @@ def invalidate_codebrowser(view):
             view.replace(edit, sublime.Region(0, view.size()),
                          "<<<<< Codebrowser contents outdated. Please refresh! >>>>>")
 
-    thru_technical_command(view, go)()
+    run_technical_command(view, go)
 
 
-def refresh(view, edit, response):
+def refresh(view, edit, entries):
     prev_pos = list(view.sel())
     prev_viewport_pos = view.viewport_position()
 
@@ -254,7 +254,7 @@ def refresh(view, edit, response):
 
     cur.sep_initial(nesting=0)
 
-    for (key, value), islast in tracking_last(response):
+    for (key, value), islast in tracking_last(entries):
         cur.push_region()
         cur.insert(key)
         key_region = cur.pop_region()

@@ -101,7 +101,7 @@ class Cursor:
         self.indent(nesting)
 
     def sep_inter(self, nesting):
-        self.insert(',\n')
+        self.insert(',\n\n')
         self.indent(nesting)
 
     def sep_terminal(self, nesting):

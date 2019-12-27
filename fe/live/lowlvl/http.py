@@ -3,57 +3,8 @@ import re
 import os
 import http.client
 
-from live.lowlvl.eventloop import Fd
-
-
-SOCKET_READ_PORTION = 4096
-
-
-def send_buffer(socket, buf):
-    """Send any kind of immutable buffer (e.g. bytes object but not bytearray)"""
-    mv = memoryview(buf)
-    while mv:
-        yield Fd.write(socket)
-        n = socket.send(mv)
-        mv = mv[n:]
-
-
-def recv_up_to_delimiter(sock, buf, delimiter):
-    """Precondition: buf must not already have a message"""
-    while True:
-        yield Fd.read(sock)
-        chunk = sock.recv(SOCKET_READ_PORTION)
-        if not chunk:
-            return None
-
-        buf.extend(chunk)
-        mo = re.search(delimiter, buf)
-        if mo is not None:
-            payload = bytes(buf[:mo.start()])
-            del buf[:mo.end()]
-            return payload
-
-
-def recv_next(sock, buf, N):
-    res = yield from recv_next_as_buf(sock, buf, N)
-    if res is not None:
-        return bytes(res)
-    else:
-        return None
-
-
-def recv_next_as_buf(sock, buf, N):
-    while len(buf) < N:
-        yield Fd.read(sock)
-        chunk = sock.recv(SOCKET_READ_PORTION)
-        if not chunk:
-            return None
-
-        buf.extend(chunk)
-
-    payload = buf[:N]
-    del buf[:N]
-    return payload
+from .eventloop import Fd
+from .sockutil import send_buffer
 
 
 class Request:

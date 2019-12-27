@@ -101,11 +101,7 @@ def make_js_value_inserter(cur, jsval, nesting):
         # The last line of a function contains a single closing brace and is indented at
         # the same level as the whole function.  This of course depends on the formatting
         # style but it works for now and is very simple.
-        i = source.rfind('\n')
-        if i == -1:
-            pass
-
-        i += 1
+        i = source.rfind('\n') + 1
         n = 0
         while i + n < len(source) and ord(source[i + n]) == 32:
             n += 1

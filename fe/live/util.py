@@ -33,6 +33,21 @@ def serially(*iterables):
             yield next(iterator)
 
 
+def take_over_list_items(lst):
+    """Delete all elements from lst and return them in a new list.
+
+    This is useful in a multithreading environment where multiple threads treat a list
+    object as a queue, and use no locks. This function is designed to be called by the
+    consumer to get a list of items he needs to process. It is important that after this
+    function returns the original list object may be already non-empty if the producer has
+    put something in it.  The consumer should be prepared for this and arrange his data
+    structures accordingly.
+    """
+    copy = lst[:]
+    del lst[:len(copy)]
+    return copy
+
+
 class Stopwatch:
     def __init__(self):
         self.moments = {}

@@ -7,11 +7,16 @@ __all__ = ['OnLoadListener']
 registry = {}  # {view.id(): [<callback>, ...]}
 
 
-def on_load(view, do):
-    if not view.is_loading():
-        do()
-    else:
-        registry.setdefault(view.id(), []).append(do)
+def on_load(view):
+    def wrapper(do):
+        if not view.is_loading():
+            do()
+        else:
+            registry.setdefault(view.id(), []).append(do)
+
+        return None
+
+    return wrapper
 
 
 class OnLoadListener(sublime_plugin.EventListener):
