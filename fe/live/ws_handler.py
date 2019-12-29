@@ -4,7 +4,7 @@ import json
 import collections
 import traceback
 
-from live.util import stopwatch, take_over_list_items
+from live.util import stopwatch, take_over_list_items, eraise
 from live.code.persist_handlers import persist_handlers
 from live.modules.operations import synch_modules_with_be
 
@@ -12,7 +12,6 @@ from live.modules.operations import synch_modules_with_be
 class WsHandler:
     def __init__(self):
         self.messages = []
-        self.num_ignored_responses = 0
         # a generator yielding at points where it expects for BE to respond
         self.cont = None
         self.requested_processing_on_main_thread = False
@@ -24,17 +23,16 @@ class WsHandler:
 
     def connect(self, websocket):
         if self.is_connected:
-            raise RuntimeError("WsHandler attempted to connect while already connected")
+            eraise("WsHandler attempted to connect while already connected")
         self.websocket = websocket
         print("LiveJS: BE websocket connected")
         sublime.set_timeout(synch_modules_with_be, 0)
 
     def disconnect(self):
         if not self.is_connected:
-            raise RuntimeError("WsHandler attempted to disconnect while not connected")
+            eraise("WsHandler attempted to disconnect while not connected")
         self.websocket = None
         self.cont = None
-        self.num_ignored_responses = 0
         print("LiveJS: BE websocket disconnected")
 
     def __call__(self, data):
@@ -66,22 +64,14 @@ class WsHandler:
                 for req in message['requests']:
                     self._process_persist_request(req)
             else:
-                raise RuntimeError(
-                    "LiveJS: Got a message of unknown type: {}".format(message)
-                )
+                eraise("LiveJS: Got a message of unknown type: {}", message)
 
     def _process_response(self, response):
         if not response['success']:
             sublime.error_message("LiveJS request failed: {}".format(response['message']))
 
-        if self.num_ignored_responses > 0:
-            self.num_ignored_responses -= 1
-            return
-
         if self.cont is None:
-            raise RuntimeError(
-                "LiveJS: received unexpected BE response: {}".format(response)
-            )
+            eraise("LiveJS: received unexpected BE response: {}", response)
 
         if response['success']:
             try:
@@ -100,17 +90,6 @@ class WsHandler:
         handler = persist_handlers[req['type']]
         handler(req)
 
-    def request1way(self, reqtype, reqargs):
-        """Send request to the BE and arrange for the response to be ignored"""
-        if not self.is_connected:
-            raise RuntimeError("WsHandler is not connected")
-        if self.cont is not None:
-            raise RuntimeError("Cannot send 1-way request while a continuation "
-                               "generator is installed")
-
-        self.num_ignored_responses += 1
-        self._request(reqtype, reqargs)
-
     def _request(self, reqtype, reqargs):
         self.websocket.enqueue_message(json.dumps({
             'type': reqtype,
@@ -120,7 +99,7 @@ class WsHandler:
     def install_cont(self, cont):
         """Install the new continuation generator"""
         if self.cont is not None:
-            raise RuntimeError("Cannot install a continuation (already installed)")
+            eraise("Cannot install a continuation (already installed)")
 
         try:
             reqtype, reqargs = cont.send(None)

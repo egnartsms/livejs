@@ -8,7 +8,7 @@ from live.util import first_such
 from live.gstate import ws_handler
 from live.sublime_util.technical_command import run_technical_command
 from live.sublime_util.selection import set_selection
-from live.comm import communicates_with_be
+from live.comm import be_interaction
 from .view_info import info_for
 from .operations import (
     CODE_BROWSER_VIEW_NAME,
@@ -33,7 +33,7 @@ __all__ = [
 
 
 class LivejsCbRefresh(sublime_plugin.WindowCommand):
-    @communicates_with_be
+    @be_interaction
     def run(self):
         if not ws_handler.is_connected:
             sublime.error_message("BE is not connected")
@@ -73,15 +73,16 @@ class LivejsCbEdit(sublime_plugin.TextCommand):
 
 
 class LivejsCbCommit(sublime_plugin.TextCommand):
+    @be_interaction
     def run(self, edit):
         vinfo = info_for(self.view)
         if not vinfo.is_editing:
             return  # shoult not normally happen
 
         if vinfo.is_editing_new_node:
-            committed = self._commit_new_node_edit()
+            committed = yield from self._commit_new_node_edit()
         else:
-            committed = self._commit_node_edit()
+            committed = yield from self._commit_node_edit()
 
         if committed:
             self.view.set_status('livejs_pending', "LiveJS: back-end is processing..")
@@ -97,18 +98,18 @@ class LivejsCbCommit(sublime_plugin.TextCommand):
                 self.view.window().status_message("Invalid object entry")
                 return False
 
-            ws_handler.request1way('addObjectEntry', {
+            yield 'addObjectEntry', {
                 'parentPath': vinfo.new_node_parent.path,
                 'pos': vinfo.new_node_position,
                 'key': mo.group(1),
                 'codeValue': mo.group(2)
-            })
+            }
         else:
-            ws_handler.request1way('addArrayEntry', {
+            yield 'addArrayEntry', {
                 'parentPath': vinfo.new_node_parent.path,
                 'pos': vinfo.new_node_position,
                 'codeValue': js_entered
-            })
+            }
 
         return True
 
@@ -122,21 +123,21 @@ class LivejsCbCommit(sublime_plugin.TextCommand):
                 self.view.window().status_message("Invalid JS identifier")
                 return False
 
-            ws_handler.request1way('renameKey', {
+            yield 'renameKey', {
                 'path': node.path,
                 'newName': js_entered
-            })
+            }
         else:
-            ws_handler.request1way('replace', {
+            yield 'replace', {
                 'path': node.path,
                 'codeNewValue': js_entered
-            })
+            }
 
         return True
 
 
 class LivejsCbCancelEdit(sublime_plugin.TextCommand):
-    @communicates_with_be
+    @be_interaction
     def run(self, edit):
         vinfo = info_for(self.view)
         if not vinfo.is_editing:
@@ -163,7 +164,7 @@ class LivejsCbCancelEdit(sublime_plugin.TextCommand):
 
 
 class LivejsCbMoveNodeFwd(sublime_plugin.TextCommand):
-    @communicates_with_be
+    @be_interaction
     def run(self, edit):
         node = get_single_selected_node(self.view)
         if node is None:
@@ -179,7 +180,7 @@ class LivejsCbMoveNodeFwd(sublime_plugin.TextCommand):
 
 
 class LivejsCbMoveNodeBwd(sublime_plugin.TextCommand):
-    @communicates_with_be
+    @be_interaction
     def run(self, edit):
         node = get_single_selected_node(self.view)
         if node is None:
@@ -195,15 +196,16 @@ class LivejsCbMoveNodeBwd(sublime_plugin.TextCommand):
 
 
 class LivejsCbDelNode(sublime_plugin.TextCommand):
+    @be_interaction
     def run(self, edit):
         node = get_single_selected_node(self.view)
         if node is None:
             self.view.run_command('livejs_cb_select')
             return
 
-        ws_handler.request1way('deleteEntry', {
+        yield 'deleteEntry', {
             'path': node.path
-        })
+        }
 
 
 class LivejsCbAddNode(sublime_plugin.TextCommand):

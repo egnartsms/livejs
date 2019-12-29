@@ -6,7 +6,7 @@ import re
 from functools import partial
 
 from live.gstate import fe_modules
-from live.comm import communicates_with_be
+from live.comm import be_interaction
 from .operations import load_modules
 from .datastructures import Module
 
@@ -37,7 +37,7 @@ class AddModule(sublime_plugin.WindowCommand):
             partial(self.on_module_name_entered, view), None, None
         )
 
-    @communicates_with_be
+    @be_interaction
     def on_module_name_entered(self, view, module_name):
         if not re.match(r'^[a-zA-Z0-9-]+$', module_name):
             self.window.status_message("Invalid module name (should be alphanums)")

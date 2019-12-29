@@ -1,11 +1,11 @@
 import sublime
 
 from live.gstate import fe_modules, config
-from live.comm import communicates_with_be
+from live.comm import be_interaction
 from .datastructures import Module
 
 
-@communicates_with_be
+@be_interaction
 def synch_modules_with_be():
     be_modules = yield 'sendModules', {}
 

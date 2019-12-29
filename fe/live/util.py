@@ -1,6 +1,10 @@
 import time
 
 
+def eraise(msg, *args, **kwargs):
+    raise RuntimeError(msg.format(*args, **kwargs))
+
+
 def first_such(gen):
     return next(gen, None)
 
