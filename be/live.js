@@ -12,13 +12,14 @@ window.live = (function () {
 
       init: function () {
          $.modules = Object.create(null);
-         $.modules['live'] = {
+         $.modules[1] = {
+            id: 1,
             name: 'live',
             path: null,
             value: $
          };
          $.orderedKeysMap = new WeakMap;
-         
+      
          $.resetSocket();
       },
 
@@ -417,23 +418,39 @@ window.live = (function () {
 
          sendModules: function () {
             $.respondSuccess(
-               Object.values($.modules).map(m => ({name: m.name, path: m.path}))
+               Object.values($.modules).map(m => ({
+                  id: m.id,
+                  name: m.name,
+                  path: m.path
+               }))
             );
          },
 
          loadModules: function ({modules}) {
-            // modules: [{name, path, source}]
-            if (modules.some(({name}) => $.hasOwnProperty($.modules, name))) {
-               throw new Error(`Cannot add modules: duplicate name(s)`);
+            // modules: [{id, name, path, source}]
+            //
+            // We keep module names unique.
+            function isModuleOk({name, id}) {
+               return (
+                  !$.hasOwnProperty($.modules, id) &&
+                  Object.values($.modules).every(({xname}) => xname !== name)
+               );
+            }
+         
+            if (!modules.every(isModuleOk)) {
+               throw new Error(`Cannot add modules: duplicates found`);
             }
          
             let values = modules.map(({source}) => $.evalExpr(source));
          
             for (let i = 0; i < modules.length; i += 1) {
-               $.modules[modules[i]['name']] = {
-                  name: modules[i]['name'],
-                  path: modules[i]['path'],
-                  value: values[i]
+               let m = modules[i], value = values[i];
+         
+               $.modules[m['id']] = {
+                  id: m['id'],
+                  name: m['name'],
+                  path: m['path'],
+                  value: value
                };
             }
          

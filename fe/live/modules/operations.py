@@ -2,7 +2,7 @@ import sublime
 
 from live.gstate import fe_modules, config
 from live.comm import be_interaction
-from .datastructures import Module
+from .datastructures import Module, set_module_counter
 
 
 @be_interaction
@@ -25,16 +25,14 @@ def synch_modules_with_be():
     else:
         # BE has modules. In this case no matter what we have here on the FE side,
         # we should substitute it with the BE data.
-        fe_modules[:] = [
-            Module(name=be_m['name'], path=be_m['path'])
-            for be_m in be_modules
-        ]
+        set_fe_modules(be_modules)
 
 
 def load_modules(modules):
     yield 'loadModules', {
         'modules': [
             {
+                'id': m.id,
                 'name': m.name,
                 'path': m.path,
                 'source': file_contents(m.path)
@@ -53,12 +51,22 @@ def file_contents(filepath):
 def reset_fe_modules():
     """Reset FE modules to the single bootstrapping module"""
     fe_modules[:] = [
-        Module(name=config.live_module_name,
+        Module(id=config.live_module_id,
+               name=config.live_module_name,
                path=config.live_module_filepath)
     ]
 
 
+def set_fe_modules(be_modules):
+    """Set FE modules to whatever we received from BE"""
+    fe_modules[:] = [
+        Module(id=be_m['id'], name=be_m['name'], path=be_m['path'])
+        for be_m in be_modules
+    ]
+    set_module_counter(max(be_m['id'] for be_m in be_modules))
+
+
 def load_fe_modules_into_be():
-    modules = [m for m in fe_modules if m.name != config.live_module_name]
+    modules = [m for m in fe_modules if m.id != config.live_module_id]
     reset_fe_modules()
     yield from load_modules(modules)

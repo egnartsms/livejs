@@ -7,7 +7,8 @@ class Config:
     be_root = None  # set at plugin load time
     indent = 3
     s_indent = ' ' * indent
-    live_module_name = 'live'
+    live_module_id = 1  # hardcoded in BE
+    live_module_name = 'live'  # hardcoded in BE => renaming disabled
     live_module_filename = 'live.js'
 
     @property
