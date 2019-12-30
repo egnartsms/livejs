@@ -208,8 +208,8 @@ window.live = (function () {
          }
       },
 
-      valueAt: function (path) {
-         let value = $;
+      valueAt: function (root, path) {
+         let value = root;
 
          for (let n of path) {
             value = $.nthValue(value, n);
@@ -218,7 +218,7 @@ window.live = (function () {
          return value;
       },
 
-      parentKeyAt: function (path) {
+      parentKeyAt: function (root, path) {
          if (path.length === 0) {
             throw new Error(`Path cannot be empty`);
          }
@@ -226,7 +226,7 @@ window.live = (function () {
          let 
             parentPath = path.slice(0, -1),
             lastPos = path[path.length - 1],
-            parent = $.valueAt(parentPath);
+            parent = $.valueAt(root, parentPath);
 
          if (Array.isArray(parent)) {
             return {parent, key: lastPos};
@@ -236,8 +236,8 @@ window.live = (function () {
          }
       },
 
-      keyAt: function (path) {
-         let {parent, key} = $.parentKeyAt(path);
+      keyAt: function (root, path) {
+         let {parent, key} = $.parentKeyAt(root, path);
          $.checkObject(parent);
          return key;
       },
@@ -272,18 +272,27 @@ window.live = (function () {
 
       modules: null,
 
+      moduleRoot: function (mid) {
+         return $.modules[mid].value;
+      },
+
       requestHandlers: {
-         getKeyAt: function ({path}) {
-            $.respondSuccess($.keyAt(path));
-         },
-         getValueAt: function ({path}) {
-            $.respondSuccess($.prepareForSerialization($.valueAt(path)));
+         getKeyAt: function ({mid, path}) {
+            $.respondSuccess($.keyAt($.moduleRoot(mid), path));
          },
 
-         sendAllEntries: function () {
+         getValueAt: function ({mid, path}) {
+            $.respondSuccess(
+               $.prepareForSerialization($.valueAt($.moduleRoot(mid), path))
+            );
+         },
+
+         sendAllEntries: function ({mid}) {
             let result = [];
-            for (let [key, value] of $.entries($)) {
-               if ($.nontrackedKeys.includes(key)) {
+            let module =  $.moduleRoot(mid);
+
+            for (let [key, value] of $.entries(module)) {
+               if (module.nontrackedKeys && module.nontrackedKeys.includes(key)) {
                   result.push([key, $.prepareForSerialization('new Object()')])
                }
                else {
@@ -294,25 +303,27 @@ window.live = (function () {
             $.respondSuccess(result);
          },
 
-         replace: function ({path, codeNewValue}) {
+         replace: function ({mid, path, codeNewValue}) {
             let 
-               {parent, key} = $.parentKeyAt(path),
+               {parent, key} = $.parentKeyAt($.modulesRoot(mid), path),
                newValue = $.evalExpr(codeNewValue);
 
             parent[key] = newValue;
 
             $.persist({
                type: 'replace',
-               path: path,
+               mid,
+               path,
                newValue: $.prepareForSerialization(newValue)
             });
             $.respondSuccess();
          },
 
-         renameKey: function ({path, newName}) {
-            let {parent, key} = $.parentKeyAt(path);
+         renameKey: function ({mid, path, newName}) {
+            let {parent, key} = $.parentKeyAt($.moduleRoot(mid), path);
 
             $.checkObject(parent);
+
             if ($.hasOwnProperty(parent, newName)) {
                $.respondFailure(`Cannot rename to ${newName}: duplicate property name`);
                return;
@@ -325,14 +336,15 @@ window.live = (function () {
 
             $.persist({
                type: 'rename_key',
+               mid,
                path,
                newName
             });
             $.respondSuccess();
          },
 
-         addArrayEntry: function ({parentPath, pos, codeValue}) {
-            let parent = $.valueAt(parentPath);
+         addArrayEntry: function ({mid, parentPath, pos, codeValue}) {
+            let parent = $.valueAt($.moduleRoot(mid), parentPath);
             let value = $.evalExpr(codeValue);
          
             $.checkArray(parent);
@@ -341,6 +353,7 @@ window.live = (function () {
          
             $.persist({
                type: 'insert',
+               mid,
                path: parentPath.concat(pos),
                key: null,
                value: $.prepareForSerialization(value)
@@ -348,8 +361,8 @@ window.live = (function () {
             $.respondSuccess();
          },
 
-         addObjectEntry: function ({parentPath, pos, key, codeValue}) {
-            let parent = $.valueAt(parentPath);
+         addObjectEntry: function ({mid, parentPath, pos, key, codeValue}) {
+            let parent = $.valueAt($.moduleRoot(mid), parentPath);
             let value = $.evalExpr(codeValue);
          
             $.checkObject(parent);
@@ -361,6 +374,7 @@ window.live = (function () {
          
             $.persist({
                type: 'insert',
+               mid,
                path: parentPath.concat(pos),
                key: key,
                value: $.prepareForSerialization(value)
@@ -368,8 +382,8 @@ window.live = (function () {
             $.respondSuccess();
          },
 
-         move: function ({path, fwd}) {
-            let {parent, key} = $.parentKeyAt(path);
+         move: function ({mid, path, fwd}) {
+            let {parent, key} = $.parentKeyAt($.moduleRoot(mid), path);
             let value = parent[key];
             let newPos;
          
@@ -387,10 +401,12 @@ window.live = (function () {
             $.persist([
                {
                   type: 'delete',
+                  mid,
                   path: path
                }, 
                {
                   type: 'insert',
+                  mid,
                   path: newPath,
                   key: Array.isArray(parent) ? null : key,
                   value: $.prepareForSerialization(value)
@@ -399,8 +415,8 @@ window.live = (function () {
             $.respondSuccess(newPath);
          },
 
-         deleteEntry: function ({path}) {
-            let {parent, key} = $.parentKeyAt(path);
+         deleteEntry: function ({mid, path}) {
+            let {parent, key} = $.parentKeyAt($.moduleRoot(mid), path);
 
             if (Array.isArray(parent)) {
                parent.splice(path[path.length - 1], 1);
@@ -411,6 +427,7 @@ window.live = (function () {
 
             $.persist({
                type: 'delete',
+               mid,
                path: path
             });
             $.respondSuccess();

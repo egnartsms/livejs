@@ -1,9 +1,9 @@
 import sublime
 
+from live.util import first_such, tracking_last
 from live.sublime_util.hacks import set_viewport_position
 from live.sublime_util.technical_command import run_technical_command
 from live.sublime_util.selection import set_selection
-from live.util import tracking_last
 from ..common import read_only_set_to, make_js_value_inserter, add_hidden_regions
 from .cursor import Cursor
 from .view_info import info_for
@@ -11,6 +11,33 @@ from .nodes import JsObject, JsArray, JsLeaf
 
 
 CODE_BROWSER_VIEW_NAME = "LiveJS: Code Browser"
+
+
+def find_module_browser(window, module):
+    return first_such(
+        view for view in window.views()
+        if view.settings().get('livejs_view') == 'Code Browser' and
+        view.settings().get('livejs_module_id') == module.id
+    )
+
+
+def new_module_browser(window, module):
+    view = window.new_file()
+    view.settings().set('livejs_view', 'Code Browser')
+    view.settings().set('livejs_module_id', module.id)
+    view.set_name(module_browser_view_name(module))
+    view.set_scratch(True)
+    view.set_read_only(True)
+    view.set_syntax_file('Packages/JavaScript/JavaScript.sublime-syntax')
+    return view
+
+
+def module_browser_view_name(module):
+    return "LiveJS: {}".format(module.name)
+
+
+def is_module_browser(view):
+    return view.settings().get('livejs_view') == 'Code Browser'
 
 
 def insert_js_value(view, inserter):
@@ -355,7 +382,7 @@ def delete_node(view, edit, path):
 def insert_node(view, edit, path, key, value):
     vinfo = info_for(view)
     path, new_index = path[:-1], path[-1]
-    parent = info_for(view).root.value_node_at(path)
+    parent = vinfo.root.value_node_at(path)
     nesting = parent.nesting + 1
 
     if (key is not None) != parent.is_object:

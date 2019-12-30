@@ -75,7 +75,7 @@ class LivejsCbMoveSelInside(sublime_plugin.TextCommand):
         if node is None:
             return  # should not normally happen
 
-        if node.is_leaf or not node:
+        if node.is_leaf or node.num_children == 0:
             return
 
         if into_key and node.is_object:

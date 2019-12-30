@@ -5,6 +5,10 @@
     },
     {
         "caption": "LiveJS: Add module",
-        "command": "add_module"
+        "command": "livejs_add_module"
+    },
+    {
+        "caption": "LiveJS: Browse module",
+        "command": "livejs_browse_module"
     }
 ]

@@ -18,7 +18,6 @@ class Saver:
         self.most_recent_request_moment = None
 
     def request_save(self, view):
-        return
         if not any(vw == view for vw in self.views):
             self.views.append(view)
         if self.most_recent_request_moment is None:

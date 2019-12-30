@@ -11,10 +11,10 @@ from .operations import load_modules
 from .datastructures import Module
 
 
-__all__ = ['AddModule']
+__all__ = ['LivejsAddModule']
 
 
-class AddModule(sublime_plugin.WindowCommand):
+class LivejsAddModule(sublime_plugin.WindowCommand):
     def run(self):
         view = self.window.active_view()
         if view.settings().get('syntax') !=\

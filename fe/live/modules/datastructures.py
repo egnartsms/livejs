@@ -1,3 +1,7 @@
+from live.gstate import fe_modules
+from live.util import first_such, eraise
+
+
 _module_id_counter = 1
 
 
@@ -21,3 +25,11 @@ class Module:
             setattr(self, k, v)
         if 'id' not in attrs:
             self.id = gen_new_module_id()
+
+    @staticmethod
+    def with_id(mid):
+        module = first_such(m for m in fe_modules if m.id == mid)
+        if module is None:
+            eraise("Not found a module with ID: {}", mid)
+
+        return module

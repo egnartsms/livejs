@@ -4,14 +4,16 @@ import sublime_plugin
 import re
 from functools import partial
 
-from live.util import first_such
-from live.gstate import ws_handler
+from live.gstate import fe_modules
 from live.sublime_util.technical_command import run_technical_command
 from live.sublime_util.selection import set_selection
+from live.modules.datastructures import Module
 from live.comm import be_interaction
 from .view_info import info_for
 from .operations import (
-    CODE_BROWSER_VIEW_NAME,
+    find_module_browser,
+    new_module_browser,
+    is_module_browser,
     edit_region_contents,
     edit_node,
     enclosing_edit_region,
@@ -24,35 +26,55 @@ from .operations import (
     find_insert_position,
     get_single_selected_node
 )
+from .command import ModuleBrowserCommand
 
 
 __all__ = [
-    'LivejsCbRefresh', 'LivejsCbEdit', 'LivejsCbCommit', 'LivejsCbCancelEdit',
-    'LivejsCbDelNode', 'LivejsCbMoveNodeFwd', 'LivejsCbMoveNodeBwd', 'LivejsCbAddNode'
+    'LivejsCbRefresh', 'LivejsBrowseModule', 'LivejsCbEdit', 'LivejsCbCommit',
+    'LivejsCbCancelEdit', 'LivejsCbDelNode', 'LivejsCbMoveNodeFwd', 'LivejsCbMoveNodeBwd',
+    'LivejsCbAddNode'
 ]
 
 
-class LivejsCbRefresh(sublime_plugin.WindowCommand):
+class LivejsCbRefresh(ModuleBrowserCommand):
     @be_interaction
-    def run(self):
-        if not ws_handler.is_connected:
-            sublime.error_message("BE is not connected")
+    def run(self, edit):
+        if not is_module_browser(self.view):
+            self.view.window().status_message("Not a LiveJS module browser")
             return
 
-        cbv = first_such(view for view in self.window.views()
-                         if view.settings().get('livejs_view') == 'Code Browser')
-        if cbv is None:
-            cbv = self.window.new_file()
-            cbv.settings().set('livejs_view', 'Code Browser')
-            cbv.set_name(CODE_BROWSER_VIEW_NAME)
-            cbv.set_scratch(True)
-            cbv.set_read_only(True)
-            cbv.set_syntax_file('Packages/JavaScript/JavaScript.sublime-syntax')
+        done_editing(self.view)
+        entries = yield 'sendAllEntries', {'mid': self.mid}
+        # We cannot use the 'edit' argument here since the command is already run, we've
+        # already yielded.
+        run_technical_command(self.view, partial(refresh, entries=entries))
 
-        done_editing(cbv)
 
-        entries = yield 'sendAllEntries', {}
-        run_technical_command(cbv, partial(refresh, entries=entries))
+class LivejsBrowseModule(sublime_plugin.WindowCommand):
+    @be_interaction
+    def run(self, module_id):
+        module = Module.with_id(module_id)
+        view = find_module_browser(self.window, module)
+        if view is None:
+            view = new_module_browser(self.window, module)
+            entries = yield 'sendAllEntries', {'mid': module.id}
+            run_technical_command(view, partial(refresh, entries=entries))
+        else:
+            self.window.focus_view(view)
+
+    def input(self, args):
+        return ModuleInputHandler()
+
+
+class ModuleInputHandler(sublime_plugin.ListInputHandler):
+    def name(self):
+        return 'module_id'
+
+    def list_items(self):
+        return [
+            (fe_m.name, fe_m.id)
+            for fe_m in fe_modules
+        ]
 
 
 class LivejsCbEdit(sublime_plugin.TextCommand):
@@ -72,7 +94,7 @@ class LivejsCbEdit(sublime_plugin.TextCommand):
         edit_node(node)
 
 
-class LivejsCbCommit(sublime_plugin.TextCommand):
+class LivejsCbCommit(ModuleBrowserCommand):
     @be_interaction
     def run(self, edit):
         vinfo = info_for(self.view)
@@ -80,12 +102,9 @@ class LivejsCbCommit(sublime_plugin.TextCommand):
             return  # shoult not normally happen
 
         if vinfo.is_editing_new_node:
-            committed = yield from self._commit_new_node_edit()
+            yield from self._commit_new_node_edit()
         else:
-            committed = yield from self._commit_node_edit()
-
-        if committed:
-            self.view.set_status('livejs_pending', "LiveJS: back-end is processing..")
+            yield from self._commit_node_edit()
 
     def _commit_new_node_edit(self):
         vinfo = info_for(self.view)
@@ -96,22 +115,26 @@ class LivejsCbCommit(sublime_plugin.TextCommand):
                           js_entered, re.DOTALL)
             if mo is None:
                 self.view.window().status_message("Invalid object entry")
-                return False
+                return
+
+            self.set_status_be_pending()
 
             yield 'addObjectEntry', {
+                'mid': self.mid,
                 'parentPath': vinfo.new_node_parent.path,
                 'pos': vinfo.new_node_position,
                 'key': mo.group(1),
                 'codeValue': mo.group(2)
             }
         else:
+            self.set_status_be_pending()
+
             yield 'addArrayEntry', {
+                'mid': self.mid,
                 'parentPath': vinfo.new_node_parent.path,
                 'pos': vinfo.new_node_position,
                 'codeValue': js_entered
             }
-
-        return True
 
     def _commit_node_edit(self):
         vinfo = info_for(self.view)
@@ -121,22 +144,26 @@ class LivejsCbCommit(sublime_plugin.TextCommand):
         if node.is_key:
             if not re.match(r'[a-zA-Z0-9_$]+$', js_entered):
                 self.view.window().status_message("Invalid JS identifier")
-                return False
+                return
+
+            self.set_status_be_pending()
 
             yield 'renameKey', {
+                'mid': self.mid,
                 'path': node.path,
                 'newName': js_entered
             }
         else:
+            self.set_status_be_pending()
+
             yield 'replace', {
+                'mid': self.mid,
                 'path': node.path,
                 'codeNewValue': js_entered
             }
 
-        return True
 
-
-class LivejsCbCancelEdit(sublime_plugin.TextCommand):
+class LivejsCbCancelEdit(ModuleBrowserCommand):
     @be_interaction
     def run(self, edit):
         vinfo = info_for(self.view)
@@ -150,20 +177,26 @@ class LivejsCbCancelEdit(sublime_plugin.TextCommand):
 
         node = vinfo.node_being_edited
         if node.is_key:
-            new_name = yield 'getKeyAt', {'path': node.path}
+            new_name = yield 'getKeyAt', {
+                'mid': self.mid,
+                'path': node.path
+            }
             run_technical_command(
                 self.view,
                 partial(replace_key_node, path=node.path, new_name=new_name)
             )
         else:
-            new_value = yield 'getValueAt', {'path': node.path}
+            new_value = yield 'getValueAt', {
+                'mid': self.mid,
+                'path': node.path
+            }
             run_technical_command(
                 self.view,
                 partial(replace_value_node, path=node.path, new_value=new_value)
             )
 
 
-class LivejsCbMoveNodeFwd(sublime_plugin.TextCommand):
+class LivejsCbMoveNodeFwd(ModuleBrowserCommand):
     @be_interaction
     def run(self, edit):
         node = get_single_selected_node(self.view)
@@ -171,6 +204,7 @@ class LivejsCbMoveNodeFwd(sublime_plugin.TextCommand):
             return  # should not normally happen, protected by key binding context
 
         new_path = yield 'move', {
+            'mid': self.mid,
             'path': node.path,
             'fwd': True
         }
@@ -179,7 +213,7 @@ class LivejsCbMoveNodeFwd(sublime_plugin.TextCommand):
         set_selection(self.view, to_reg=node.region, show=True)
 
 
-class LivejsCbMoveNodeBwd(sublime_plugin.TextCommand):
+class LivejsCbMoveNodeBwd(ModuleBrowserCommand):
     @be_interaction
     def run(self, edit):
         node = get_single_selected_node(self.view)
@@ -187,6 +221,7 @@ class LivejsCbMoveNodeBwd(sublime_plugin.TextCommand):
             return  # should not normally happen, protected by key binding context
 
         new_path = yield 'move', {
+            'mid': self.mid,
             'path': node.path,
             'fwd': False
         }
@@ -195,7 +230,7 @@ class LivejsCbMoveNodeBwd(sublime_plugin.TextCommand):
         set_selection(self.view, to_reg=node.region, show=True)
 
 
-class LivejsCbDelNode(sublime_plugin.TextCommand):
+class LivejsCbDelNode(ModuleBrowserCommand):
     @be_interaction
     def run(self, edit):
         node = get_single_selected_node(self.view)
@@ -204,6 +239,7 @@ class LivejsCbDelNode(sublime_plugin.TextCommand):
             return
 
         yield 'deleteEntry', {
+            'mid': self.mid,
             'path': node.path
         }
 
