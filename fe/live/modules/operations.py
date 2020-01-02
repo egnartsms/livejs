@@ -11,11 +11,6 @@ def synch_modules_with_be():
 
     if len(be_modules) == 1:
         # BE has no loaded modules (the bootstrapping one is not counted)
-        [mdl] = be_modules
-        if mdl['name'] != config.live_module_name or mdl['path'] is not None:
-            sublime.error_message("BE's modules are corrupted, consider refreshing")
-            return
-
         if len(fe_modules) <= 1:
             # FE has no modules, either
             reset_fe_modules()
@@ -28,8 +23,8 @@ def synch_modules_with_be():
         set_fe_modules(be_modules)
 
 
-def load_modules(modules):
-    yield 'loadModules', {
+def load_modules_request(modules):
+    return 'loadModules', {
         'modules': [
             {
                 'id': m.id,
@@ -40,7 +35,6 @@ def load_modules(modules):
             for m in modules
         ]
     }
-    fe_modules.extend(modules)
 
 
 def file_contents(filepath):
@@ -50,23 +44,20 @@ def file_contents(filepath):
 
 def reset_fe_modules():
     """Reset FE modules to the single bootstrapping module"""
-    fe_modules[:] = [
-        Module(id=config.live_module_id,
-               name=config.live_module_name,
-               path=config.live_module_filepath)
-    ]
+    fe_modules[:] = [Module.bootstrapping()]
 
 
 def set_fe_modules(be_modules):
     """Set FE modules to whatever we received from BE"""
-    fe_modules[:] = [
+    reset_fe_modules()
+    fe_modules.extend(
         Module(id=be_m['id'], name=be_m['name'], path=be_m['path'])
         for be_m in be_modules
-    ]
-    set_module_counter(max(be_m['id'] for be_m in be_modules))
+        if be_m['id'] != config.bootstrapping_module_id
+    )
+    set_module_counter(max(m.id for m in fe_modules))
 
 
 def load_fe_modules_into_be():
-    modules = [m for m in fe_modules if m.id != config.live_module_id]
-    reset_fe_modules()
-    yield from load_modules(modules)
+    modules = [m for m in fe_modules if not m.is_bootstrapping]
+    yield load_modules_request(modules)

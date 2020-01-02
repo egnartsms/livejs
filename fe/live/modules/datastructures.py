@@ -1,4 +1,4 @@
-from live.gstate import fe_modules
+from live.gstate import fe_modules, config
 from live.util import first_such, eraise
 
 
@@ -25,6 +25,18 @@ class Module:
             setattr(self, k, v)
         if 'id' not in attrs:
             self.id = gen_new_module_id()
+
+    @classmethod
+    def bootstrapping(cls):
+        return cls(
+            id=config.bootstrapping_module_id,
+            name=config.bootstrapping_module_name,
+            path=config.bootstrapping_module_filepath
+        )
+
+    @property
+    def is_bootstrapping(self):
+        return self.id == config.bootstrapping_module_id
 
     @staticmethod
     def with_id(mid):

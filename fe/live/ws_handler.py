@@ -26,6 +26,8 @@ class WsHandler:
             eraise("WsHandler attempted to connect while already connected")
         self.websocket = websocket
         print("LiveJS: BE websocket connected")
+        # TODO: synch_modules_with_be is decorated with @be_interaction which ignores
+        # if we're already interacting with the BE.  This feels dirty.
         sublime.set_timeout(synch_modules_with_be, 0)
 
     def disconnect(self):

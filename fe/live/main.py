@@ -10,7 +10,7 @@ from live.ws_handler import ws_handler
 from live.code import *  # noqa
 from live.sublime_util import *  # noqa
 from live.modules import *  # noqa
-
+from live.repl import *  # noqa
 
 g_el = EventLoop()
 

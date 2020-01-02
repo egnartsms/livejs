@@ -1,7 +1,13 @@
 [
     {
         "keys": ["ctrl+alt+r"],
-        "command": "livejs_cb_refresh"
+        "command": "livejs_cb_refresh",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "Code Browser"
+            }
+        ]
     },
     {
         "keys": ["s"],

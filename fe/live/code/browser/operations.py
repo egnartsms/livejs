@@ -28,7 +28,7 @@ def new_module_browser(window, module):
     view.set_name(module_browser_view_name(module))
     view.set_scratch(True)
     view.set_read_only(True)
-    view.set_syntax_file('Packages/JavaScript/JavaScript.sublime-syntax')
+    view.assign_syntax('Packages/JavaScript/JavaScript.sublime-syntax')
     return view
 
 

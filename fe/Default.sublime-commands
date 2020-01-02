@@ -10,5 +10,9 @@
     {
         "caption": "LiveJS: Browse module",
         "command": "livejs_browse_module"
+    },
+    {
+        "caption": "LiveJS: Open REPL",
+        "command": "livejs_open_repl"
     }
 ]

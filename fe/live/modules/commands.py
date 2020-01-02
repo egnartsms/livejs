@@ -7,7 +7,7 @@ from functools import partial
 
 from live.gstate import fe_modules
 from live.comm import be_interaction
-from .operations import load_modules
+from .operations import load_modules_request
 from .datastructures import Module
 
 
@@ -49,5 +49,6 @@ class LivejsAddModule(sublime_plugin.WindowCommand):
             return
 
         new_module = Module(name=module_name, path=view.file_name())
-        yield from load_modules([new_module])
+        yield load_modules_request([new_module])
+        fe_modules.append(new_module)
         self.window.status_message("Module {} added!".format(module_name))

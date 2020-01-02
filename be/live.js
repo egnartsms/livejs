@@ -49,6 +49,195 @@ window.live = (function () {
          }
       },
 
+      requestHandlers: {
+         getKeyAt: function ({mid, path}) {
+            $.respondSuccess($.keyAt($.moduleRoot(mid), path));
+         },
+         getValueAt: function ({mid, path}) {
+            $.respondSuccess(
+               $.prepareForSerialization($.valueAt($.moduleRoot(mid), path))
+            );
+         },
+         sendAllEntries: function ({mid}) {
+            let result = [];
+            let module =  $.moduleRoot(mid);
+         
+            for (let [key, value] of $.entries(module)) {
+               if (module.nontrackedKeys && module.nontrackedKeys.includes(key)) {
+                  result.push([key, $.prepareForSerialization('new Object()')])
+               }
+               else {
+                  result.push([key, $.prepareForSerialization(value)]);   
+               }
+            }
+         
+            $.respondSuccess(result);
+         },
+         replace: function ({mid, path, codeNewValue}) {
+            let 
+               {parent, key} = $.parentKeyAt($.modulesRoot(mid), path),
+               newValue = $.evalExpr(codeNewValue);
+         
+            parent[key] = newValue;
+         
+            $.persist({
+               type: 'replace',
+               mid,
+               path,
+               newValue: $.prepareForSerialization(newValue)
+            });
+            $.respondSuccess();
+         },
+         renameKey: function ({mid, path, newName}) {
+            let {parent, key} = $.parentKeyAt($.moduleRoot(mid), path);
+         
+            $.checkObject(parent);
+         
+            if ($.hasOwnProperty(parent, newName)) {
+               $.respondFailure(`Cannot rename to ${newName}: duplicate property name`);
+               return;
+            }
+         
+            let ordkeys = $.ensureOrdkeys(parent);
+            ordkeys[ordkeys.indexOf(key)] = newName;
+            parent[newName] = parent[key];
+            delete parent[key];
+         
+            $.persist({
+               type: 'rename_key',
+               mid,
+               path,
+               newName
+            });
+            $.respondSuccess();
+         },
+         addArrayEntry: function ({mid, parentPath, pos, codeValue}) {
+            let parent = $.valueAt($.moduleRoot(mid), parentPath);
+            let value = $.evalExpr(codeValue);
+         
+            $.checkArray(parent);
+         
+            parent.splice(pos, 0, value);
+         
+            $.persist({
+               type: 'insert',
+               mid,
+               path: parentPath.concat(pos),
+               key: null,
+               value: $.prepareForSerialization(value)
+            });
+            $.respondSuccess();
+         },
+         addObjectEntry: function ({mid, parentPath, pos, key, codeValue}) {
+            let parent = $.valueAt($.moduleRoot(mid), parentPath);
+            let value = $.evalExpr(codeValue);
+         
+            $.checkObject(parent);
+            if ($.hasOwnProperty(parent, key)) {
+               throw new Error(`Cannot insert property ${key}: it already exists`);
+            }
+         
+            $.insertProp(parent, key, value, pos);   
+         
+            $.persist({
+               type: 'insert',
+               mid,
+               path: parentPath.concat(pos),
+               key: key,
+               value: $.prepareForSerialization(value)
+            });
+            $.respondSuccess();
+         },
+         move: function ({mid, path, fwd}) {
+            let {parent, key} = $.parentKeyAt($.moduleRoot(mid), path);
+            let value = parent[key];
+            let newPos;
+         
+            if (Array.isArray(parent)) {
+               newPos = $.moveArrayItem(parent, key, fwd);
+            }
+            else {
+               let props = $.ensureOrdkeys(parent);
+               newPos = $.moveArrayItem(props, props.indexOf(key), fwd);
+            }
+         
+            let newPath = path.slice(0, -1);
+            newPath.push(newPos);
+         
+            $.persist([
+               {
+                  type: 'delete',
+                  mid,
+                  path: path
+               }, 
+               {
+                  type: 'insert',
+                  mid,
+                  path: newPath,
+                  key: Array.isArray(parent) ? null : key,
+                  value: $.prepareForSerialization(value)
+               }
+            ]);
+            $.respondSuccess(newPath);
+         },
+         deleteEntry: function ({mid, path}) {
+            let {parent, key} = $.parentKeyAt($.moduleRoot(mid), path);
+         
+            if (Array.isArray(parent)) {
+               parent.splice(path[path.length - 1], 1);
+            }
+            else {
+               $.deleteProp(parent, key);
+            }
+         
+            $.persist({
+               type: 'delete',
+               mid,
+               path: path
+            });
+            $.respondSuccess();
+         },
+         sendModules: function () {
+            $.respondSuccess(
+               Object.values($.modules).map(m => ({
+                  id: m.id,
+                  name: m.name,
+                  path: m.path
+               }))
+            );
+         },
+         loadModules: function ({modules}) {
+            // modules: [{id, name, path, source}]
+            //
+            // We keep module names unique.
+            function isModuleOk({name, id}) {
+               return (
+                  !$.hasOwnProperty($.modules, id) &&
+                  Object.values($.modules).every(({xname}) => xname !== name)
+               );
+            }
+         
+            if (!modules.every(isModuleOk)) {
+               throw new Error(`Cannot add modules: duplicates found`);
+            }
+         
+            let values = modules.map(({source}) => $.evalExpr(source));
+         
+            for (let i = 0; i < modules.length; i += 1) {
+               let m = modules[i], value = values[i];
+         
+               $.modules[m['id']] = {
+                  id: m['id'],
+                  name: m['name'],
+                  path: m['path'],
+                  value: value
+               };
+            }
+         
+            $.respondSuccess();
+         }
+      },
+
       send: function (message) {
          $.socket.send(JSON.stringify(message));
       },
@@ -274,205 +463,6 @@ window.live = (function () {
 
       moduleRoot: function (mid) {
          return $.modules[mid].value;
-      },
-
-      requestHandlers: {
-         getKeyAt: function ({mid, path}) {
-            $.respondSuccess($.keyAt($.moduleRoot(mid), path));
-         },
-
-         getValueAt: function ({mid, path}) {
-            $.respondSuccess(
-               $.prepareForSerialization($.valueAt($.moduleRoot(mid), path))
-            );
-         },
-
-         sendAllEntries: function ({mid}) {
-            let result = [];
-            let module =  $.moduleRoot(mid);
-
-            for (let [key, value] of $.entries(module)) {
-               if (module.nontrackedKeys && module.nontrackedKeys.includes(key)) {
-                  result.push([key, $.prepareForSerialization('new Object()')])
-               }
-               else {
-                  result.push([key, $.prepareForSerialization(value)]);   
-               }
-            }
-         
-            $.respondSuccess(result);
-         },
-
-         replace: function ({mid, path, codeNewValue}) {
-            let 
-               {parent, key} = $.parentKeyAt($.modulesRoot(mid), path),
-               newValue = $.evalExpr(codeNewValue);
-
-            parent[key] = newValue;
-
-            $.persist({
-               type: 'replace',
-               mid,
-               path,
-               newValue: $.prepareForSerialization(newValue)
-            });
-            $.respondSuccess();
-         },
-
-         renameKey: function ({mid, path, newName}) {
-            let {parent, key} = $.parentKeyAt($.moduleRoot(mid), path);
-
-            $.checkObject(parent);
-
-            if ($.hasOwnProperty(parent, newName)) {
-               $.respondFailure(`Cannot rename to ${newName}: duplicate property name`);
-               return;
-            }
-
-            let ordkeys = $.ensureOrdkeys(parent);
-            ordkeys[ordkeys.indexOf(key)] = newName;
-            parent[newName] = parent[key];
-            delete parent[key];
-
-            $.persist({
-               type: 'rename_key',
-               mid,
-               path,
-               newName
-            });
-            $.respondSuccess();
-         },
-
-         addArrayEntry: function ({mid, parentPath, pos, codeValue}) {
-            let parent = $.valueAt($.moduleRoot(mid), parentPath);
-            let value = $.evalExpr(codeValue);
-         
-            $.checkArray(parent);
-         
-            parent.splice(pos, 0, value);
-         
-            $.persist({
-               type: 'insert',
-               mid,
-               path: parentPath.concat(pos),
-               key: null,
-               value: $.prepareForSerialization(value)
-            });
-            $.respondSuccess();
-         },
-
-         addObjectEntry: function ({mid, parentPath, pos, key, codeValue}) {
-            let parent = $.valueAt($.moduleRoot(mid), parentPath);
-            let value = $.evalExpr(codeValue);
-         
-            $.checkObject(parent);
-            if ($.hasOwnProperty(parent, key)) {
-               throw new Error(`Cannot insert property ${key}: it already exists`);
-            }
-         
-            $.insertProp(parent, key, value, pos);   
-         
-            $.persist({
-               type: 'insert',
-               mid,
-               path: parentPath.concat(pos),
-               key: key,
-               value: $.prepareForSerialization(value)
-            });
-            $.respondSuccess();
-         },
-
-         move: function ({mid, path, fwd}) {
-            let {parent, key} = $.parentKeyAt($.moduleRoot(mid), path);
-            let value = parent[key];
-            let newPos;
-         
-            if (Array.isArray(parent)) {
-               newPos = $.moveArrayItem(parent, key, fwd);
-            }
-            else {
-               let props = $.ensureOrdkeys(parent);
-               newPos = $.moveArrayItem(props, props.indexOf(key), fwd);
-            }
-         
-            let newPath = path.slice(0, -1);
-            newPath.push(newPos);
-         
-            $.persist([
-               {
-                  type: 'delete',
-                  mid,
-                  path: path
-               }, 
-               {
-                  type: 'insert',
-                  mid,
-                  path: newPath,
-                  key: Array.isArray(parent) ? null : key,
-                  value: $.prepareForSerialization(value)
-               }
-            ]);
-            $.respondSuccess(newPath);
-         },
-
-         deleteEntry: function ({mid, path}) {
-            let {parent, key} = $.parentKeyAt($.moduleRoot(mid), path);
-
-            if (Array.isArray(parent)) {
-               parent.splice(path[path.length - 1], 1);
-            }
-            else {
-               $.deleteProp(parent, key);
-            }
-
-            $.persist({
-               type: 'delete',
-               mid,
-               path: path
-            });
-            $.respondSuccess();
-         },
-
-         sendModules: function () {
-            $.respondSuccess(
-               Object.values($.modules).map(m => ({
-                  id: m.id,
-                  name: m.name,
-                  path: m.path
-               }))
-            );
-         },
-
-         loadModules: function ({modules}) {
-            // modules: [{id, name, path, source}]
-            //
-            // We keep module names unique.
-            function isModuleOk({name, id}) {
-               return (
-                  !$.hasOwnProperty($.modules, id) &&
-                  Object.values($.modules).every(({xname}) => xname !== name)
-               );
-            }
-         
-            if (!modules.every(isModuleOk)) {
-               throw new Error(`Cannot add modules: duplicates found`);
-            }
-         
-            let values = modules.map(({source}) => $.evalExpr(source));
-         
-            for (let i = 0; i < modules.length; i += 1) {
-               let m = modules[i], value = values[i];
-         
-               $.modules[m['id']] = {
-                  id: m['id'],
-                  name: m['name'],
-                  path: m['path'],
-                  value: value
-               };
-            }
-         
-            $.respondSuccess();
-         }
       }
    };
 
