@@ -1,1 +1,1 @@
-from .codebrowser import *  # noqa
+from .browser import *  # noqa

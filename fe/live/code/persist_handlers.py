@@ -5,7 +5,7 @@ from functools import partial, wraps
 from live.sublime_util.technical_command import run_technical_command
 from live.sublime_util.on_view_loaded import on_load
 from live.modules.datastructures import Module
-from .codebrowser import operations as codebrowser
+from .browser import operations as browser
 from .persist import operations as persist
 
 
@@ -19,7 +19,7 @@ def persist_handler(fn):
     @wraps(fn)
     def wrapper(request):
         module = Module.with_id(request['mid'])
-        view_browser = codebrowser.find_module_browser(sublime.active_window(), module)
+        view_browser = browser.find_module_browser(sublime.active_window(), module)
         view_source = open_module_source_view(sublime.active_window(), module.path)
         fn(request, view_browser, view_source)
 
@@ -40,7 +40,7 @@ def open_module_source_view(window, filepath):
 def replace(request, view_browser, view_source):
     run_technical_command(
         view_browser,
-        partial(codebrowser.replace_value_node,
+        partial(browser.replace_value_node,
                 path=request['path'], new_value=request['newValue'])
     )
 
@@ -57,7 +57,7 @@ def replace(request, view_browser, view_source):
 def rename_key(request, view_browser, view_source):
     run_technical_command(
         view_browser,
-        partial(codebrowser.replace_key_node,
+        partial(browser.replace_key_node,
                 path=request['path'],
                 new_name=request['newName'])
     )
@@ -75,7 +75,7 @@ def rename_key(request, view_browser, view_source):
 def delete(request, view_browser, view_source):
     run_technical_command(
         view_browser,
-        partial(codebrowser.delete_node, path=request['path'])
+        partial(browser.delete_node, path=request['path'])
     )
 
     @on_load(view_source)
@@ -90,7 +90,7 @@ def delete(request, view_browser, view_source):
 def insert(request, view_browser, view_source):
     run_technical_command(
         view_browser,
-        partial(codebrowser.insert_node,
+        partial(browser.insert_node,
                 path=request['path'], key=request['key'], value=request['value'])
     )
 
