@@ -1,6 +1,3 @@
-import sublime
-import sublime_plugin
-
 from live.gstate import config
 from live.code.cursor import Cursor as BaseCursor, UnexpectedContents
 
@@ -11,9 +8,8 @@ re_beginning = r'^[ ]{{{nspaces}}}.+?(?=\{{)'.format(nspaces=ROOT_NESTING * conf
 
 
 class Cursor(BaseCursor):
-    """Initialized to point right after the root object's opening brace"""
-
     def __init__(self, view, edit):
+        """Initialized to point right after the root object's opening brace"""
         super().__init__(0, view, edit)
         self.depth = 0
         self.is_inside_object = False

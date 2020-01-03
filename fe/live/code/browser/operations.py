@@ -1,6 +1,6 @@
 import sublime
 
-from live.util import first_such, tracking_last
+from live.util import first_such, tracking_last, eraise
 from live.sublime_util.hacks import set_viewport_position
 from live.sublime_util.technical_command import run_technical_command
 from live.sublime_util.selection import set_selection
@@ -45,40 +45,37 @@ def insert_js_value(view, inserter):
         node = JsObject()
 
         while True:
-            cmd = next(inserter)
+            cmd, region = next(inserter)
             if cmd == 'pop':
-                break
+                return node, region
 
-            key_region = cmd
-            value_node = insert_any(next(inserter))
-            value_region = next(inserter)
+            assert cmd == 'leaf'
+            key_region = region
+
+            value_node, value_region = insert_any(next(inserter))
             node.append(key_region, value_node, value_region)
-
-        return node
 
     def insert_array():
         node = JsArray()
 
         while True:
-            cmd = next(inserter)
+            cmd, arg = next(inserter)
             if cmd == 'pop':
-                break
+                return node, arg
 
-            child_node = insert_any(cmd)
-            child_region = next(inserter)
+            child_node, child_region = insert_any((cmd, arg))
             node.append(child_node, child_region)
-        
-        return node
 
     def insert_any(cmd):
-        if cmd == 'push_object':
+        if cmd[0] == 'push_object':
             return insert_object()
-        elif cmd == 'push_array':
+        elif cmd[0] == 'push_array':
             return insert_array()
-        elif cmd == 'leaf':
-            return JsLeaf()
+        elif cmd[0] == 'leaf':
+            region = cmd[1]
+            return JsLeaf(), region
         else:
-            assert 0, "Unexpected cmd: {}".format(cmd)
+            eraise("Inserter yielded smth unexpected: {}", cmd)
 
     return insert_any(next(inserter))
 
@@ -288,9 +285,10 @@ def refresh(view, edit, entries):
 
         cur.sep_keyval(nesting=0)
 
-        cur.push_region()
-        value_node = insert_js_value(view, make_js_value_inserter(cur, value, 0))
-        value_region = cur.pop_region()
+        value_node, value_region = insert_js_value(
+            view,
+            make_js_value_inserter(cur, value, 0)
+        )
 
         root.append(key_region, value_node, value_region)
         
@@ -321,13 +319,12 @@ def replace_value_node(view, edit, path, new_value):
         cur = Cursor(reg.a, view, edit)
         cur.erase(reg.b)
 
-        cur.push_region()
-        new_node = insert_js_value(
+        new_node, new_region = insert_js_value(
             view,
             make_js_value_inserter(cur, new_value, node.nesting)
         )
 
-    node.parent.replace_value_node_at(node.position, new_node, cur.pop_region())
+    node.parent.replace_value_node_at(node.position, new_node, new_region)
 
 
 def replace_key_node(view, edit, path, new_name):
@@ -420,12 +417,10 @@ def insert_node(view, edit, path, key, value):
             key_region = cur.pop_region()
             cur.sep_keyval(nesting)
         
-        cur.push_region()
-        value_node = insert_js_value(
+        value_node, value_region = insert_js_value(
             view,
             make_js_value_inserter(cur, value, nesting)
         )
-        value_region = cur.pop_region()
 
         if key is not None:
             parent.insert_at(new_index, key_region, value_node, value_region)

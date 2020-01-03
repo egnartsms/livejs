@@ -53,11 +53,13 @@ window.live = (function () {
          getKeyAt: function ({mid, path}) {
             $.respondSuccess($.keyAt($.moduleRoot(mid), path));
          },
+         
          getValueAt: function ({mid, path}) {
             $.respondSuccess(
                $.prepareForSerialization($.valueAt($.moduleRoot(mid), path))
             );
          },
+         
          sendAllEntries: function ({mid}) {
             let result = [];
             let module =  $.moduleRoot(mid);
@@ -73,6 +75,7 @@ window.live = (function () {
          
             $.respondSuccess(result);
          },
+         
          replace: function ({mid, path, codeNewValue}) {
             let 
                {parent, key} = $.parentKeyAt($.modulesRoot(mid), path),
@@ -88,6 +91,7 @@ window.live = (function () {
             });
             $.respondSuccess();
          },
+         
          renameKey: function ({mid, path, newName}) {
             let {parent, key} = $.parentKeyAt($.moduleRoot(mid), path);
          
@@ -111,6 +115,7 @@ window.live = (function () {
             });
             $.respondSuccess();
          },
+         
          addArrayEntry: function ({mid, parentPath, pos, codeValue}) {
             let parent = $.valueAt($.moduleRoot(mid), parentPath);
             let value = $.evalExpr(codeValue);
@@ -128,6 +133,7 @@ window.live = (function () {
             });
             $.respondSuccess();
          },
+         
          addObjectEntry: function ({mid, parentPath, pos, key, codeValue}) {
             let parent = $.valueAt($.moduleRoot(mid), parentPath);
             let value = $.evalExpr(codeValue);
@@ -148,6 +154,7 @@ window.live = (function () {
             });
             $.respondSuccess();
          },
+         
          move: function ({mid, path, fwd}) {
             let {parent, key} = $.parentKeyAt($.moduleRoot(mid), path);
             let value = parent[key];
@@ -180,6 +187,7 @@ window.live = (function () {
             ]);
             $.respondSuccess(newPath);
          },
+         
          deleteEntry: function ({mid, path}) {
             let {parent, key} = $.parentKeyAt($.moduleRoot(mid), path);
          
@@ -197,6 +205,7 @@ window.live = (function () {
             });
             $.respondSuccess();
          },
+         
          sendModules: function () {
             $.respondSuccess(
                Object.values($.modules).map(m => ({
@@ -206,6 +215,7 @@ window.live = (function () {
                }))
             );
          },
+         
          loadModules: function ({modules}) {
             // modules: [{id, name, path, source}]
             //
@@ -342,13 +352,13 @@ window.live = (function () {
          switch (typeof obj) {
             case 'function':
             return {
-               __leaf_type__: 'function',
+               type: 'function',
                value: obj.toString()
             };
 
             case 'string':
             return {
-               __leaf_type__: 'js-value',
+               type: 'leaf',
                value: JSON.stringify(obj)
             };
 
@@ -356,27 +366,30 @@ window.live = (function () {
             case 'boolean':
             case 'undefined':
             return {
-               __leaf_type__: 'js-value',
+               type: 'leaf',
                value: String(obj)
             };
          }
 
          if (obj === null) {
             return {
-               __leaf_type__: 'js-value',
+               type: 'leaf',
                value: 'null'
             };
          }
 
          if (Array.isArray(obj)) {
-            return Array.from(obj, prepare);
+            return {
+               type: 'array',
+               value: Array.from(obj, prepare)
+            };
          }
 
          let proto = Object.getPrototypeOf(obj);
 
          if (proto === RegExp.prototype) {
             return {
-               __leaf_type__: 'js-value',
+               type: 'leaf',
                value: obj.toString()
             };
          }
@@ -385,7 +398,12 @@ window.live = (function () {
             throw new Error(`Cannot serialize objects with non-standard prototype`);
          }
 
-         return Object.fromEntries($.keys(obj).map(k => [k, prepare(obj[k])]));
+         return {
+            type: 'object',
+            value: Object.fromEntries(
+               Array.from($.entries(obj), ([k, v]) => [k, prepare(v)])
+            )
+         };
       },
 
       nthValue: function (obj, n) {

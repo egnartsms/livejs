@@ -2,9 +2,8 @@ import sublime
 
 import re
 import contextlib
-from collections import OrderedDict
 
-from live.util import tracking_last
+from live.util import tracking_last, eraise
 
 
 def make_js_value_inserter(cur, jsval, nesting):
@@ -13,89 +12,75 @@ def make_js_value_inserter(cur, jsval, nesting):
     :param nesting: nesting of jsval at point of insertion.
 
     Yields the following commands:
-      'leaf': just inserted a leaf js value
-      'push_object': just started to lay out a js object
-      'push_array': just started to lay out a js array
-      'pop': finished to lay out whatever the current thing was (object or array)
-      sublime.Region(beg, end): Sublime region that the most recent object occupies (see
-                                example below).
-
-    The object {a: 1, b: [20, 30]} would lead to following commands generated:
-
-    push_object
-    <(a, b) of 'a'>
-    leaf
-    <(a, b) of '1'>
-    <(a, b) of 'b'>
-    push_array
-    leaf
-    <(a, b) of 20>
-    leaf
-    <(a, b) of 30>
-    pop
-    <(a, b) of [20, 30]>
-    pop
+      ('leaf', region): just inserted a leaf value
+      ('push_object', value): just started to lay out a js object
+      ('push_array', value): just started to lay out a js array
+      ('pop', region): finished to lay out whatever the current thing was (object or
+                       array)
     """
     def insert_any(jsval, nesting):
-        if isinstance(jsval, list):
-            yield from insert_array(jsval, nesting)
-            return
-        
-        assert isinstance(jsval, OrderedDict), "Got non-dict: {}".format(jsval)
-        leaf = jsval.get('__leaf_type__')
-        if leaf == 'js-value':
+        cur.push_region()
+
+        if jsval['type'] == 'leaf':
             cur.insert(jsval['value'])
-            yield 'leaf'
-        elif leaf == 'function':
-            insert_function(jsval['value'], nesting)
-            yield 'leaf'
-        else:
-            assert leaf is None
+            yield 'leaf', cur.pop_region()
+        elif jsval['type'] == 'object':
             yield from insert_object(jsval, nesting)
+            yield 'pop', cur.pop_region()
+        elif jsval['type'] == 'array':
+            yield from insert_array(jsval, nesting)
+            yield 'pop', cur.pop_region()
+        elif jsval['type'] == 'function':
+            insert_function(jsval['value'], nesting)
+            yield 'leaf', cur.pop_region()
+        else:
+            cur.pop_region()
+            eraise("Unknown type: {}", jsval['type'])
 
     def insert_array(arr, nesting):
-        yield 'push_array'
-        if not arr:
+        yield 'push_array', arr
+
+        if 'value' not in arr:
+            # This array is non-tracked, so value must be fetched separately
+            cur.insert("[..]")
+            return
+
+        if not arr['value']:
             cur.insert("[]")
-            yield 'pop'
             return
 
         cur.insert("[")
         cur.sep_initial(nesting + 1)
-        for item, islast in tracking_last(arr):
-            cur.push_region()
+        for item, islast in tracking_last(arr['value']):
             yield from insert_any(item, nesting + 1)
-            yield cur.pop_region()
             (cur.sep_terminal if islast else cur.sep_inter)(nesting + 1)
         cur.insert("]")
 
-        yield 'pop'
-
     def insert_object(obj, nesting):
-        yield 'push_object'
+        yield 'push_object', obj
 
-        if not obj:
+        if 'value' not in obj:
+            # This object is non-tracked, so value must be fetched separately
+            cur.insert("{..}")
+            return
+
+        if not obj['value']:
             cur.insert("{}")
-            yield 'pop'
             return
 
         cur.insert("{")
         cur.sep_initial(nesting + 1)
-        for (k, v), islast in tracking_last(obj.items()):
+        for (k, v), islast in tracking_last(obj['value'].items()):
             cur.push_region()
             cur.insert(k)
-            yield cur.pop_region()
+            yield 'leaf', cur.pop_region()
 
             cur.sep_keyval(nesting + 1)
 
-            cur.push_region()
             yield from insert_any(v, nesting + 1)
-            yield cur.pop_region()
 
             (cur.sep_terminal if islast else cur.sep_inter)(nesting + 1)
         cur.insert("}")
-
-        yield 'pop'
 
     def insert_function(source, nesting):
         # The last line of a function contains a single closing brace and is indented at
