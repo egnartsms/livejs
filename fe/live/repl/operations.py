@@ -1,7 +1,10 @@
+import sublime
+
+
 import collections
 import json
 
-from live.util import first_such
+from live.util import first_such, eraise
 
 
 def find_repl(window):
@@ -18,6 +21,19 @@ def new_repl(window):
     repl.set_scratch(True)
     repl.assign_syntax('Packages/LiveJS/LiveJS REPL.sublime-syntax')
     return repl
+
+
+PHANTOM_HTML = '''
+<body id="casual">
+   <style>
+     a {
+        display: block;
+        text-decoration: none;
+     }
+   </style>
+   <a href="noop">+</a>
+</body>
+'''
 
 
 BE_RESPONSE_STR = '''
@@ -60,3 +76,35 @@ BE_RESPONSE_STR = '''
 BE_RESPONSE = json.loads(BE_RESPONSE_STR, object_pairs_hook=collections.OrderedDict)
 
 
+def insert_js_value(view, inserter):
+    def insert_object():
+        while True:
+            cmd, region = next(inserter)
+            if cmd == 'pop':
+                view.add_phantom('', region, PHANTOM_HTML, sublime.LAYOUT_INLINE, None)
+                return
+
+            insert_any(next(inserter))
+
+    def insert_array():
+        while True:
+            cmd, arg = next(inserter)
+            if cmd == 'pop':
+                region = arg
+                view.add_phantom('', region, PHANTOM_HTML, sublime.LAYOUT_INLINE,
+                                 None)
+                return
+
+            insert_any((cmd, arg))
+
+    def insert_any(cmd):
+        if cmd[0] == 'push_object':
+            return insert_object()
+        elif cmd[0] == 'push_array':
+            return insert_array()
+        elif cmd[0] == 'leaf':
+            pass
+        else:
+            eraise("Inserter yielded smth unexpected: {}", cmd)
+
+    return insert_any(next(inserter))

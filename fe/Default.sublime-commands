@@ -14,5 +14,9 @@
     {
         "caption": "LiveJS: Open REPL",
         "command": "livejs_open_repl"
+    },
+    {
+        "caption": "LiveJS REPL: Send to BE",
+        "command": "livejs_repl_send"
     }
 ]

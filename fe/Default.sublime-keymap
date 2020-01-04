@@ -270,5 +270,16 @@
                 "key": "livejs_cb_view_mode"
             }
         ]
+    },
+
+    {
+        "keys": ["ctrl+enter"],
+        "command": "livejs_repl_send",
+        "context": [
+            {
+                "key": "livejs_view",
+                "operand": "REPL"
+            }
+        ]
     }
 ]

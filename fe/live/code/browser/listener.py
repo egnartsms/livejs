@@ -3,6 +3,7 @@ import sublime_plugin
 
 import operator as pyop
 
+from live.util import eraise
 from live.gstate import ws_handler
 from .operations import (
     invalidate_codebrowser,
@@ -28,20 +29,22 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
     def on_query_context(self, key, operator, operand, match_all):
         if not key.startswith('livejs_'):
             return None
-        if operator not in (sublime.OP_EQUAL, sublime.OP_NOT_EQUAL):
+
+        if operator == sublime.OP_EQUAL:
+            op = pyop.eq
+        elif operator == sublime.OP_NOT_EQUAL:
+            op = pyop.ne
+        else:
             return None
-        
-        op = pyop.eq if operator == sublime.OP_EQUAL else pyop.ne
-        if key == 'livejs_view':
-            return op(self.view.settings().get('livejs_view'), operand)
-        elif key == 'livejs_cb_exact_node_selected':
+
+        if key == 'livejs_cb_exact_node_selected':
             return op(get_single_selected_node(self.view) is not None, operand)
         elif key == 'livejs_cb_edit_mode':
             return op(info_for(self.view).is_editing, operand)
         elif key == 'livejs_cb_view_mode':
             return not op(info_for(self.view).is_editing, operand)
         else:
-            raise RuntimeError("Unknown context key: {}".format(key))
+            eraise("Unknown context key: {}", key)
 
     def on_activated(self):
         if not ws_handler.is_connected:

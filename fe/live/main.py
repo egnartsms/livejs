@@ -1,8 +1,11 @@
-import os
-import traceback
-
+import sublime
 import sublime_plugin
 
+import os
+import traceback
+import operator as pyop
+
+from live.util import eraise
 from live.lowlvl.http_server import serve
 from live.lowlvl.eventloop import EventLoop
 from live.gstate import config
@@ -53,7 +56,7 @@ def plugin_unloaded():
     print("Unloaded")
 
 
-class ToggleServerCommand(sublime_plugin.TextCommand):
+class LivejsToggleServerCommand(sublime_plugin.TextCommand):
     def run(self, edit):
         if g_el.is_coroutine_live('server'):
             stop_server()
@@ -61,6 +64,19 @@ class ToggleServerCommand(sublime_plugin.TextCommand):
             start_server()
 
 
-class LivejsIndicate(sublime_plugin.TextCommand):
-    def run(self, edit, msg):
-        self.view.window().status_message(msg)
+class QueryContextProcessor(sublime_plugin.EventListener):
+    def on_query_context(self, view, key, operator, operand, match_all):
+        if not key.startswith('livejs_'):
+            return None
+        
+        if operator == sublime.OP_EQUAL:
+            op = pyop.eq
+        elif operator == sublime.OP_NOT_EQUAL:
+            op = pyop.ne
+        else:
+            return None
+
+        if key == 'livejs_view':
+            return op(view.settings().get('livejs_view'), operand)
+        else:
+            eraise("Unknown context key: {}", key)
