@@ -40,16 +40,24 @@ def open_module_source_view(window, filepath):
 def replace(request, view_browser, view_source):
     run_technical_command(
         view_browser,
-        partial(browser.replace_value_node,
-                path=request['path'], new_value=request['newValue'])
+        lambda edit: browser.replace_value_node(
+            view=view_browser,
+            edit=edit,
+            path=request['path'],
+            new_value=request['newValue']
+        )
     )
 
     @on_load(view_source)
     def _():
         run_technical_command(
             view_source,
-            partial(persist.replace_value,
-                    path=request['path'], new_value=request['newValue'])
+            lambda edit: persist.replace_value(
+                view=view_source,
+                edit=edit,
+                path=request['path'],
+                new_value=request['newValue']
+            )
         )
 
 
@@ -57,17 +65,24 @@ def replace(request, view_browser, view_source):
 def rename_key(request, view_browser, view_source):
     run_technical_command(
         view_browser,
-        partial(browser.replace_key_node,
-                path=request['path'],
-                new_name=request['newName'])
+        lambda edit: browser.replace_key_node(
+            view=view_browser,
+            edit=edit,
+            path=request['path'],
+            new_name=request['newName']
+        )
     )
 
     @on_load(view_source)
     def _():
         run_technical_command(
             view_source,
-            partial(persist.rename_key,
-                    path=request['path'], new_name=request['newName'])
+            lambda edit: persist.rename_key(
+                view=view_source,
+                edit=edit,
+                path=request['path'],
+                new_name=request['newName']
+            )
         )
 
 
@@ -75,14 +90,22 @@ def rename_key(request, view_browser, view_source):
 def delete(request, view_browser, view_source):
     run_technical_command(
         view_browser,
-        partial(browser.delete_node, path=request['path'])
+        lambda edit: browser.delete_node(
+            view=view_browser,
+            edit=edit,
+            path=request['path']
+        )
     )
 
     @on_load(view_source)
     def _():
         run_technical_command(
             view_source,
-            partial(persist.delete, path=request['path'])
+            lambda edit: persist.delete(
+                view=view_source,
+                edit=edit,
+                path=request['path']
+            )
         )
 
 
@@ -90,14 +113,24 @@ def delete(request, view_browser, view_source):
 def insert(request, view_browser, view_source):
     run_technical_command(
         view_browser,
-        partial(browser.insert_node,
-                path=request['path'], key=request['key'], value=request['value'])
+        lambda edit: browser.insert_node(
+            view=view_browser,
+            edit=edit,
+            path=request['path'],
+            key=request['key'],
+            value=request['value']
+        )
     )
 
     @on_load(view_source)
     def _():
         run_technical_command(
             view_source,
-            partial(persist.insert,
-                    path=request['path'], key=request['key'], value=request['value'])
+            lambda edit: persist.insert(
+                view=view_source,
+                edit=edit,
+                path=request['path'],
+                key=request['key'],
+                value=request['value']
+            )
         )

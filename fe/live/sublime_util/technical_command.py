@@ -24,4 +24,4 @@ def run_technical_command(view, callback):
 
 class LivejsTechnicalCommand(sublime_plugin.TextCommand):
     def run(self, edit):
-        technical_command_callback(view=self.view, edit=edit)
+        technical_command_callback(edit=edit)

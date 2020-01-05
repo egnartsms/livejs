@@ -1,7 +1,6 @@
 import sublime_plugin
 
 import re
-from functools import partial
 
 from live.gstate import fe_modules
 from live.sublime_util.technical_command import run_technical_command
@@ -46,7 +45,10 @@ class LivejsCbRefresh(ModuleBrowserCommand):
         entries = yield 'sendAllEntries', {'mid': self.mid}
         # We cannot use the 'edit' argument here since the command is already run, we've
         # already yielded.
-        run_technical_command(self.view, partial(refresh, entries=entries))
+        run_technical_command(
+            self.view,
+            lambda edit: refresh(self.view, edit, entries)
+        )
 
 
 class LivejsBrowseModule(sublime_plugin.WindowCommand):
@@ -57,7 +59,7 @@ class LivejsBrowseModule(sublime_plugin.WindowCommand):
         if view is None:
             view = new_module_browser(self.window, module)
             entries = yield 'sendAllEntries', {'mid': module.id}
-            run_technical_command(view, partial(refresh, entries=entries))
+            run_technical_command(view, lambda edit: refresh(view, edit, entries))
         else:
             self.window.focus_view(view)
 
@@ -182,7 +184,12 @@ class LivejsCbCancelEdit(ModuleBrowserCommand):
             }
             run_technical_command(
                 self.view,
-                partial(replace_key_node, path=node.path, new_name=new_name)
+                lambda edit: replace_key_node(
+                    view=self.view,
+                    edit=edit,
+                    path=node.path,
+                    new_name=new_name
+                )
             )
         else:
             new_value = yield 'getValueAt', {
@@ -191,7 +198,12 @@ class LivejsCbCancelEdit(ModuleBrowserCommand):
             }
             run_technical_command(
                 self.view,
-                partial(replace_value_node, path=node.path, new_value=new_value)
+                lambda edit: replace_value_node(
+                    view=self.view,
+                    edit=edit,
+                    path=node.path,
+                    new_value=new_value
+                )
             )
 
 

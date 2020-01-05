@@ -1,8 +1,11 @@
 import time
 
 
-def eraise(msg, *args, **kwargs):
-    raise RuntimeError(msg.format(*args, **kwargs))
+def eraise(msg=None, *args, **kwargs):
+    if msg is None:
+        raise RuntimeError
+    else:
+        raise RuntimeError(msg.format(*args, **kwargs))
 
 
 def first_such(gen):
@@ -92,3 +95,8 @@ class Proxy:
 
 def _get_proxy_target(proxy):
     return object.__getattribute__(proxy, 'target_getter')()
+
+
+class FreeObj:
+    def __init__(self, **attrs):
+        self.__dict__.update(attrs)

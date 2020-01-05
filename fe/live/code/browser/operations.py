@@ -41,43 +41,43 @@ def is_module_browser(view):
 
 
 def insert_js_value(view, inserter):
+    """Return (node, region)"""
     def insert_object():
         node = JsObject()
 
         while True:
-            cmd, region = next(inserter)
+            cmd, args = next(inserter)
             if cmd == 'pop':
-                return node, region
+                return node, args.region
 
             assert cmd == 'leaf'
-            key_region = region
+            key_region = args.region
 
-            value_node, value_region = insert_any(next(inserter))
+            value_node, value_region = insert_any(*next(inserter))
             node.append(key_region, value_node, value_region)
 
     def insert_array():
         node = JsArray()
 
         while True:
-            cmd, arg = next(inserter)
+            cmd, args = next(inserter)
             if cmd == 'pop':
-                return node, arg
+                return node, args.region
 
-            child_node, child_region = insert_any((cmd, arg))
+            child_node, child_region = insert_any(cmd, args)
             node.append(child_node, child_region)
 
-    def insert_any(cmd):
-        if cmd[0] == 'push_object':
+    def insert_any(cmd, args):
+        if cmd == 'push_object':
             return insert_object()
-        elif cmd[0] == 'push_array':
+        elif cmd == 'push_array':
             return insert_array()
-        elif cmd[0] == 'leaf':
-            region = cmd[1]
-            return JsLeaf(), region
+        elif cmd == 'leaf':
+            return JsLeaf(), args.region
         else:
-            eraise("Inserter yielded smth unexpected: {}", cmd)
+            assert 0, "Inserter yielded unknown command: {}".format(cmd)
 
-    return insert_any(next(inserter))
+    return insert_any(*next(inserter))
 
 
 def find_containing_node(view, xreg, strict=False):
@@ -255,7 +255,7 @@ def done_editing(view):
 
 
 def invalidate_codebrowser(view):
-    def go(view, edit):
+    def go(edit):
         with read_only_set_to(view, False):
             view.replace(edit, sublime.Region(0, view.size()),
                          "<<<<< Codebrowser contents outdated. Please refresh! >>>>>")

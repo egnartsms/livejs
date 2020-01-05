@@ -75,6 +75,10 @@ class Cursor:
         beg = self.retain_stack.pop()
         self.erase(beg)
 
+    def replace(self, upto, new_text):
+        self.view.replace(self.edit, sublime.Region(self.pos, upto), new_text)
+        self.pos = (upto if upto < self.pos else self.pos) + len(new_text)
+
     def find(self, pattern):
         return self.view.find(pattern, self.pos)
 

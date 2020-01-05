@@ -14,8 +14,7 @@ def replace_value(view, edit, path, new_value):
     cur.moveto_entry_end()
     cur.pop_erase()
     
-    itr = make_js_value_inserter(cur, new_value, ROOT_NESTING + len(path))
-    while next(itr, None):
+    for _ in make_js_value_inserter(cur, new_value, ROOT_NESTING + len(path)):
         pass
 
     saver.request_save(view)

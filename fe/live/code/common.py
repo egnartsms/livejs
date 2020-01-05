@@ -3,7 +3,7 @@ import sublime
 import re
 import contextlib
 
-from live.util import tracking_last, eraise
+from live.util import tracking_last, FreeObj
 
 
 def make_js_value_inserter(cur, jsval, nesting):
@@ -12,37 +12,39 @@ def make_js_value_inserter(cur, jsval, nesting):
     :param nesting: nesting of jsval at point of insertion.
 
     Yields the following commands:
-      ('leaf', region): just inserted a leaf value
-      ('push_object', value): just started to lay out a js object
-      ('push_array', value): just started to lay out a js array
-      ('pop', region): finished to lay out whatever the current thing was (object or
-                       array)
+
+      * 'push_object', None: starting to lay out a js object
+      * 'push_array', None: starting to lay out a js array
+      * 'pop', obj(region, jsvalue): finished to lay out whatever the current thing was
+                                  (object or array)
+      * 'leaf', obj(region, jsvalue): just inserted a leaf value
+
     """
     def insert_any(jsval, nesting):
         cur.push_region()
 
         if jsval['type'] == 'leaf':
             cur.insert(jsval['value'])
-            yield 'leaf', cur.pop_region()
-        elif jsval['type'] == 'object':
-            yield from insert_object(jsval, nesting)
-            yield 'pop', cur.pop_region()
-        elif jsval['type'] == 'array':
-            yield from insert_array(jsval, nesting)
-            yield 'pop', cur.pop_region()
+            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=jsval)
         elif jsval['type'] == 'function':
             insert_function(jsval['value'], nesting)
-            yield 'leaf', cur.pop_region()
+            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=jsval)
+        elif jsval['type'] == 'object':
+            yield from insert_object(jsval, nesting)
+            yield 'pop', FreeObj(region=cur.pop_region(), jsval=jsval)
+        elif jsval['type'] == 'array':
+            yield from insert_array(jsval, nesting)
+            yield 'pop', FreeObj(region=cur.pop_region(), jsval=jsval)
         else:
             cur.pop_region()
-            eraise("Unknown type: {}", jsval['type'])
+            assert 0, "Unknown type: {}".format(jsval['type'])
 
     def insert_array(arr, nesting):
-        yield 'push_array', arr
+        yield 'push_array', None
 
         if 'value' not in arr:
             # This array is non-tracked, so value must be fetched separately
-            cur.insert("[..]")
+            cur.insert("[...]")
             return
 
         if not arr['value']:
@@ -57,11 +59,11 @@ def make_js_value_inserter(cur, jsval, nesting):
         cur.insert("]")
 
     def insert_object(obj, nesting):
-        yield 'push_object', obj
+        yield 'push_object', None
 
         if 'value' not in obj:
             # This object is non-tracked, so value must be fetched separately
-            cur.insert("{..}")
+            cur.insert("{...}")
             return
 
         if not obj['value']:
@@ -73,7 +75,7 @@ def make_js_value_inserter(cur, jsval, nesting):
         for (k, v), islast in tracking_last(obj['value'].items()):
             cur.push_region()
             cur.insert(k)
-            yield 'leaf', cur.pop_region()
+            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=k)
 
             cur.sep_keyval(nesting + 1)
 

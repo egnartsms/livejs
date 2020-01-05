@@ -4,7 +4,8 @@ import sublime
 import collections
 import json
 
-from live.util import first_such, eraise
+from live.util import first_such
+from .nodes import Node
 
 
 def find_repl(window):
@@ -21,19 +22,6 @@ def new_repl(window):
     repl.set_scratch(True)
     repl.assign_syntax('Packages/LiveJS/LiveJS REPL.sublime-syntax')
     return repl
-
-
-PHANTOM_HTML = '''
-<body id="casual">
-   <style>
-     a {
-        display: block;
-        text-decoration: none;
-     }
-   </style>
-   <a href="noop">+</a>
-</body>
-'''
 
 
 BE_RESPONSE_STR = '''
@@ -77,34 +65,37 @@ BE_RESPONSE = json.loads(BE_RESPONSE_STR, object_pairs_hook=collections.OrderedD
 
 
 def insert_js_value(view, inserter):
+    """Create Node instances which are inaccessible as of now.
+
+    They exist only for the sake of phantoms
+    """
     def insert_object():
         while True:
-            cmd, region = next(inserter)
+            cmd, args = next(inserter)
             if cmd == 'pop':
-                view.add_phantom('', region, PHANTOM_HTML, sublime.LAYOUT_INLINE, None)
+                Node(view, args.jsval, args.region)
                 return
 
-            insert_any(next(inserter))
+            insert_any(*next(inserter))
 
     def insert_array():
         while True:
-            cmd, arg = next(inserter)
+            cmd, args = next(inserter)
             if cmd == 'pop':
-                region = arg
-                view.add_phantom('', region, PHANTOM_HTML, sublime.LAYOUT_INLINE,
-                                 None)
+                Node(view, args.jsval, args.region)
                 return
 
-            insert_any((cmd, arg))
+            insert_any(cmd, args)
 
-    def insert_any(cmd):
-        if cmd[0] == 'push_object':
-            return insert_object()
-        elif cmd[0] == 'push_array':
-            return insert_array()
-        elif cmd[0] == 'leaf':
-            pass
+    def insert_any(cmd, args):
+        if cmd == 'push_object':
+            insert_object()
+        elif cmd == 'push_array':
+            insert_array()
+        elif cmd == 'leaf':
+            if args.jsval['type'] == 'function':
+                Node(view, args.jsval, args.region)
         else:
-            eraise("Inserter yielded smth unexpected: {}", cmd)
+            assert 0, "Inserter yielded unexpected command: {}".format(cmd)
 
-    return insert_any(next(inserter))
+    insert_any(*next(inserter))
