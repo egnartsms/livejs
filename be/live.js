@@ -252,10 +252,12 @@ window.live = (function () {
          
             $.respondSuccess();
          },
+
          replEval: function ({code}) {
             let obj = $.evalExpr(code);
             $.respondSuccess($.serializeInspected(obj, true));
          },
+
          inspectObjectById: function ({id}) {
             let object = $.inspected.id2obj.get(id);
             if (!object) {
@@ -264,6 +266,7 @@ window.live = (function () {
          
             $.respondSuccess($.serializeInspectedObjectDeeply(object));
          },
+
          dismissInspectedObjects: function () {
             $.dimissInspectedObjects();
             $.respondSuccess();
@@ -610,7 +613,7 @@ window.live = (function () {
          }
       
          let result = {
-            __proto__: $.serializeInspected(Object.getPrototypeOf(object), false)
+            __proto: $.serializeInspected(Object.getPrototypeOf(object), false)
          };
       
          for (let prop of Object.getOwnPropertyNames(object)) {
