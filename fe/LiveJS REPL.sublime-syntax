@@ -16,5 +16,5 @@ contexts:
       scope: punctuation.separator.livejs-repl
       push: Packages/JavaScript/JavaScript.sublime-syntax
       with_prototype:
-        - match: (?=^.+?>)
+        - match: (?=^[a-zA-Z0-9_-]+>)
           pop: true
