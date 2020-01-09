@@ -2,7 +2,7 @@ import sublime
 
 from functools import partial, wraps
 
-from live.sublime_util.technical_command import run_technical_command
+from live.sublime_util.edit import call_with_edit
 from live.sublime_util.on_view_loaded import on_load
 from live.modules.datastructures import Module
 from .browser import operations as browser
@@ -38,7 +38,7 @@ def open_module_source_view(window, filepath):
 
 @persist_handler
 def replace(request, view_browser, view_source):
-    run_technical_command(
+    call_with_edit(
         view_browser,
         lambda edit: browser.replace_value_node(
             view=view_browser,
@@ -50,7 +50,7 @@ def replace(request, view_browser, view_source):
 
     @on_load(view_source)
     def _():
-        run_technical_command(
+        call_with_edit(
             view_source,
             lambda edit: persist.replace_value(
                 view=view_source,
@@ -63,7 +63,7 @@ def replace(request, view_browser, view_source):
 
 @persist_handler
 def rename_key(request, view_browser, view_source):
-    run_technical_command(
+    call_with_edit(
         view_browser,
         lambda edit: browser.replace_key_node(
             view=view_browser,
@@ -75,7 +75,7 @@ def rename_key(request, view_browser, view_source):
 
     @on_load(view_source)
     def _():
-        run_technical_command(
+        call_with_edit(
             view_source,
             lambda edit: persist.rename_key(
                 view=view_source,
@@ -88,7 +88,7 @@ def rename_key(request, view_browser, view_source):
 
 @persist_handler
 def delete(request, view_browser, view_source):
-    run_technical_command(
+    call_with_edit(
         view_browser,
         lambda edit: browser.delete_node(
             view=view_browser,
@@ -99,7 +99,7 @@ def delete(request, view_browser, view_source):
 
     @on_load(view_source)
     def _():
-        run_technical_command(
+        call_with_edit(
             view_source,
             lambda edit: persist.delete(
                 view=view_source,
@@ -111,7 +111,7 @@ def delete(request, view_browser, view_source):
 
 @persist_handler
 def insert(request, view_browser, view_source):
-    run_technical_command(
+    call_with_edit(
         view_browser,
         lambda edit: browser.insert_node(
             view=view_browser,
@@ -124,7 +124,7 @@ def insert(request, view_browser, view_source):
 
     @on_load(view_source)
     def _():
-        run_technical_command(
+        call_with_edit(
             view_source,
             lambda edit: persist.insert(
                 view=view_source,

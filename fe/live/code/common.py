@@ -15,26 +15,30 @@ def make_js_value_inserter(cur, jsval, nesting):
 
       * 'push_object', None: starting to lay out a js object
       * 'push_array', None: starting to lay out a js array
-      * 'pop', obj(region, jsvalue): finished to lay out whatever the current thing was
-                                  (object or array)
-      * 'leaf', obj(region, jsvalue): just inserted a leaf value
-
+      * 'pop', args: finished to lay out whatever the current thing was
+                    (object or array)
+      * 'leaf', args: just inserted a leaf value
+    
+    args is an object with attributes:
+      * region
+      * jsval
+      * nesting
     """
     def insert_any(jsval, nesting):
         cur.push_region()
 
         if jsval['type'] == 'leaf':
             cur.insert(jsval['value'])
-            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=jsval)
+            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
         elif jsval['type'] == 'function':
             insert_function(jsval['value'], nesting)
-            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=jsval)
+            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
         elif jsval['type'] == 'object':
             yield from insert_object(jsval, nesting)
-            yield 'pop', FreeObj(region=cur.pop_region(), jsval=jsval)
+            yield 'pop', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
         elif jsval['type'] == 'array':
             yield from insert_array(jsval, nesting)
-            yield 'pop', FreeObj(region=cur.pop_region(), jsval=jsval)
+            yield 'pop', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
         else:
             cur.pop_region()
             assert 0, "Unknown type: {}".format(jsval['type'])

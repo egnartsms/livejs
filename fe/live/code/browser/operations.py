@@ -2,7 +2,7 @@ import sublime
 
 from live.util import first_such, tracking_last, eraise
 from live.sublime_util.hacks import set_viewport_position
-from live.sublime_util.technical_command import run_technical_command
+from live.sublime_util.edit import call_with_edit
 from live.sublime_util.selection import set_selection
 from ..common import read_only_set_to, make_js_value_inserter, add_hidden_regions
 from .cursor import Cursor
@@ -260,7 +260,7 @@ def invalidate_codebrowser(view):
             view.replace(edit, sublime.Region(0, view.size()),
                          "<<<<< Codebrowser contents outdated. Please refresh! >>>>>")
 
-    run_technical_command(view, go)
+    call_with_edit(view, go)
 
 
 def refresh(view, edit, entries):

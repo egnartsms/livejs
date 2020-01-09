@@ -69,11 +69,10 @@ class WsHandler:
                 eraise("LiveJS: Got a message of unknown type: {}", message)
 
     def _process_response(self, response):
-        if not response['success']:
-            sublime.error_message("LiveJS request failed: {}".format(response['message']))
-
         if self.cont is None:
-            eraise("LiveJS: received unexpected BE response: {}", response)
+            sublime.error_message("LiveJS: received unexpected BE response: {}"
+                                  .format(response))
+            raise RuntimeError
 
         if response['success']:
             try:
@@ -85,6 +84,7 @@ class WsHandler:
             else:
                 self._request(reqtype, reqargs)
         else:
+            sublime.error_message("LiveJS request failed: {}".format(response['message']))
             self.cont = None
 
     def _process_persist_request(self, req):
@@ -100,8 +100,7 @@ class WsHandler:
 
     def install_cont(self, cont):
         """Install the new continuation generator"""
-        if self.cont is not None:
-            eraise("Cannot install a continuation (already installed)")
+        assert self.cont is None, "Cannot install a continuation (already installed)"
 
         try:
             reqtype, reqargs = cont.send(None)

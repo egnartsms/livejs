@@ -3,7 +3,7 @@ import sublime_plugin
 import re
 
 from live.gstate import fe_modules
-from live.sublime_util.technical_command import run_technical_command
+from live.sublime_util.edit import call_with_edit
 from live.sublime_util.selection import set_selection
 from live.modules.datastructures import Module
 from live.comm import be_interaction
@@ -45,7 +45,7 @@ class LivejsCbRefresh(ModuleBrowserCommand):
         entries = yield 'sendAllEntries', {'mid': self.mid}
         # We cannot use the 'edit' argument here since the command is already run, we've
         # already yielded.
-        run_technical_command(
+        call_with_edit(
             self.view,
             lambda edit: refresh(self.view, edit, entries)
         )
@@ -59,7 +59,7 @@ class LivejsBrowseModule(sublime_plugin.WindowCommand):
         if view is None:
             view = new_module_browser(self.window, module)
             entries = yield 'sendAllEntries', {'mid': module.id}
-            run_technical_command(view, lambda edit: refresh(view, edit, entries))
+            call_with_edit(view, lambda edit: refresh(view, edit, entries))
         else:
             self.window.focus_view(view)
 
@@ -182,7 +182,7 @@ class LivejsCbCancelEdit(ModuleBrowserCommand):
                 'mid': self.mid,
                 'path': node.path
             }
-            run_technical_command(
+            call_with_edit(
                 self.view,
                 lambda edit: replace_key_node(
                     view=self.view,
@@ -196,7 +196,7 @@ class LivejsCbCancelEdit(ModuleBrowserCommand):
                 'mid': self.mid,
                 'path': node.path
             }
-            run_technical_command(
+            call_with_edit(
                 self.view,
                 lambda edit: replace_value_node(
                     view=self.view,

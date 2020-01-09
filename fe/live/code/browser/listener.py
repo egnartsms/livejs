@@ -27,9 +27,6 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
         return True
 
     def on_query_context(self, key, operator, operand, match_all):
-        if not key.startswith('livejs_'):
-            return None
-
         if operator == sublime.OP_EQUAL:
             op = pyop.eq
         elif operator == sublime.OP_NOT_EQUAL:
@@ -38,13 +35,15 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
             return None
 
         if key == 'livejs_cb_exact_node_selected':
-            return op(get_single_selected_node(self.view) is not None, operand)
+            val = get_single_selected_node(self.view) is not None
         elif key == 'livejs_cb_edit_mode':
-            return op(info_for(self.view).is_editing, operand)
+            val = info_for(self.view).is_editing
         elif key == 'livejs_cb_view_mode':
-            return not op(info_for(self.view).is_editing, operand)
+            val = not info_for(self.view).is_editing
         else:
-            eraise("Unknown context key: {}", key)
+            return None
+
+        return op(val, operand)
 
     def on_activated(self):
         if not ws_handler.is_connected:

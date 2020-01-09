@@ -5,7 +5,8 @@ window.live = (function () {
       nontrackedKeys: [
          "socket",
          "orderedKeysMap",
-         "modules"
+         "modules",
+         "inspected"
       ],
 
       socket: null,
@@ -19,6 +20,11 @@ window.live = (function () {
             value: $
          };
          $.orderedKeysMap = new WeakMap;
+         $.inspected = {
+            obj2id: new Map,
+            id2obj: new Map,
+            nextId: 1
+         };
       
          $.resetSocket();
       },
@@ -51,25 +57,25 @@ window.live = (function () {
 
       requestHandlers: {
          getKeyAt: function ({mid, path}) {
-            $.respondSuccess($.keyAt($.moduleRoot(mid), path));
+            $.respondSuccess($.keyAt($.moduleObject(mid), path));
          },
          
          getValueAt: function ({mid, path}) {
             $.respondSuccess(
-               $.prepareForSerialization($.valueAt($.moduleRoot(mid), path))
+               $.serialize($.valueAt($.moduleObject(mid), path))
             );
          },
          
          sendAllEntries: function ({mid}) {
             let result = [];
-            let module =  $.moduleRoot(mid);
+            let module =  $.moduleObject(mid);
          
             for (let [key, value] of $.entries(module)) {
                if (module.nontrackedKeys && module.nontrackedKeys.includes(key)) {
-                  result.push([key, $.prepareForSerialization('new Object()')])
+                  result.push([key, $.serialize('new Object()')])
                }
                else {
-                  result.push([key, $.prepareForSerialization(value)]);   
+                  result.push([key, $.serialize(value)]);   
                }
             }
          
@@ -78,7 +84,7 @@ window.live = (function () {
          
          replace: function ({mid, path, codeNewValue}) {
             let 
-               {parent, key} = $.parentKeyAt($.modulesRoot(mid), path),
+               {parent, key} = $.parentKeyAt($.moduleObject(mid), path),
                newValue = $.evalExpr(codeNewValue);
          
             parent[key] = newValue;
@@ -87,13 +93,13 @@ window.live = (function () {
                type: 'replace',
                mid,
                path,
-               newValue: $.prepareForSerialization(newValue)
+               newValue: $.serialize(newValue)
             });
             $.respondSuccess();
          },
          
          renameKey: function ({mid, path, newName}) {
-            let {parent, key} = $.parentKeyAt($.moduleRoot(mid), path);
+            let {parent, key} = $.parentKeyAt($.moduleObject(mid), path);
          
             $.checkObject(parent);
          
@@ -117,7 +123,7 @@ window.live = (function () {
          },
          
          addArrayEntry: function ({mid, parentPath, pos, codeValue}) {
-            let parent = $.valueAt($.moduleRoot(mid), parentPath);
+            let parent = $.valueAt($.moduleObject(mid), parentPath);
             let value = $.evalExpr(codeValue);
          
             $.checkArray(parent);
@@ -129,13 +135,13 @@ window.live = (function () {
                mid,
                path: parentPath.concat(pos),
                key: null,
-               value: $.prepareForSerialization(value)
+               value: $.serialize(value)
             });
             $.respondSuccess();
          },
          
          addObjectEntry: function ({mid, parentPath, pos, key, codeValue}) {
-            let parent = $.valueAt($.moduleRoot(mid), parentPath);
+            let parent = $.valueAt($.moduleObject(mid), parentPath);
             let value = $.evalExpr(codeValue);
          
             $.checkObject(parent);
@@ -150,13 +156,13 @@ window.live = (function () {
                mid,
                path: parentPath.concat(pos),
                key: key,
-               value: $.prepareForSerialization(value)
+               value: $.serialize(value)
             });
             $.respondSuccess();
          },
          
          move: function ({mid, path, fwd}) {
-            let {parent, key} = $.parentKeyAt($.moduleRoot(mid), path);
+            let {parent, key} = $.parentKeyAt($.moduleObject(mid), path);
             let value = parent[key];
             let newPos;
          
@@ -182,14 +188,14 @@ window.live = (function () {
                   mid,
                   path: newPath,
                   key: Array.isArray(parent) ? null : key,
-                  value: $.prepareForSerialization(value)
+                  value: $.serialize(value)
                }
             ]);
             $.respondSuccess(newPath);
          },
          
          deleteEntry: function ({mid, path}) {
-            let {parent, key} = $.parentKeyAt($.moduleRoot(mid), path);
+            let {parent, key} = $.parentKeyAt($.moduleObject(mid), path);
          
             if (Array.isArray(parent)) {
                parent.splice(path[path.length - 1], 1);
@@ -244,6 +250,22 @@ window.live = (function () {
                };
             }
          
+            $.respondSuccess();
+         },
+         replEval: function ({code}) {
+            let obj = $.evalExpr(code);
+            $.respondSuccess($.serializeInspected(obj, true));
+         },
+         inspectObjectById: function ({id}) {
+            let object = $.inspected.id2obj.get(id);
+            if (!object) {
+               throw new Error(`Unknown object id: ${id}`);
+            }
+         
+            $.respondSuccess($.serializeInspectedObjectDeeply(object));
+         },
+         dismissInspectedObjects: function () {
+            $.dimissInspectedObjects();
             $.respondSuccess();
          }
       },
@@ -348,7 +370,7 @@ window.live = (function () {
          }
       },
 
-      prepareForSerialization: function prepare(obj) {
+      serialize: function serialize(obj) {
          switch (typeof obj) {
             case 'function':
             return {
@@ -378,30 +400,28 @@ window.live = (function () {
             };
          }
 
-         if (Array.isArray(obj)) {
-            return {
-               type: 'array',
-               value: Array.from(obj, prepare)
-            };
-         }
-
-         let proto = Object.getPrototypeOf(obj);
-
-         if (proto === RegExp.prototype) {
+         if (obj instanceof RegExp) {
             return {
                type: 'leaf',
                value: obj.toString()
             };
          }
 
-         if (proto !== Object.prototype) {
+         if (Array.isArray(obj)) {
+            return {
+               type: 'array',
+               value: Array.from(obj, serialize)
+            };
+         }
+
+         if (Object.getPrototypeOf(obj) !== Object.prototype) {
             throw new Error(`Cannot serialize objects with non-standard prototype`);
          }
 
          return {
             type: 'object',
             value: Object.fromEntries(
-               Array.from($.entries(obj), ([k, v]) => [k, prepare(v)])
+               Array.from($.entries(obj), ([k, v]) => [k, serialize(v)])
             )
          };
       },
@@ -479,8 +499,129 @@ window.live = (function () {
 
       modules: null,
 
-      moduleRoot: function (mid) {
+      moduleObject: function (mid) {
          return $.modules[mid].value;
+      },
+
+      inspected: 0,
+
+      inspectedId: function (object) {
+         if (!((typeof object === 'object' && object !== null) || 
+               (typeof object === 'function'))) {
+            throw new Error(`Invalid inspected object: ${object}`);
+         }
+      
+         if ($.inspected.obj2id.has(object)) {
+            return $.inspected.obj2id.get(object);
+         }
+      
+         let id = $.inspected.nextId++;
+         $.inspected.obj2id.set(object, id);
+         $.inspected.id2obj.set(id, object);
+      
+         return id;
+      },
+
+      dismissInspectedObjects: function () {
+         $.inspected.nextId = 1;
+         $.inspected.obj2id.clear();
+         $.inspected.id2obj.clear();
+      },
+
+      serializeInspected: function (obj, deeply) {
+         switch (typeof obj) {
+            case 'bigint':
+               throw new Error(`Serialization of bigints is not implemented`);
+      
+            case 'symbol':
+               throw new Error(`Serialization of symbols is not implemented`);
+      
+            case 'string':
+            return {
+               type: 'leaf',
+               value: JSON.stringify(obj)
+            };
+      
+            case 'number':
+            case 'boolean':
+            case 'undefined':
+            return {
+               type: 'leaf',
+               value: String(obj)
+            };
+      
+            case 'function':
+            return $.serializeInspectedFunc(obj);
+         }
+      
+         if (obj === null) {
+            return {
+               type: 'leaf',
+               value: 'null'
+            };
+         }
+      
+         if (obj instanceof RegExp) {
+            return {
+               type: 'leaf',
+               value: obj.toString()
+            };
+         }
+      
+         return (
+            deeply ? $.serializeInspectedObjectDeeply : $.serializeInspectedObjectShallowly
+         )(obj);
+      },
+
+      serializeInspectedFunc: function (func) {
+         return {
+            type: 'function',
+            id: $.inspectedId(func),
+            value: func.toString()
+         };
+      },
+
+      serializeInspectedObjectShallowly: function (object) {
+         if (Array.isArray(object)) {
+            return {
+               type: 'array',
+               id: $.inspectedId(object)
+            };
+         }
+         else {
+            return {
+               type: 'object',
+               id: $.inspectedId(object)
+            };
+         }
+      },
+
+      serializeInspectedObjectDeeply: function (object) {
+         if (Array.isArray(object)) {
+            return {
+               type: 'array',
+               id: $.inspectedId(object),
+               value: Array.from(object, x => $.serializeInspected(x, false))
+            };
+         }
+      
+         if (typeof object === 'function') {
+            return $.serializeInspectedFunc(object);
+         }
+      
+         let result = {
+            __proto__: $.serializeInspected(Object.getPrototypeOf(object), false)
+         };
+      
+         for (let prop of Object.getOwnPropertyNames(object)) {
+            result[prop] = $.serializeInspected(object[prop], false);
+         }
+      
+         return {
+            type: 'object',
+            id: $.inspectedId(object),
+            value: result
+         };
       }
    };
 

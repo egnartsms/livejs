@@ -66,8 +66,6 @@ class LivejsToggleServerCommand(sublime_plugin.TextCommand):
 
 class QueryContextProcessor(sublime_plugin.EventListener):
     def on_query_context(self, view, key, operator, operand, match_all):
-        if not key.startswith('livejs_'):
-            return None
         
         if operator == sublime.OP_EQUAL:
             op = pyop.eq
@@ -77,6 +75,8 @@ class QueryContextProcessor(sublime_plugin.EventListener):
             return None
 
         if key == 'livejs_view':
-            return op(view.settings().get('livejs_view'), operand)
+            val = view.settings().get('livejs_view')
         else:
-            eraise("Unknown context key: {}", key)
+            return None
+
+        return op(val, operand)
