@@ -1,12 +1,9 @@
 import sublime
 
-import collections
-import json
-
 from live.util import first_such
 from live.sublime_util.edit import call_with_edit
 from live.comm import be_interaction
-from live.code.common import make_js_value_inserter
+from live.code.common import make_js_value_inserter, jsval_placeholder
 from live.code.cursor import Cursor
 
 
@@ -28,13 +25,15 @@ def new_repl(window):
 
 PHANTOM_HTML_TEMPLATE = '''
 <body id="casual">
-   <style>
+    <style>
      a {{
         display: block;
         text-decoration: none;
      }}
-   </style>
-   <a href="">{contents}</a>
+    </style>
+    <div>
+        <a href="">{contents}</a>
+    </div>
 </body>
 '''
 
@@ -43,6 +42,11 @@ def render_phantom_html(is_expanded):
     return PHANTOM_HTML_TEMPLATE.format(
         contents='—' if is_expanded else '+'
     )
+
+
+def add_phantom(view, region, on_navigate, is_expanded):
+    return view.add_phantom('', region, render_phantom_html(is_expanded),
+                            sublime.LAYOUT_INLINE, on_navigate)
 
 
 class Node:
@@ -56,16 +60,6 @@ class Node:
 
         self._add_phantom(region)
 
-    def _collapsed_placeholder(self):
-        if self.type == 'object':
-            return "{...}"
-        elif self.type == 'array':
-            return "[...]"
-        elif self.type == 'function':
-            return "func {...}"
-        else:
-            assert 0
-
     def _erase_phantom(self):
         assert self.phid is not None
         self.view.erase_phantom_by_id(self.phid)
@@ -73,19 +67,18 @@ class Node:
 
     def _add_phantom(self, region):
         assert self.phid is None
-        self.phid = self.view.add_phantom(
-            '', region, render_phantom_html(self.is_expanded), sublime.LAYOUT_INLINE,
-            self.on_navigate
-        )
+        self.phid = add_phantom(self.view, region, self.on_navigate, self.is_expanded)
 
     def _collapse(self, edit):
         assert self.is_expanded
         [reg] = self.view.query_phantom(self.phid)
         self._erase_phantom()
-        placeholder = self._collapsed_placeholder()
-        self.view.replace(edit, reg, placeholder)
+        cur = Cursor(reg.a, self.view, edit)
+        cur.erase(reg.b)
+        cur.push_region()
+        cur.insert(jsval_placeholder(self.type))
         self.is_expanded = False
-        self._add_phantom(sublime.Region(reg.a, reg.a + len(placeholder)))
+        self._add_phantom(cur.pop_region())
 
     @be_interaction
     def _expand(self):
@@ -108,6 +101,40 @@ class Node:
             call_with_edit(self.view, self._collapse)
         else:
             self._expand()
+
+
+class Unrevealed:
+    """Unrevealed is used for getters (actual value is obtained lazily)
+
+    Unrevealed instance is always collapsed. When expanded it's substituted with smth
+    else, and the Unrevealed instance is gone forever.
+    """
+
+    def __init__(self, view, parent_id, prop, nesting, region):
+        self.view = view
+        self.parent_id = parent_id
+        self.prop = prop
+        self.nesting = nesting
+        self.phid = add_phantom(self.view, region, self.on_navigate, False)
+
+    @be_interaction
+    def on_navigate(self, href):
+        """Abandon this node and insert a new expanded one"""
+        jsval = yield 'inspectGetterValue', {
+            'parentId': self.parent_id,
+            'prop': self.prop
+        }
+        
+        def impl(edit):
+            [reg] = self.view.query_phantom(self.phid)
+            self.view.erase_phantom_by_id(self.phid)
+            self.phid = None
+            self.view.erase(edit, reg)
+            cur = Cursor(reg.a, self.view, edit)
+            inserter = make_js_value_inserter(cur, jsval, self.nesting)
+            insert_js_value(self.view, inserter)
+
+        call_with_edit(self.view, impl)
 
 
 def insert_js_value(view, inserter):
@@ -141,6 +168,9 @@ def insert_js_value(view, inserter):
         elif cmd == 'leaf':
             if args.jsval['type'] == 'function':
                 Node(view, args.jsval, args.nesting, args.region)
+            elif args.jsval['type'] == 'unrevealed':
+                Unrevealed(view, args.jsval['parentId'], args.jsval['prop'],
+                           args.nesting, args.region)
         else:
             assert 0, "Inserter yielded unexpected command: {}".format(cmd)
 

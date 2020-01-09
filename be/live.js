@@ -270,6 +270,23 @@ window.live = (function () {
          dismissInspectedObjects: function () {
             $.dimissInspectedObjects();
             $.respondSuccess();
+         },
+
+         inspectGetterValue: function ({parentId, prop}) {
+            let parent = $.inspected.id2obj.get(parentId);
+            if (!parent) {
+               throw new Error(`Unknown object id: ${parentId}`);
+            }
+
+            let result;
+            try {
+               result = parent[prop];
+            }
+            catch (e) {
+               result = `<Failed: ${e}`;
+            }
+
+            $.respondSuccess($.serializeInspected(result, true));
          }
       },
 
@@ -571,9 +588,12 @@ window.live = (function () {
             };
          }
       
-         return (
-            deeply ? $.serializeInspectedObjectDeeply : $.serializeInspectedObjectShallowly
-         )(obj);
+         if (deeply) {
+            return $.serializeInspectedObjectDeeply(obj);
+         }
+         else {
+            return $.serializeInspectedObjectShallowly(obj);
+         }
       },
 
       serializeInspectedFunc: function (func) {
@@ -615,9 +635,29 @@ window.live = (function () {
          let result = {
             __proto: $.serializeInspected(Object.getPrototypeOf(object), false)
          };
+         let nonvalues = {};
       
-         for (let prop of Object.getOwnPropertyNames(object)) {
-            result[prop] = $.serializeInspected(object[prop], false);
+         for (let [prop, desc] of Object.entries(Object.getOwnPropertyDescriptors(object))) {
+            if ($.hasOwnProperty(desc, 'value')) {
+               result[prop] = $.serializeInspected(desc.value, false);
+            }
+            else {
+               result[prop] = {
+                  type: 'unrevealed',
+                  parentId: $.inspectedId(object),
+                  prop: prop
+               };
+               nonvalues[prop] = desc;
+            }
+         }
+      
+         for (let [prop, desc] of Object.entries(nonvalues)) {
+            if (desc.get) {
+               result['get ' + prop] = $.serializeInspectedFunc(desc.get);
+            }
+            if (desc.set) {
+               result['set ' + prop] = $.serializeInspectedFunc(desc.set);
+            }
          }
       
          return {

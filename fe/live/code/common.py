@@ -30,6 +30,9 @@ def make_js_value_inserter(cur, jsval, nesting):
         if jsval['type'] == 'leaf':
             cur.insert(jsval['value'])
             yield 'leaf', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
+        elif jsval['type'] == 'unrevealed':
+            cur.insert(jsval_placeholder('unrevealed'))
+            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
         elif jsval['type'] == 'function':
             insert_function(jsval['value'], nesting)
             yield 'leaf', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
@@ -111,6 +114,19 @@ def make_js_value_inserter(cur, jsval, nesting):
                 cur.insert('\n')
 
     yield from insert_any(jsval, nesting)
+
+
+def jsval_placeholder(jsval_type):
+    if jsval_type == 'object':
+        return "{...}"
+    elif jsval_type == 'array':
+        return "[...]"
+    elif jsval_type == 'function':
+        return "func {...}"
+    elif jsval_type == 'unrevealed':
+        return "(...)"
+    else:
+        assert 0
 
 
 @contextlib.contextmanager
