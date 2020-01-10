@@ -1,0 +1,53 @@
+Tracked objects are persisted in disk files.  Inspected objects are objects that are
+inspected on the FE side via REPL or code browser.  A tracked object can also be inspected
+(in a REPL).
+
+Tracked objects and inspected objects are represented using the same protocol, with
+various fields/values admissible for only one kind or the other.
+
+
+{
+    type: "object",
+    // only for inspected objects
+    id: 234,
+    // for shallow serialization of inspected objects, "value" will be missing 
+    value: {
+       ...
+    }
+}
+
+
+{
+    type: "array",
+    // only for present for inspected objects
+    id: 234,
+    // for shallow serialization of inspected objects, "value" will be missing 
+    value: [
+       ...
+    ]
+}
+
+
+{
+    type: 'function',
+    // only for present for inspected functions
+    id: 234,
+    value: func.toString()
+}
+
+
+{
+    type: "leaf",
+    // a string that is to be literally inserted in a REPL or module browser view.
+    // So this may be "null", "true", "undefined" or "\"JS string\"".
+    value: "/abc/"
+}
+
+
+// This is used for getters as lazily evaluated placeholders for real values of properties
+// Only for inspected objects; makes no sense when serializing tracked objects.
+{
+    type: "unrevealed",
+    parentId: 234,
+    prop: "size"
+}
