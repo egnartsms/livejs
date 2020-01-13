@@ -1,8 +1,11 @@
 import sublime
 
+import json
+from functools import partial
+
 from live.util import first_such
 from live.sublime_util.edit import call_with_edit
-from live.comm import be_interaction
+from live.comm import be_interaction, BackendError
 from live.code.common import make_js_value_inserter, jsval_placeholder
 from live.code.cursor import Cursor
 
@@ -120,21 +123,35 @@ class Unrevealed:
     @be_interaction
     def on_navigate(self, href):
         """Abandon this node and insert a new expanded one"""
-        jsval = yield 'inspectGetterValue', {
-            'parentId': self.parent_id,
-            'prop': self.prop
-        }
-        
-        def impl(edit):
+        def impl(edit, jsval=None, error_info=None):
             [reg] = self.view.query_phantom(self.phid)
             self.view.erase_phantom_by_id(self.phid)
             self.phid = None
             self.view.erase(edit, reg)
             cur = Cursor(reg.a, self.view, edit)
-            inserter = make_js_value_inserter(cur, jsval, self.nesting)
-            insert_js_value(self.view, inserter)
+            if jsval is not None:
+                inserter = make_js_value_inserter(cur, jsval, self.nesting)
+                insert_js_value(self.view, inserter)
+            else:
+                cur.insert("throw new {}({})".format(
+                    error_info['excClassName'],
+                    json.dumps(error_info['excMessage'])
+                ))
 
-        call_with_edit(self.view, impl)
+        error_info = jsval = None
+
+        try:
+            jsval = yield 'inspectGetterValue', {
+                'parentId': self.parent_id,
+                'prop': self.prop
+            }
+        except BackendError as e:
+            if e.name == 'getter_threw':
+                error_info = e.info
+            else:
+                raise
+
+        call_with_edit(self.view, partial(impl, error_info=error_info, jsval=jsval))
 
 
 def insert_js_value(view, inserter):
@@ -167,7 +184,11 @@ def insert_js_value(view, inserter):
             insert_array()
         elif cmd == 'leaf':
             if args.jsval['type'] == 'function':
-                Node(view, args.jsval, args.nesting, args.region)
+                # 1-line functions don't need to be collapsed
+                nline_beg, _ = view.rowcol(args.region.a)
+                nline_end, _ = view.rowcol(args.region.b)
+                if nline_end > nline_beg:
+                    Node(view, args.jsval, args.nesting, args.region)
             elif args.jsval['type'] == 'unrevealed':
                 Unrevealed(view, args.jsval['parentId'], args.jsval['prop'],
                            args.nesting, args.region)

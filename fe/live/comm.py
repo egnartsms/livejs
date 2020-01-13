@@ -9,6 +9,12 @@ from live.gstate import ws_handler
 from live.sublime_util.edit import call_with_edit_token
 
 
+class BackendError(Exception):
+    def __init__(self, name, info):
+        self.name = name
+        self.info = info
+
+
 def be_interaction(func):
     """Decorator that makes func receive responses where it yields.
 

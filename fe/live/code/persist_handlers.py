@@ -1,6 +1,6 @@
 import sublime
 
-from functools import partial, wraps
+from functools import wraps
 
 from live.sublime_util.edit import call_with_edit
 from live.sublime_util.on_view_loaded import on_load

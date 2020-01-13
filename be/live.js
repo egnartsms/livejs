@@ -51,7 +51,7 @@ window.live = (function () {
             $.requestHandlers[request['type']].call(null, request['args']);
          }
          catch (e) {
-            $.respondFailure(`LiveJS request failed:\n${e.stack}`);
+            $.respondFailure('generic', e.stack);
          }
       },
 
@@ -104,7 +104,11 @@ window.live = (function () {
             $.checkObject(parent);
          
             if ($.hasOwnProperty(parent, newName)) {
-               $.respondFailure(`Cannot rename to ${newName}: duplicate property name`);
+               $.respondFailure('duplicate_key', {
+                  objPath: path,
+                  duplicatedKey: newName,
+                  message: `Cannot rename to ${newName}: duplicate property name`
+               });
                return;
             }
          
@@ -277,15 +281,19 @@ window.live = (function () {
             if (!parent) {
                throw new Error(`Unknown object id: ${parentId}`);
             }
-
+         
             let result;
             try {
                result = parent[prop];
             }
             catch (e) {
-               result = `<Failed: ${e}`;
+               $.respondFailure('getter_threw', {
+                  excClassName: e.constructor.name,
+                  excMessage: e.message
+               });
+               return;
             }
-
+         
             $.respondSuccess($.serializeInspected(result, true));
          }
       },
@@ -294,11 +302,12 @@ window.live = (function () {
          $.socket.send(JSON.stringify(message));
       },
 
-      respondFailure: function (message) {
+      respondFailure: function (error, info) {
          $.send({
             type: 'response',
             success: false,
-            message: message
+            error: error,
+            info: typeof info === 'string' ? {message: info} : info
          });
       },
 
