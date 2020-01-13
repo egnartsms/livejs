@@ -21,12 +21,13 @@ re_of_interest = (
 
 
 class Cursor:
-    def __init__(self, pos, view, edit=None):
+    def __init__(self, pos, view, edit=None, **options):
         super().__init__()
         self.pos = pos
         self.view = view
         self.edit = edit
         self.retain_stack = []
+        self.inter_sep_newlines = options.get('inter_sep_newlines', 2)
 
     def __getstate__(self):
         """retain_stack is not copied"""
@@ -105,7 +106,8 @@ class Cursor:
         self.indent(nesting)
 
     def sep_inter(self, nesting):
-        self.insert(',\n\n')
+        self.insert(',')
+        self.insert('\n' * self.inter_sep_newlines)
         self.indent(nesting)
 
     def sep_terminal(self, nesting):

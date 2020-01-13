@@ -76,7 +76,7 @@ class Node:
         assert self.is_expanded
         [reg] = self.view.query_phantom(self.phid)
         self._erase_phantom()
-        cur = Cursor(reg.a, self.view, edit)
+        cur = Cursor(reg.a, self.view, edit, inter_sep_newlines=1)
         cur.erase(reg.b)
         cur.push_region()
         cur.insert(jsval_placeholder(self.type))
@@ -93,7 +93,7 @@ class Node:
             [reg] = self.view.query_phantom(self.phid)
             self._erase_phantom()
             self.view.erase(edit, reg)
-            cur = Cursor(reg.a, self.view, edit)
+            cur = Cursor(reg.a, self.view, edit, inter_sep_newlines=1)
             inserter = make_js_value_inserter(cur, jsval, self.nesting)
             insert_js_value(self.view, inserter)
 
@@ -128,7 +128,7 @@ class Unrevealed:
             self.view.erase_phantom_by_id(self.phid)
             self.phid = None
             self.view.erase(edit, reg)
-            cur = Cursor(reg.a, self.view, edit)
+            cur = Cursor(reg.a, self.view, edit, inter_sep_newlines=1)
             if jsval is not None:
                 inserter = make_js_value_inserter(cur, jsval, self.nesting)
                 insert_js_value(self.view, inserter)

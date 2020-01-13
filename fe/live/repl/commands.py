@@ -31,7 +31,7 @@ class LivejsReplSendCommand(TextCommandInteractingWithBe):
 
         jsval = yield 'replEval', {'code': text}
 
-        cur = Cursor(self.view.size(), self.view, edit)
+        cur = Cursor(self.view.size(), self.view, edit, inter_sep_newlines=1)
         cur.insert('\n< ')
         insert_js_value(
             self.view,
