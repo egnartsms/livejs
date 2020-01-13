@@ -3,7 +3,6 @@ import sublime_plugin
 
 import operator as pyop
 
-from live.util import eraise
 from live.gstate import ws_handler
 from .operations import (
     invalidate_codebrowser,
@@ -57,15 +56,46 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
         [reg] = self.view.get_regions('edit')
         return reg.a, self.view.size() - reg.b
 
-    def _after_insertion_at_reg_begin(self):
+    def _is_after_insertion_at_reg_begin(self):
+        """Does the current selection look like smth was inserted at region beginning.
+
+        This boils down to:
+          * single cursor
+          * and it is in front of the edit region
+        """
         [reg] = self.view.get_regions('edit')
         sel = self.view.sel()
         return len(sel) == 1 and sel[0].a == reg.a
 
-    def _after_insertion_at_reg_end(self, delta):
+    def _is_after_insertion_at_reg_end(self, delta):
+        """Does the current selection look like smth was inserted at region end
+
+        This boils down to:
+          * single cursor
+          AND
+          * it is "delta" positions after the editing region end
+          * or we have this: ---<edit region>(*)----, where the star * means cursor
+            position, and a parenthesis after it means a closing parenthesis character
+            that might be automatically inserted, such as ), ], }, etc. This is needed
+            becase when an opening parenthesis is inserted at region end, the whole
+            command fails since the closing parenthesis cannot be inserted. So we take
+            this measure to allow for the closing parenthesis to get automatically
+            inserted.
+        """
         [reg] = self.view.get_regions('edit')
         sel = self.view.sel()
-        return len(sel) == 1 and sel[0].a == reg.b + delta
+        if len(sel) != 1:
+            return False
+
+        [sel] = sel
+        if sel.a == reg.b + delta:
+            return True
+
+        if delta == 2 and sel.a == reg.b + 1 and \
+                self.view.substr(reg.b + 1) in ')]}"\'`':
+            return True
+
+        return False
 
     def on_modified(self):
         """Undo modifications to portions of the buffer outside the edit region.
@@ -84,22 +114,22 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
         
         while True:
             xpre, xpost = self._get_pre_post_sizes()
-            if xpre > pre and xpost == post and self._after_insertion_at_reg_begin():
+            if xpre == pre and xpost == post:
+                break
+            elif xpre > pre and xpost == post and self._is_after_insertion_at_reg_begin():
                 reg = edit_region(self.view)
                 reg = sublime.Region(reg.a - (xpre - pre), reg.b)
                 set_edit_region(self.view, reg, vinfo.enclosing_edit_reg(reg))
                 break
             elif xpost > post and xpre == pre and \
-                    self._after_insertion_at_reg_end(xpost - post):
+                    self._is_after_insertion_at_reg_end(xpost - post):
                 reg = edit_region(self.view)
                 reg = sublime.Region(reg.a, reg.b + (xpost - post))
                 set_edit_region(self.view, reg, vinfo.enclosing_edit_reg(reg))
                 break
-            elif xpre == pre and xpost == post:
-                break
 
             self.view.run_command('undo')
-            self.view.window().status_message("Cannot edit outside the editing region")
+            sublime.status_message("Cannot edit outside the editing region")
 
     def on_query_completions(self, prefix, locations):
         """Suppress completions when the cursor is not in the edit region.
