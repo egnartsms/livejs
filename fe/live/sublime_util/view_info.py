@@ -36,3 +36,15 @@ class ViewInfoPlane:
     def __init__(self):
         self._plane = {}
         view_planes.append(self._plane)
+
+    def __getitem__(self, view):
+        return self._plane[view.id()]
+
+    def __setitem__(self, view, obj):
+        self._plane[view.id()] = obj
+
+    def __delitem__(self, view):
+        del self._plane[view.id()]
+
+    def __contains__(self, view):
+        return view.id() in self._plane

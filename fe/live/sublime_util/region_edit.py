@@ -4,7 +4,7 @@ from live.sublime_util.view_info import ViewInfoPlane
 from live.sublime_util.selection import inside_region_inc
 
 
-class RegEditUndoer:
+class RegionEditHelper:
     def __init__(self, view, regkey, edit_region_setter):
         self.view = view
         self.regkey = regkey
@@ -100,19 +100,4 @@ class RegEditUndoer:
                        for p in sel)
 
 
-class RegionEditor(ViewInfoPlane):
-    def start_editing(self, view, undoer):
-        assert view.id() not in self._plane
-        self._plane[view.id()] = undoer
-
-    def stop_editing(self, view):
-        del self._plane[view.id()]
-
-    def is_editing(self, view):
-        return view.id() in self._plane
-
-    def undoer_for(self, view):
-        return self._plane[view.id()]
-
-
-region_editor = RegionEditor()
+region_edit_helpers = ViewInfoPlane()

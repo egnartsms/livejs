@@ -6,7 +6,7 @@ from .operations import get_single_selected_node
 from .operations import invalidate_codebrowser
 from .view_info import info_for
 from live.gstate import ws_handler
-from live.sublime_util.region_edit import region_editor
+from live.sublime_util.region_edit import region_edit_helpers
 
 
 __all__ = ['CodeBrowserEventListener']
@@ -58,15 +58,13 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
         Also, we detect insertion of text right before the edit region and right after it,
         and extend the edit region to include what was just inserted.
         """
-        if not region_editor.is_editing(self.view):
+        if self.view not in region_edit_helpers:
             return
 
-        undoer = region_editor.undoer_for(self.view)
-        undoer.undo_modifications_if_any()
+        region_edit_helpers[self.view].undo_modifications_if_any()
 
     def on_selection_modified(self):
-        if not region_editor.is_editing(self.view):
+        if self.view not in region_edit_helpers:
             return
 
-        undoer = region_editor.undoer_for(self.view)
-        self.view.set_read_only(undoer.read_only_value())
+        self.view.set_read_only(region_edit_helpers[self.view].read_only_value())

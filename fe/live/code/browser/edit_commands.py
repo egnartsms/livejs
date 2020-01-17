@@ -10,7 +10,7 @@ from live.gstate import fe_modules
 from live.modules.datastructures import Module
 from live.sublime_util.edit import call_with_edit
 from live.sublime_util.selection import set_selection
-from live.sublime_util.region_edit import region_editor
+from live.sublime_util.region_edit import region_edit_helpers
 
 __all__ = [
     'LivejsCbRefresh', 'LivejsBrowseModule', 'LivejsCbEdit', 'LivejsCbCommit',
@@ -157,8 +157,7 @@ class LivejsCbCancelEdit(ModuleBrowserCommand):
             return  # should not happen
 
         if vinfo.is_editing_new_node:
-            undoer = region_editor.undoer_for(self.view)
-            self.view.erase(edit, undoer.enclosing_reg())
+            self.view.erase(edit, region_edit_helpers[self.view].enclosing_reg())
             ops.done_editing(self.view)
             return
 
