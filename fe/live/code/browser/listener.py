@@ -1,16 +1,13 @@
+import operator as pyop
 import sublime
 import sublime_plugin
 
-import operator as pyop
-
-from live.gstate import ws_handler
-from .operations import (
-    invalidate_codebrowser,
-    set_edit_region,
-    get_single_selected_node,
-    edit_region
-)
+from .operations import edit_region
+from .operations import get_single_selected_node
+from .operations import invalidate_codebrowser
+from .operations import set_edit_region
 from .view_info import info_for
+from live.gstate import ws_handler
 
 
 __all__ = ['CodeBrowserEventListener']
@@ -78,9 +75,9 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
             position, and a parenthesis after it means a closing parenthesis character
             that might be automatically inserted, such as ), ], }, etc. This is needed
             becase when an opening parenthesis is inserted at region end, the whole
-            command fails since the closing parenthesis cannot be inserted. So we take
-            this measure to allow for the closing parenthesis to get automatically
-            inserted.
+            command fails since the closing parenthesis is attempted to be inserted but
+            fails. So we take this measure to allow for the closing parenthesis to get
+            automatically inserted.
         """
         [reg] = self.view.get_regions('edit')
         sel = self.view.sel()
@@ -101,7 +98,8 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
         """Undo modifications to portions of the buffer outside the edit region.
 
         We only detect such modifications when the sizes of the corresponding pre and post
-        regions change.  This cannot detect e.g. line swaps but still very useful.
+        regions change.  This cannot detect e.g. line swaps outside the edit region but
+        is still very useful.
 
         Also, we detect insertion of text right before the edit region and right after it,
         and extend the edit region to include what was just inserted.
@@ -119,13 +117,13 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
             elif xpre > pre and xpost == post and self._is_after_insertion_at_reg_begin():
                 reg = edit_region(self.view)
                 reg = sublime.Region(reg.a - (xpre - pre), reg.b)
-                set_edit_region(self.view, reg, vinfo.enclosing_edit_reg(reg))
+                set_edit_region(self.view, reg)
                 break
             elif xpost > post and xpre == pre and \
                     self._is_after_insertion_at_reg_end(xpost - post):
                 reg = edit_region(self.view)
                 reg = sublime.Region(reg.a, reg.b + (xpost - post))
-                set_edit_region(self.view, reg, vinfo.enclosing_edit_reg(reg))
+                set_edit_region(self.view, reg)
                 break
 
             self.view.run_command('undo')

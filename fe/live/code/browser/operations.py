@@ -165,26 +165,17 @@ def get_single_selected_node(view):
     return find_node_by_exact_region(view, view.sel()[0])
 
 
-def set_edit_region(view, reg, enclosing=None):
+def set_edit_region(view, reg):
     view.add_regions('edit', [reg], 'region.bluish livejs.edit', '',
                      sublime.DRAW_EMPTY | sublime.DRAW_NO_OUTLINE)
-    if enclosing is None:
-        enclosing = reg
-    add_hidden_regions(view, 'enclosing_edit', [enclosing])
 
 
 def discard_edit_region(view):
     view.erase_regions('edit')
-    view.erase_regions('enclosing_edit')
 
 
 def edit_region(view):
     [reg] = view.get_regions('edit')
-    return reg
-
-
-def enclosing_edit_region(view):
-    [reg] = view.get_regions('enclosing_edit')
     return reg
 
 
@@ -241,7 +232,7 @@ def edit_new_node(view, edit, parent, pos):
         edit_reg = cur.pop_region()
         enclosing_reg = cur.pop_region()
 
-    set_edit_region(view, edit_reg, enclosing_reg)
+    set_edit_region(view, edit_reg)
     set_selection(view, to_reg=edit_reg)
     info_for(view).edit_new_node(parent, pos, edit_reg, enclosing_reg)
 
@@ -310,7 +301,7 @@ def replace_value_node(view, edit, path, new_value):
     node = vinfo.root.value_node_at(path)
 
     if node is vinfo.node_being_edited:
-        reg = enclosing_edit_region(view)
+        reg = vinfo.enclosing_edit_reg(edit_region(view))
         done_editing(view)
     else:
         reg = node.region
@@ -332,7 +323,7 @@ def replace_key_node(view, edit, path, new_name):
     node = vinfo.root.key_node_at(path)
 
     if node is vinfo.node_being_edited:
-        reg = enclosing_edit_region(view)
+        reg = vinfo.enclosing_edit_reg(edit_region(view))
         done_editing(view)
     else:
         reg = node.region
@@ -354,7 +345,7 @@ def delete_node(view, edit, path):
     enode = vinfo.node_being_edited
 
     if enode is not None and enode.value_node_or_self is node:
-        reg = enclosing_edit_region(view)
+        reg = vinfo.enclosing_edit_reg(edit_region(view))
         if enode.kv_match:
             reg = reg.cover(enode.kv_match.region)
 
@@ -389,7 +380,7 @@ def insert_node(view, edit, path, key, value):
             vinfo.new_node_position == new_index:
         # In this Code Browser view we were editing the new node which is now being
         # inserted.  This is typical after the user commits.
-        view.erase(edit, enclosing_edit_region(view))
+        view.erase(edit, vinfo.enclosing_edit_reg(edit_region(view)))
         done_editing(view)
 
     def insert():

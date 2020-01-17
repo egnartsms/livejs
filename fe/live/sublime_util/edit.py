@@ -57,30 +57,3 @@ class LivejsCallWithEditTokenCommand(sublime_plugin.TextCommand):
 
     def run(self, edit):
         raise NotImplementedError
-
-
-# class LivejsObtainEditTokenCommand(sublime_plugin.TextCommand):
-#     def run_(self, edit_token, args):
-#         global _edit_token
-#         _edit_token = edit_token
-
-
-# @contextlib.contextmanager
-# def edit_token_being_used(view, edit_token):
-#     sublime_api.view_begin_edit(view.id(), edit_token, 'livejs_obtain_edit_token', None)
-#     try:
-#         yield edit_token
-#     finally:
-#         sublime_api.view_end_edit(view.id(), edit_token)
-
-
-# @contextlib.contextmanager
-# def fresh_edit_token(view):
-#     global _edit_token
-
-#     view.run_command('livejs_obtain_edit_token')
-#     edit_token = _edit_token
-#     _edit_token = None
-    
-#     with edit_token_being_used(view, edit_token):
-#         yield edit_token

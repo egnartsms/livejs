@@ -1,17 +1,9 @@
 import sublime
-import sublime_plugin
+
+from live.sublime_util.view_info import make_view_info_getter
 
 
-__all__ = ['PerViewInfoDiscarder']
-
-
-# Information we associate with codebrowser views.  Keep in mind that it's not persisted.
-# On Sublime re-start, none of these data structures will be in memory, but the code
-# browser views will be persisted.
-per_view = dict()
-
-
-class ViewInfo:
+class ModuleBrowserInfo:
     view = None
     root = None
     node_being_edited = None
@@ -63,14 +55,4 @@ class ViewInfo:
                               reg.b + self.enclosing_edit_offsets[1])
 
 
-def info_for(view):
-    vid = view.id()
-    if vid not in per_view:
-        per_view[vid] = ViewInfo(view)
-
-    return per_view[vid]
-
-
-class PerViewInfoDiscarder(sublime_plugin.EventListener):
-    def on_close(self, view):
-        per_view.pop(view.id(), None)
+info_for = make_view_info_getter(ModuleBrowserInfo)

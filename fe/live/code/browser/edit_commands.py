@@ -12,6 +12,7 @@ from .operations import (
     find_module_browser,
     new_module_browser,
     is_module_browser,
+    edit_region,
     edit_region_contents,
     edit_node,
     enclosing_edit_region,
@@ -172,7 +173,7 @@ class LivejsCbCancelEdit(ModuleBrowserCommand):
             return  # should not happen
 
         if vinfo.is_editing_new_node:
-            self.view.erase(edit, enclosing_edit_region(self.view))
+            self.view.erase(edit, vinfo.enclosing_edit_reg(edit_region(self.view)))
             done_editing(self.view)
             return
 

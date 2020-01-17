@@ -1,13 +1,15 @@
+import json
 import sublime
 
-import json
 from functools import partial
 
-from live.util import first_such
-from live.sublime_util.edit import call_with_edit
-from live.comm import be_interaction, BackendError
-from live.code.common import make_js_value_inserter, jsval_placeholder
+from live.code.common import jsval_placeholder
+from live.code.common import make_js_value_inserter
 from live.code.cursor import Cursor
+from live.comm import BackendError
+from live.comm import be_interaction
+from live.sublime_util.edit import call_with_edit
+from live.util import first_such
 
 
 def find_repl(window):

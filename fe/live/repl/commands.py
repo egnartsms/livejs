@@ -1,10 +1,12 @@
 import sublime
 import sublime_plugin
 
-from live.comm import TextCommandInteractingWithBe
-from live.code.cursor import Cursor
+from .operations import find_repl
+from .operations import insert_js_value
+from .operations import new_repl
 from live.code.common import make_js_value_inserter
-from .operations import find_repl, new_repl, insert_js_value
+from live.code.cursor import Cursor
+from live.comm import TextCommandInteractingWithBe
 
 
 __all__ = ['LivejsOpenReplCommand', 'LivejsReplSendCommand']
