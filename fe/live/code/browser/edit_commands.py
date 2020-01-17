@@ -1,32 +1,16 @@
+import re
+import sublime
 import sublime_plugin
 
-import re
-
+from .command import ModuleBrowserCommand
+from .view_info import info_for
+from live.code.browser import operations as ops
+from live.comm import be_interaction
 from live.gstate import fe_modules
+from live.modules.datastructures import Module
 from live.sublime_util.edit import call_with_edit
 from live.sublime_util.selection import set_selection
-from live.modules.datastructures import Module
-from live.comm import be_interaction
-from .view_info import info_for
-from .operations import (
-    find_module_browser,
-    new_module_browser,
-    is_module_browser,
-    edit_region,
-    edit_region_contents,
-    edit_node,
-    enclosing_edit_region,
-    edit_new_node,
-    done_editing,
-    refresh,
-    find_containing_node,
-    replace_value_node,
-    replace_key_node,
-    find_insert_position,
-    get_single_selected_node
-)
-from .command import ModuleBrowserCommand
-
+from live.sublime_util.region_edit import region_editor
 
 __all__ = [
     'LivejsCbRefresh', 'LivejsBrowseModule', 'LivejsCbEdit', 'LivejsCbCommit',
@@ -38,17 +22,17 @@ __all__ = [
 class LivejsCbRefresh(ModuleBrowserCommand):
     @be_interaction
     def run(self, edit):
-        if not is_module_browser(self.view):
+        if not ops.is_module_browser(self.view):
             self.view.window().status_message("Not a LiveJS module browser")
             return
 
-        done_editing(self.view)
+        ops.done_editing(self.view)
         entries = yield 'sendAllEntries', {'mid': self.mid}
         # We cannot use the 'edit' argument here since the command is already run, we've
         # already yielded.
         call_with_edit(
             self.view,
-            lambda edit: refresh(self.view, edit, entries)
+            lambda edit: ops.refresh(self.view, edit, entries)
         )
 
 
@@ -56,11 +40,11 @@ class LivejsBrowseModule(sublime_plugin.WindowCommand):
     @be_interaction
     def run(self, module_id):
         module = Module.with_id(module_id)
-        view = find_module_browser(self.window, module)
+        view = ops.find_module_browser(self.window, module)
         if view is None:
-            view = new_module_browser(self.window, module)
+            view = ops.new_module_browser(self.window, module)
             entries = yield 'sendAllEntries', {'mid': module.id}
-            call_with_edit(view, lambda edit: refresh(view, edit, entries))
+            call_with_edit(view, lambda edit: ops.refresh(view, edit, entries))
         else:
             self.window.focus_view(view)
 
@@ -82,18 +66,18 @@ class ModuleInputHandler(sublime_plugin.ListInputHandler):
 class LivejsCbEdit(sublime_plugin.TextCommand):
     def run(self, edit):
         if len(self.view.sel()) != 1:
-            self.view.window().status_message("Cannot determine what to edit "
-                                              "(multiple cursors)")
+            sublime.status_message("Cannot determine what to edit "
+                                   "(multiple cursors)")
             return
 
         reg = self.view.sel()[0]
-        node = find_containing_node(self.view, reg, strict=False)
+        node = ops.find_containing_node(self.view, reg, strict=False)
         if node.is_root:
-            self.view.window().status_message("Cannot determine what to edit "
-                                              "(the cursor is at top level)")
+            sublime.status_message("Cannot determine what to edit "
+                                   "(the cursor is at top level)")
             return
 
-        edit_node(node)
+        ops.edit_node(node)
 
 
 class LivejsCbCommit(ModuleBrowserCommand):
@@ -110,13 +94,13 @@ class LivejsCbCommit(ModuleBrowserCommand):
 
     def _commit_new_node_edit(self):
         vinfo = info_for(self.view)
-        js_entered = edit_region_contents(self.view)
+        js_entered = ops.edit_region_contents(self.view)
         if vinfo.new_node_parent.is_object:
             keyval_sep = r'=' if vinfo.new_node_parent.is_root else r':'
             mo = re.match(r'([a-zA-Z0-9_$]+)\s*{}\s*(.+)$'.format(keyval_sep),
                           js_entered, re.DOTALL)
             if mo is None:
-                self.view.window().status_message("Invalid object entry")
+                sublime.status_message("Invalid object entry")
                 return
 
             self.set_status_be_pending()
@@ -141,11 +125,11 @@ class LivejsCbCommit(ModuleBrowserCommand):
     def _commit_node_edit(self):
         vinfo = info_for(self.view)
         node = vinfo.node_being_edited
-        js_entered = edit_region_contents(self.view)
+        js_entered = ops.edit_region_contents(self.view)
 
         if node.is_key:
             if not re.match(r'[a-zA-Z0-9_$]+$', js_entered):
-                self.view.window().status_message("Invalid JS identifier")
+                sublime.status_message("Invalid JS identifier")
                 return
 
             self.set_status_be_pending()
@@ -173,8 +157,9 @@ class LivejsCbCancelEdit(ModuleBrowserCommand):
             return  # should not happen
 
         if vinfo.is_editing_new_node:
-            self.view.erase(edit, vinfo.enclosing_edit_reg(edit_region(self.view)))
-            done_editing(self.view)
+            undoer = region_editor.undoer_for(self.view)
+            self.view.erase(edit, undoer.enclosing_reg())
+            ops.done_editing(self.view)
             return
 
         node = vinfo.node_being_edited
@@ -185,7 +170,7 @@ class LivejsCbCancelEdit(ModuleBrowserCommand):
             }
             call_with_edit(
                 self.view,
-                lambda edit: replace_key_node(
+                lambda edit: ops.replace_key_node(
                     view=self.view,
                     edit=edit,
                     path=node.path,
@@ -199,7 +184,7 @@ class LivejsCbCancelEdit(ModuleBrowserCommand):
             }
             call_with_edit(
                 self.view,
-                lambda edit: replace_value_node(
+                lambda edit: ops.replace_value_node(
                     view=self.view,
                     edit=edit,
                     path=node.path,
@@ -211,7 +196,7 @@ class LivejsCbCancelEdit(ModuleBrowserCommand):
 class LivejsCbMoveNodeFwd(ModuleBrowserCommand):
     @be_interaction
     def run(self, edit):
-        node = get_single_selected_node(self.view)
+        node = ops.get_single_selected_node(self.view)
         if node is None:
             return  # should not normally happen, protected by key binding context
 
@@ -228,7 +213,7 @@ class LivejsCbMoveNodeFwd(ModuleBrowserCommand):
 class LivejsCbMoveNodeBwd(ModuleBrowserCommand):
     @be_interaction
     def run(self, edit):
-        node = get_single_selected_node(self.view)
+        node = ops.get_single_selected_node(self.view)
         if node is None:
             return  # should not normally happen, protected by key binding context
 
@@ -245,7 +230,7 @@ class LivejsCbMoveNodeBwd(ModuleBrowserCommand):
 class LivejsCbDelNode(ModuleBrowserCommand):
     @be_interaction
     def run(self, edit):
-        node = get_single_selected_node(self.view)
+        node = ops.get_single_selected_node(self.view)
         if node is None:
             self.view.run_command('livejs_cb_select')
             return
@@ -259,19 +244,19 @@ class LivejsCbDelNode(ModuleBrowserCommand):
 class LivejsCbAddNode(sublime_plugin.TextCommand):
     def run(self, edit):
         if len(self.view.sel()) != 1:
-            self.view.window().status_message("Cannot determine where to add")
+            sublime.status_message("Cannot determine where to add")
             return
 
         reg = self.view.sel()[0]
-        parent = find_containing_node(self.view, reg, strict=True)
+        parent = ops.find_containing_node(self.view, reg, strict=True)
 
         if parent.is_leaf:
-            self.view.window().status_message("Cannot add here")
+            sublime.status_message("Cannot add here")
             return
 
-        pos = find_insert_position(parent, reg)
+        pos = ops.find_insert_position(parent, reg)
         if pos is None:
-            self.view.window().status_message("Cannot determine where to add")
+            sublime.status_message("Cannot determine where to add")
             return
 
-        edit_new_node(self.view, edit, parent, pos)
+        ops.edit_new_node(self.view, edit, parent, pos)

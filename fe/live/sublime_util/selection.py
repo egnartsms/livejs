@@ -10,3 +10,11 @@ def set_selection(view, to_reg=None, to_regs=None, show=False):
 
     if show:
         view.show(view.sel(), True)
+
+
+def inside_region_inc(reg, p):
+    return p >= reg.a and p <= reg.b
+
+
+def inside_region_exc(reg, p):
+    return p > reg.a and p < reg.b

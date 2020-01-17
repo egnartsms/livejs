@@ -1,13 +1,19 @@
 import sublime
 
-from live.util import first_such, tracking_last, eraise
-from live.sublime_util.hacks import set_viewport_position
-from live.sublime_util.edit import call_with_edit
-from live.sublime_util.selection import set_selection
-from ..common import read_only_set_to, make_js_value_inserter, add_hidden_regions
+from ..common import make_js_value_inserter
+from ..common import read_only_set_to
 from .cursor import Cursor
+from .nodes import JsArray
+from .nodes import JsLeaf
+from .nodes import JsObject
 from .view_info import info_for
-from .nodes import JsObject, JsArray, JsLeaf
+from live.sublime_util.edit import call_with_edit
+from live.sublime_util.hacks import set_viewport_position
+from live.sublime_util.region_edit import RegEditUndoer
+from live.sublime_util.region_edit import region_editor
+from live.sublime_util.selection import set_selection
+from live.util import first_such
+from live.util import tracking_last
 
 
 CODE_BROWSER_VIEW_NAME = "LiveJS: Code Browser"
@@ -165,6 +171,22 @@ def get_single_selected_node(view):
     return find_node_by_exact_region(view, view.sel()[0])
 
 
+class CodeBrowserRegEditUndoer(RegEditUndoer):
+    def __init__(self, view, regkey, edit_region_setter, enclosing_reg=None):
+        super().__init__(view, regkey, edit_region_setter)
+        if enclosing_reg is None:
+            self.enclosing_reg_offsets = (0, 0)
+        else:
+            reg = self._get_edit_region()
+            self.enclosing_reg_offsets = (reg.a - enclosing_reg.a,
+                                          enclosing_reg.b - reg.b)
+
+    def enclosing_reg(self):
+        reg = self._get_edit_region()
+        return sublime.Region(reg.a - self.enclosing_reg_offsets[0],
+                              reg.b + self.enclosing_reg_offsets[1])
+
+
 def set_edit_region(view, reg):
     view.add_regions('edit', [reg], 'region.bluish livejs.edit', '',
                      sublime.DRAW_EMPTY | sublime.DRAW_NO_OUTLINE)
@@ -189,6 +211,10 @@ def edit_node(node):
     view.set_read_only(False)
     set_edit_region(view, node.region)
     info_for(view).edit_node(node)
+    region_editor.start_editing(
+        view,
+        CodeBrowserRegEditUndoer(view, 'edit', set_edit_region)
+    )
 
 
 def edit_new_node(view, edit, parent, pos):
@@ -234,7 +260,11 @@ def edit_new_node(view, edit, parent, pos):
 
     set_edit_region(view, edit_reg)
     set_selection(view, to_reg=edit_reg)
-    info_for(view).edit_new_node(parent, pos, edit_reg, enclosing_reg)
+    info_for(view).edit_new_node(parent, pos, edit_reg)
+    region_editor.start_editing(
+        view,
+        CodeBrowserRegEditUndoer(view, 'edit', set_edit_region, enclosing_reg)
+    )
 
 
 def done_editing(view):
@@ -243,6 +273,7 @@ def done_editing(view):
     discard_edit_region(view)
     view.set_read_only(True)
     info_for(view).done_editing()
+    region_editor.stop_editing(view)
 
 
 def invalidate_codebrowser(view):
@@ -301,7 +332,7 @@ def replace_value_node(view, edit, path, new_value):
     node = vinfo.root.value_node_at(path)
 
     if node is vinfo.node_being_edited:
-        reg = vinfo.enclosing_edit_reg(edit_region(view))
+        reg = region_editor.undoer_for(view).enclosing_reg()
         done_editing(view)
     else:
         reg = node.region
@@ -323,7 +354,7 @@ def replace_key_node(view, edit, path, new_name):
     node = vinfo.root.key_node_at(path)
 
     if node is vinfo.node_being_edited:
-        reg = vinfo.enclosing_edit_reg(edit_region(view))
+        reg = region_editor.undoer_for(view).enclosing_reg()
         done_editing(view)
     else:
         reg = node.region
@@ -345,7 +376,7 @@ def delete_node(view, edit, path):
     enode = vinfo.node_being_edited
 
     if enode is not None and enode.value_node_or_self is node:
-        reg = vinfo.enclosing_edit_reg(edit_region(view))
+        reg = region_editor.undoer_for(view).enclosing_reg()
         if enode.kv_match:
             reg = reg.cover(enode.kv_match.region)
 
@@ -380,7 +411,7 @@ def insert_node(view, edit, path, key, value):
             vinfo.new_node_position == new_index:
         # In this Code Browser view we were editing the new node which is now being
         # inserted.  This is typical after the user commits.
-        view.erase(edit, vinfo.enclosing_edit_reg(edit_region(view)))
+        view.erase(edit, region_editor.undoer_for(view).enclosing_reg())
         done_editing(view)
 
     def insert():

@@ -2,12 +2,11 @@ import operator as pyop
 import sublime
 import sublime_plugin
 
-from .operations import edit_region
 from .operations import get_single_selected_node
 from .operations import invalidate_codebrowser
-from .operations import set_edit_region
 from .view_info import info_for
 from live.gstate import ws_handler
+from live.sublime_util.region_edit import region_editor
 
 
 __all__ = ['CodeBrowserEventListener']
@@ -28,7 +27,7 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
         elif operator == sublime.OP_NOT_EQUAL:
             op = pyop.ne
         else:
-            return None
+            return False
 
         if key == 'livejs_cb_exact_node_selected':
             val = get_single_selected_node(self.view) is not None
@@ -37,7 +36,7 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
         elif key == 'livejs_cb_view_mode':
             val = not info_for(self.view).is_editing
         else:
-            return None
+            return False
 
         return op(val, operand)
 
@@ -49,51 +48,6 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
         if vinfo.root is None:
             invalidate_codebrowser(self.view)
 
-    def _get_pre_post_sizes(self):
-        [reg] = self.view.get_regions('edit')
-        return reg.a, self.view.size() - reg.b
-
-    def _is_after_insertion_at_reg_begin(self):
-        """Does the current selection look like smth was inserted at region beginning.
-
-        This boils down to:
-          * single cursor
-          * and it is in front of the edit region
-        """
-        [reg] = self.view.get_regions('edit')
-        sel = self.view.sel()
-        return len(sel) == 1 and sel[0].a == reg.a
-
-    def _is_after_insertion_at_reg_end(self, delta):
-        """Does the current selection look like smth was inserted at region end
-
-        This boils down to:
-          * single cursor
-          AND
-          * it is "delta" positions after the editing region end
-          * or we have this: ---<edit region>(*)----, where the star * means cursor
-            position, and a parenthesis after it means a closing parenthesis character
-            that might be automatically inserted, such as ), ], }, etc. This is needed
-            becase when an opening parenthesis is inserted at region end, the whole
-            command fails since the closing parenthesis is attempted to be inserted but
-            fails. So we take this measure to allow for the closing parenthesis to get
-            automatically inserted.
-        """
-        [reg] = self.view.get_regions('edit')
-        sel = self.view.sel()
-        if len(sel) != 1:
-            return False
-
-        [sel] = sel
-        if sel.a == reg.b + delta:
-            return True
-
-        if delta == 2 and sel.a == reg.b + 1 and \
-                self.view.substr(reg.b + 1) in ')]}"\'`':
-            return True
-
-        return False
-
     def on_modified(self):
         """Undo modifications to portions of the buffer outside the edit region.
 
@@ -104,42 +58,30 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
         Also, we detect insertion of text right before the edit region and right after it,
         and extend the edit region to include what was just inserted.
         """
-        vinfo = info_for(self.view)
-        if not vinfo.is_editing:
+        if not region_editor.is_editing(self.view):
             return
 
-        pre, post = vinfo.edit_pre_post
-        
-        while True:
-            xpre, xpost = self._get_pre_post_sizes()
-            if xpre == pre and xpost == post:
-                break
-            elif xpre > pre and xpost == post and self._is_after_insertion_at_reg_begin():
-                reg = edit_region(self.view)
-                reg = sublime.Region(reg.a - (xpre - pre), reg.b)
-                set_edit_region(self.view, reg)
-                break
-            elif xpost > post and xpre == pre and \
-                    self._is_after_insertion_at_reg_end(xpost - post):
-                reg = edit_region(self.view)
-                reg = sublime.Region(reg.a, reg.b + (xpost - post))
-                set_edit_region(self.view, reg)
-                break
+        undoer = region_editor.undoer_for(self.view)
+        undoer.undo_modifications_if_any()
 
-            self.view.run_command('undo')
-            sublime.status_message("Cannot edit outside the editing region")
+    def on_selection_modified(self):
+        if not region_editor.is_editing(self.view):
+            return
 
-    def on_query_completions(self, prefix, locations):
-        """Suppress completions when the cursor is not in the edit region.
+        undoer = region_editor.undoer_for(self.view)
+        self.view.set_read_only(undoer.read_only_value())
 
-        Despite the fact that we suppress modifications in the non-edit region of the
-        buffer, Sublime still displays a completion list in there.  So suppress it, too.
-        """
-        [reg] = self.view.get_regions('edit')
-        if not all(p > reg.a and p < reg.b for p in locations):
-            return (
-                [],
-                sublime.INHIBIT_WORD_COMPLETIONS | sublime.INHIBIT_EXPLICIT_COMPLETIONS
-            )
-        else:
-            return None
+    # def on_query_completions(self, prefix, locations):
+    #     """Suppress completions when the cursor is not in the edit region.
+
+    #     Despite the fact that we suppress modifications in the non-edit region of the
+    #     buffer, Sublime still displays a completion list in there.  So suppress it, too.
+    #     """
+    #     [reg] = self.view.get_regions('edit')
+    #     if not all(p > reg.a and p < reg.b for p in locations):
+    #         return (
+    #             [],
+    #             sublime.INHIBIT_WORD_COMPLETIONS | sublime.INHIBIT_EXPLICIT_COMPLETIONS
+    #         )
+    #     else:
+    #         return None
