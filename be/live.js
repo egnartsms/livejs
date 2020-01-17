@@ -11,12 +11,6 @@ window.live = (function () {
 
       socket: null,
 
-      irr: [
-         10,
-         20,
-         30
-      ],
-
       onSocketClose: function (evt) {
          $.resetSocket();
       },

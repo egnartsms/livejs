@@ -70,18 +70,3 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
 
         undoer = region_editor.undoer_for(self.view)
         self.view.set_read_only(undoer.read_only_value())
-
-    # def on_query_completions(self, prefix, locations):
-    #     """Suppress completions when the cursor is not in the edit region.
-
-    #     Despite the fact that we suppress modifications in the non-edit region of the
-    #     buffer, Sublime still displays a completion list in there.  So suppress it, too.
-    #     """
-    #     [reg] = self.view.get_regions('edit')
-    #     if not all(p > reg.a and p < reg.b for p in locations):
-    #         return (
-    #             [],
-    #             sublime.INHIBIT_WORD_COMPLETIONS | sublime.INHIBIT_EXPLICIT_COMPLETIONS
-    #         )
-    #     else:
-    #         return None
