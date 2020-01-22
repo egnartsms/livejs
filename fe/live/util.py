@@ -8,7 +8,7 @@ def eraise(msg=None, *args, **kwargs):
         raise RuntimeError(msg.format(*args, **kwargs))
 
 
-def first_such(gen):
+def first_or_none(gen):
     return next(gen, None)
 
 

@@ -1,7 +1,6 @@
 import sublime
 
-from live.sublime_util.view_info import ViewInfoPlane
-from live.sublime_util.selection import inside_region_inc
+from live.sublime_util.misc import is_subregion
 
 
 class RegionEditHelper:
@@ -16,7 +15,7 @@ class RegionEditHelper:
         return reg
 
     def _set_edit_region(self, reg):
-        self.edit_region_setter(self.view, reg)
+        self.edit_region_setter(reg)
 
     def _get_pre_post(self):
         reg = self._get_edit_region()
@@ -63,7 +62,7 @@ class RegionEditHelper:
 
         return False
 
-    def undo_modifications_if_any(self):
+    def undo_modifications_outside_edit_region(self):
         """Undo modifications to portions of the buffer outside the edit region.
 
         We only detect such modifications when the sizes of the corresponding pre and post
@@ -93,11 +92,11 @@ class RegionEditHelper:
             self.view.run_command('undo')
             sublime.status_message("Cannot edit outside the editing region")
 
-    def read_only_value(self):
-        sel = self.view.sel()
-        reg = self._get_edit_region()
-        return not all(inside_region_inc(reg, p.a) and inside_region_inc(reg, p.b)
-                       for p in sel)
+    def read_only_status(self):
+        """Compute the read only status for the buffer at this moment of time
 
-
-region_edit_helpers = ViewInfoPlane()
+        If there are any cursors not inside the edit region, this is True (inhibit
+        modifications).  Otherwise, False (free to edit).
+        """
+        ereg = self._get_edit_region()
+        return not all(is_subregion(r, ereg) for r in self.view.sel())

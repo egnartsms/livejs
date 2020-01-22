@@ -1,6 +1,7 @@
 import sublime
 
-from ..common import add_hidden_regions, hidden_region_list
+from live.sublime_util.misc import add_hidden_regions
+from live.sublime_util.misc import hidden_region_list
 from live.util import serially
 
 
@@ -18,18 +19,12 @@ class JsNode:
     def is_attached(self):
         return self.parent is not None
 
-    @property
-    def is_unattached(self):
-        return not self.is_attached
-
     def attach_to(self, parent):
-        if self.is_attached:
-            raise RuntimeError
+        assert not self.is_attached
         self.parent = parent
 
     def detach(self):
-        if self.is_unattached:
-            raise RuntimeError
+        assert self.is_attached
         self.parent = None
 
     @property
@@ -227,7 +222,7 @@ class JsComposite(JsNode):
         self.child_id = None
 
     def attach_to(self, parent):
-        assert self.is_unattached
+        assert not self.is_attached
         self.parent = parent
         self.child_id = '{:X}'.format(parent.child_id_seq)
         parent.child_id_seq += 1
@@ -301,11 +296,39 @@ class JsComposite(JsNode):
         node = self
         for n in xpath:
             node = node.value_nodes[n]
-        if not node.is_object:
-            raise RuntimeError(
-                "Path to key node of {} is incorrect: {}".format(node, path)
-            )
+        
+        assert node.is_object, \
+            "Path to key node of {} is incorrect: {}".format(self, path)
+        
         return node.key_nodes[nlast]
+
+    def internode_pos(self, reg):
+        """Child index of a node that would be inserted at reg
+
+        :param reg: sublime.Region
+        :return: index or None in case reg is not fully contained in a single inter-node
+                 region.
+        """
+        pos = 0
+        folw = None
+
+        while True:
+            prec = folw
+            folw = None if pos == self.num_children else self.entries[pos]
+
+            inter_reg = sublime.Region(
+                prec.end if prec else self.begin + 1,
+                folw.begin if folw else self.end - 1
+            )
+            if inter_reg.contains(reg):
+                return pos
+
+            if folw is None:
+                break
+
+            pos += 1
+
+        return None
 
 
 class JsObject(JsComposite):

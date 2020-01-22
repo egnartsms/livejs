@@ -2,11 +2,10 @@ import operator as pyop
 import sublime
 import sublime_plugin
 
-from .operations import get_single_selected_node
-from .operations import invalidate_codebrowser
-from .view_info import info_for
+from .operations import is_view_module_browser
+from .operations import module_browser_for
 from live.gstate import ws_handler
-from live.sublime_util.region_edit import region_edit_helpers
+from live.sublime_util.edit import call_with_edit
 
 
 __all__ = ['CodeBrowserEventListener']
@@ -15,11 +14,15 @@ __all__ = ['CodeBrowserEventListener']
 class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
     @classmethod
     def is_applicable(cls, settings):
-        return settings.get('livejs_view') == 'Code Browser'
+        return is_view_module_browser(settings)
 
     @classmethod
     def applies_to_primary_view_only(cls):
         return True
+
+    @property
+    def mbrowser(self):
+        return module_browser_for(self.view)
 
     def on_query_context(self, key, operator, operand, match_all):
         if operator == sublime.OP_EQUAL:
@@ -30,23 +33,19 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
             return False
 
         if key == 'livejs_cb_exact_node_selected':
-            val = get_single_selected_node(self.view) is not None
+            val = self.mbrowser.get_single_selected_node() is not None
         elif key == 'livejs_cb_edit_mode':
-            val = info_for(self.view).is_editing
+            val = self.mbrowser.is_editing
         elif key == 'livejs_cb_view_mode':
-            val = not info_for(self.view).is_editing
+            val = not self.mbrowser.is_editing
         else:
             return False
 
         return op(val, operand)
 
     def on_activated(self):
-        if not ws_handler.is_connected:
-            invalidate_codebrowser(self.view)
-            return
-        vinfo = info_for(self.view)
-        if vinfo.root is None:
-            invalidate_codebrowser(self.view)
+        if not ws_handler.is_connected or self.mbrowser.root is None:
+            call_with_edit(self.view, self.mbrowser.invalidate)
 
     def on_modified(self):
         """Undo modifications to portions of the buffer outside the edit region.
@@ -58,13 +57,7 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
         Also, we detect insertion of text right before the edit region and right after it,
         and extend the edit region to include what was just inserted.
         """
-        if self.view not in region_edit_helpers:
-            return
-
-        region_edit_helpers[self.view].undo_modifications_if_any()
+        self.mbrowser.ensure_modifications_within_edit_region()
 
     def on_selection_modified(self):
-        if self.view not in region_edit_helpers:
-            return
-
-        self.view.set_read_only(region_edit_helpers[self.view].read_only_value())
+        self.mbrowser.set_view_read_only_if_region_editing()

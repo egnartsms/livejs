@@ -1,14 +1,15 @@
-import sublime
-
 import re
-import contextlib
 
-from live.util import tracking_last, FreeObj
+from live.util import FreeObj
+from live.util import tracking_last
 
 
 def make_js_value_inserter(cur, jsval, nesting):
     """Return a generator that inserts JS values with given cursor and yields commands.
     
+    It is currently used for both inspected (runtime) objects and tracked objects. This
+    doesn't have to be like that.
+
     :param nesting: nesting of jsval at point of insertion.
 
     Yields the following commands:
@@ -127,23 +128,3 @@ def jsval_placeholder(jsval_type):
         return "(...)"
     else:
         assert 0
-
-
-@contextlib.contextmanager
-def read_only_set_to(view, new_status):
-    old_status = view.is_read_only()
-    view.set_read_only(new_status)
-    yield
-    view.set_read_only(old_status)
-
-
-def add_hidden_regions(view, key, regs):
-    """Marker region is a hidden"""
-    view.add_regions(key, regs, '', '', sublime.HIDDEN)
-
-
-@contextlib.contextmanager
-def hidden_region_list(view, key):
-    region_list = view.get_regions(key)
-    yield region_list
-    add_hidden_regions(view, key, region_list)

@@ -18,33 +18,17 @@ class ViewInfoDiscarder(sublime_plugin.EventListener):
             plane.pop(view.id(), None)
 
 
-def defaultable_view_info_getter(info_cls):
+def view_info_getter(info_cls, is_applicable_to):
     plane = {}
     view_planes.append(plane)
 
     def get(view):
-        vid = view.id()
-        if vid not in plane:
-            plane[vid] = info_cls(view)
+        if view.id() not in plane:
+            if is_applicable_to(view):
+                plane[view.id()] = info_cls(view)
+            else:
+                return None
 
-        return plane[vid]
+        return plane[view.id()]
 
     return get
-
-
-class ViewInfoPlane:
-    def __init__(self):
-        self._plane = {}
-        view_planes.append(self._plane)
-
-    def __getitem__(self, view):
-        return self._plane[view.id()]
-
-    def __setitem__(self, view, obj):
-        self._plane[view.id()] = obj
-
-    def __delitem__(self, view):
-        del self._plane[view.id()]
-
-    def __contains__(self, view):
-        return view.id() in self._plane

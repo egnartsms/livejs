@@ -1,10 +1,7 @@
-import sublime_plugin
+from .operations import module_browser_for
 
 
-class ModuleBrowserCommand(sublime_plugin.TextCommand):
+class ModuleBrowserCommandMixin:
     @property
-    def mid(self):
-        return self.view.settings().get('livejs_module_id')
-
-    def set_status_be_pending(self):
-        self.view.set_status('livejs_pending', "LiveJS: back-end is processing..")
+    def mbrowser(self):
+        return module_browser_for(self.view)

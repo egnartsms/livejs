@@ -2,11 +2,12 @@ import sublime
 
 from functools import wraps
 
+from .browser.operations import find_module_browser_view
+from .browser.operations import module_browser_for
+from .persist import operations as persist
+from live.modules.datastructures import Module
 from live.sublime_util.edit import call_with_edit
 from live.sublime_util.on_view_loaded import on_load
-from live.modules.datastructures import Module
-from .browser import operations as browser
-from .persist import operations as persist
 
 
 persist_handlers = {}
@@ -19,9 +20,11 @@ def persist_handler(fn):
     @wraps(fn)
     def wrapper(request):
         module = Module.with_id(request['mid'])
-        view_browser = browser.find_module_browser(sublime.active_window(), module)
+        # TODO: for now we ignore other windows except the active one
+        mb_view = find_module_browser_view(sublime.active_window(), module)
+        mbrowser = module_browser_for(mb_view)
         view_source = open_module_source_view(sublime.active_window(), module.path)
-        fn(request, view_browser, view_source)
+        fn(request, mbrowser, view_source)
 
     persist_handlers[request_name] = wrapper
     return wrapper
@@ -37,14 +40,11 @@ def open_module_source_view(window, filepath):
 
 
 @persist_handler
-def replace(request, view_browser, view_source):
+def replace(request, mbrowser, view_source):
     call_with_edit(
-        view_browser,
-        lambda edit: browser.replace_value_node(
-            view=view_browser,
-            edit=edit,
-            path=request['path'],
-            new_value=request['newValue']
+        mbrowser.view,
+        lambda edit: mbrowser.replace_value_node(
+            edit, request['path'], request['newValue']
         )
     )
 
@@ -62,15 +62,10 @@ def replace(request, view_browser, view_source):
 
 
 @persist_handler
-def rename_key(request, view_browser, view_source):
+def rename_key(request, mbrowser, view_source):
     call_with_edit(
-        view_browser,
-        lambda edit: browser.replace_key_node(
-            view=view_browser,
-            edit=edit,
-            path=request['path'],
-            new_name=request['newName']
-        )
+        mbrowser.view,
+        lambda edit: mbrowser.replace_key_node(edit, request['path'], request['newName'])
     )
 
     @on_load(view_source)
@@ -87,14 +82,10 @@ def rename_key(request, view_browser, view_source):
 
 
 @persist_handler
-def delete(request, view_browser, view_source):
+def delete(request, mbrowser, view_source):
     call_with_edit(
-        view_browser,
-        lambda edit: browser.delete_node(
-            view=view_browser,
-            edit=edit,
-            path=request['path']
-        )
+        mbrowser.view,
+        lambda edit: mbrowser.delete_node(edit, request['path'])
     )
 
     @on_load(view_source)
@@ -110,15 +101,11 @@ def delete(request, view_browser, view_source):
 
 
 @persist_handler
-def insert(request, view_browser, view_source):
+def insert(request, mbrowser, view_source):
     call_with_edit(
-        view_browser,
-        lambda edit: browser.insert_node(
-            view=view_browser,
-            edit=edit,
-            path=request['path'],
-            key=request['key'],
-            value=request['value']
+        mbrowser.view,
+        lambda edit: mbrowser.insert_node(
+            edit, request['path'], request['key'], request['value']
         )
     )
 

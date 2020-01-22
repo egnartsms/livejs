@@ -9,11 +9,11 @@ from live.code.cursor import Cursor
 from live.comm import BackendError
 from live.comm import be_interaction
 from live.sublime_util.edit import call_with_edit
-from live.util import first_such
+from live.util import first_or_none
 
 
 def find_repl(window):
-    return first_such(
+    return first_or_none(
         view for view in window.views()
         if view.settings().get('livejs_view') == 'REPL'
     )

@@ -11,12 +11,34 @@ window.live = (function () {
 
       socket: null,
 
+      init: function () {
+         $.modules = Object.create(null);
+         $.modules[1] = {
+            id: 1,
+            name: 'live',
+            path: null,
+            value: $
+         };
+         $.orderedKeysMap = new WeakMap;
+         $.inspected = {
+            obj2id: new Map,
+            id2obj: new Map,
+            nextId: 1
+         };
+      
+         $.resetSocket();
+      },
+
+      onSocketOpen: function () {
+         console.log("Connected to LiveJS FE");
+      },
+
       onSocketClose: function (evt) {
          $.resetSocket();
       },
 
       resetSocket: function () {
-         $.socket = new WebSocket('ws://localhost:8001/wsconnect');
+         $.socket = new WebSocket('ws://localhost:7000/wsconnect');
          $.socket.onmessage = $.onSocketMessage;
          $.socket.onopen = $.onSocketOpen;
          $.socket.onclose = $.onSocketClose;
