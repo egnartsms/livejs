@@ -3,29 +3,49 @@ import sublime
 
 from functools import partial
 
+from .repl import Repl
 from live.code.common import jsval_placeholder
 from live.code.common import make_js_value_inserter
 from live.code.cursor import Cursor
 from live.comm import BackendError
 from live.comm import be_interaction
+from live.settings import setting_module_id
+from live.settings import setting_view
 from live.sublime_util.edit import call_with_edit
+from live.sublime_util.view_info import view_info_getter
 from live.util import first_or_none
 
 
-def find_repl(window):
-    return first_or_none(
-        view for view in window.views()
-        if view.settings().get('livejs_view') == 'REPL'
-    )
+def is_view_repl(view):
+    return setting_view[view] == 'REPL'
 
 
-def new_repl(window):
-    repl = window.new_file()
-    repl.settings().set('livejs_view', 'REPL')
-    repl.set_name('LiveJS: REPL')
-    repl.set_scratch(True)
-    repl.assign_syntax('Packages/LiveJS/LiveJS REPL.sublime-syntax')
-    return repl
+def find_repl_view(window):
+    return first_or_none(view for view in window.views()
+                         if setting_view[view] == 'REPL')
+
+
+def new_repl_view(window, module):
+    view = window.new_file()
+    setting_view[view] = 'REPL'
+    setting_module_id[view] = module.id
+    view.set_name('LiveJS: REPL')
+    view.set_scratch(True)
+    view.assign_syntax('Packages/LiveJS/LiveJS REPL.sublime-syntax')
+
+    def insert_initial_prompt(edit):
+        view.insert(edit, module.name + '> ')
+    
+    call_with_edit(view, insert_initial_prompt)
+
+    return view
+
+
+repl_for = view_info_getter(Repl, is_view_repl)
+
+
+def insert_prompt(view):
+    pass
 
 
 PHANTOM_HTML_TEMPLATE = '''
@@ -159,7 +179,7 @@ class Unrevealed:
 def insert_js_value(view, inserter):
     """Create Node instances which are inaccessible as of now.
 
-    They exist only for the sake of phantoms
+    They exist only for the sake of phantoms, and get GCed when we deleted phantoms.
     """
     def insert_object():
         while True:

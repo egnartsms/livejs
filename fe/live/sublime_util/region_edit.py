@@ -92,11 +92,12 @@ class RegionEditHelper:
             self.view.run_command('undo')
             sublime.status_message("Cannot edit outside the editing region")
 
-    def read_only_status(self):
-        """Compute the read only status for the buffer at this moment of time
+    def set_read_only(self):
+        """Compute and set the read only status for the view at this moment of time.
 
         If there are any cursors not inside the edit region, this is True (inhibit
         modifications).  Otherwise, False (free to edit).
         """
         ereg = self._get_edit_region()
-        return not all(is_subregion(r, ereg) for r in self.view.sel())
+        ro = not all(is_subregion(r, ereg) for r in self.view.sel())
+        self.view.set_read_only(ro)

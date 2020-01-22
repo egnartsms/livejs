@@ -1,6 +1,6 @@
-from .settings import setting_module_id
-from .settings import setting_view
 from .module_browser import ModuleBrowser
+from live.settings import setting_module_id
+from live.settings import setting_view
 from live.sublime_util.view_info import view_info_getter
 from live.util import first_or_none
 

@@ -48,15 +48,6 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
             call_with_edit(self.view, self.mbrowser.invalidate)
 
     def on_modified(self):
-        """Undo modifications to portions of the buffer outside the edit region.
-
-        We only detect such modifications when the sizes of the corresponding pre and post
-        regions change.  This cannot detect e.g. line swaps outside the edit region but
-        is still very useful.
-
-        Also, we detect insertion of text right before the edit region and right after it,
-        and extend the edit region to include what was just inserted.
-        """
         self.mbrowser.ensure_modifications_within_edit_region()
 
     def on_selection_modified(self):

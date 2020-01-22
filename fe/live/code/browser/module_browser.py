@@ -4,9 +4,9 @@ from .cursor import Cursor
 from .nodes import JsArray
 from .nodes import JsLeaf
 from .nodes import JsObject
-from .settings import setting_module_id
 from live.code.common import make_js_value_inserter
 from live.modules.datastructures import Module
+from live.settings import setting_module_id
 from live.sublime_util.hacks import set_viewport_position
 from live.sublime_util.misc import is_subregion
 from live.sublime_util.misc import read_only_set_to
@@ -389,12 +389,13 @@ class ModuleBrowser:
         """If editing is constrained within a given region, set view's read_only status.
 
         This depends on cursor (selection) position. Currently, if a module browser is in
-        edit mode, the editing is always constrained by a region.
+        edit mode, the editing is always constrained by a region, i.e. we have no
+        unconstrained editing mode.
         """
         if self.region_edit_helper is None:
             return
 
-        self.view.set_read_only(self.region_edit_helper.read_only_status())
+        self.region_edit_helper.set_read_only()
 
 
 class CodeBrowserRegionEditHelper(RegionEditHelper):

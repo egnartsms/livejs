@@ -5,7 +5,6 @@ import os
 import traceback
 import operator as pyop
 
-from live.util import eraise
 from live.lowlvl.http_server import serve
 from live.lowlvl.eventloop import EventLoop
 from live.gstate import config
@@ -66,17 +65,16 @@ class LivejsToggleServerCommand(sublime_plugin.TextCommand):
 
 class QueryContextProcessor(sublime_plugin.EventListener):
     def on_query_context(self, view, key, operator, operand, match_all):
-        
         if operator == sublime.OP_EQUAL:
             op = pyop.eq
         elif operator == sublime.OP_NOT_EQUAL:
             op = pyop.ne
         else:
-            return None
+            return False
 
         if key == 'livejs_view':
             val = view.settings().get('livejs_view')
         else:
-            return None
+            return False
 
         return op(val, operand)
