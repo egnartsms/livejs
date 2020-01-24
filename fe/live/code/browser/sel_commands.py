@@ -1,7 +1,6 @@
 import sublime
-import sublime_plugin
 
-from .command import ModuleBrowserCommandMixin
+from .command import ModuleBrowserTextCommand
 from live.sublime_util.misc import set_selection
 
 
@@ -11,7 +10,7 @@ __all__ = [
 ]
 
 
-class LivejsCbSelect(sublime_plugin.TextCommand, ModuleBrowserCommandMixin):
+class LivejsCbSelect(ModuleBrowserTextCommand):
     def run(self, edit):
         if len(self.view.sel()) != 1:
             sublime.status_message("Could not determine the node to select: many cursors")
@@ -27,7 +26,7 @@ class LivejsCbSelect(sublime_plugin.TextCommand, ModuleBrowserCommandMixin):
         set_selection(self.view, to_reg=node.region)
 
 
-class LivejsCbMoveSelNext(sublime_plugin.TextCommand, ModuleBrowserCommandMixin):
+class LivejsCbMoveSelNext(ModuleBrowserTextCommand):
     def run(self, edit, by_same_kind):
         node = self.mbrowser.get_single_selected_node()
         if node is None:
@@ -41,7 +40,7 @@ class LivejsCbMoveSelNext(sublime_plugin.TextCommand, ModuleBrowserCommandMixin)
         set_selection(self.view, to_reg=right.region, show=True)
 
 
-class LivejsCbMoveSelPrev(sublime_plugin.TextCommand, ModuleBrowserCommandMixin):
+class LivejsCbMoveSelPrev(ModuleBrowserTextCommand):
     def run(self, edit, by_same_kind):
         node = self.mbrowser.get_single_selected_node()
         if node is None:
@@ -55,7 +54,7 @@ class LivejsCbMoveSelPrev(sublime_plugin.TextCommand, ModuleBrowserCommandMixin)
         set_selection(self.view, to_reg=left.region, show=True)
 
 
-class LivejsCbMoveSelOutside(sublime_plugin.TextCommand, ModuleBrowserCommandMixin):
+class LivejsCbMoveSelOutside(ModuleBrowserTextCommand):
     def run(self, edit):
         node = self.mbrowser.get_single_selected_node()
         if node is None:
@@ -68,7 +67,7 @@ class LivejsCbMoveSelOutside(sublime_plugin.TextCommand, ModuleBrowserCommandMix
         set_selection(self.view, to_reg=up.region, show=True)
 
 
-class LivejsCbMoveSelInside(sublime_plugin.TextCommand, ModuleBrowserCommandMixin):
+class LivejsCbMoveSelInside(ModuleBrowserTextCommand):
     def run(self, edit, into_key):
         node = self.mbrowser.get_single_selected_node()
         if node is None:

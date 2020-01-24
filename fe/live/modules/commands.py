@@ -48,7 +48,7 @@ class LivejsAddModule(sublime_plugin.WindowCommand):
                                        .format(module_name))
             return
 
-        new_module = Module(name=module_name, path=view.file_name())
+        new_module = Module(id=None, name=module_name, path=view.file_name())
         yield load_modules_request([new_module])
         fe_modules.append(new_module)
         self.window.status_message("Module {} added!".format(module_name))
