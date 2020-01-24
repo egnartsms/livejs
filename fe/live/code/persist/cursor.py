@@ -1,5 +1,6 @@
+from live.code.cursor import Cursor as BaseCursor
+from live.code.cursor import UnexpectedContents
 from live.gstate import config
-from live.code.cursor import Cursor as BaseCursor, UnexpectedContents
 
 
 ROOT_NESTING = 1

@@ -1,10 +1,10 @@
+import functools
 import sublime
 import sublime_plugin
-import functools
 
 from .operations import module_browser_for
-from live.sublime_util.edit import run_method_remembering_edit
 from live.gstate import ws_handler
+from live.sublime_util.edit import run_method_remembering_edit
 
 
 def run_method_ensuring_modules_synched(run):
