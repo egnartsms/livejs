@@ -4,7 +4,9 @@ TextCommand.  This is the only way to get an Edit object necessary for modificat
 import sublime
 import sublime_plugin
 import sublime_api
-
+import functools
+from live.util import mapping_key_set
+import inspect
 
 __all__ = ['LivejsCallWithEditTokenCommand']
 
@@ -57,3 +59,70 @@ class LivejsCallWithEditTokenCommand(sublime_plugin.TextCommand):
 
     def run(self, edit):
         raise NotImplementedError
+
+
+class ViewKeyedDict:
+    def __init__(self):
+        self._dict = {}
+
+    def __contains__(self, view):
+        return view.id() in self._dict
+
+    def __getitem__(self, view):
+        return self._dict[view.id()]
+
+    def __setitem__(self, view, value):
+        self._dict[view.id()] = value
+
+    def __delitem__(self, view):
+        del self._dict[view.id()]
+
+    def get(self, view):
+        return self._dict.get(view.id())
+
+
+edit_for = ViewKeyedDict()
+
+
+def call_ensuring_edit_for(view, thunk):
+    if view in edit_for:
+        return thunk()
+    
+    def callback(edit):
+        edit_for[view] = edit
+        try:
+            return thunk()
+        finally:
+            del edit_for[view]
+    
+    return call_with_edit(view, callback)
+
+
+def edits_self_view(meth):
+    @functools.wraps(meth)
+    def decorated_meth(self, *args, **kwargs):
+        return call_ensuring_edit_for(self.view, lambda: meth(self, *args, **kwargs))
+
+    return decorated_meth
+
+
+def edits_view_arg(fn):
+    sig = inspect.signature(fn)
+    assert 'view' in sig.parameters
+
+    @functools.wraps(fn)
+    def decorated(*args, **kwargs):
+        ba = sig.bind(*args, **kwargs)
+        view = ba.arguments['view']
+        return call_ensuring_edit_for(view, lambda: fn(*args, **kwargs))
+
+    return decorated
+
+
+def run_method_remembering_edit(run):
+    @functools.wraps(run)
+    def decorated(self, edit, **kwargs):
+        with mapping_key_set(edit_for, self.view, edit):
+            return run(self, **kwargs)
+
+    return decorated

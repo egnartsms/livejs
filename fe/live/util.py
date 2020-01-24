@@ -1,4 +1,5 @@
 import time
+import contextlib
 
 
 def eraise(msg=None, *args, **kwargs):
@@ -100,3 +101,19 @@ def _get_proxy_target(proxy):
 class FreeObj:
     def __init__(self, **attrs):
         self.__dict__.update(attrs)
+
+
+missing = object()
+
+
+@contextlib.contextmanager
+def mapping_key_set(mapping, key, value):
+    old_value = mapping[key] if key in mapping else missing
+    mapping[key] = value
+    try:
+        yield
+    finally:
+        if old_value is missing:
+            del mapping[key]
+        else:
+            mapping[key] = old_value

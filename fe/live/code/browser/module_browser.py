@@ -7,6 +7,8 @@ from .nodes import JsObject
 from live.code.common import make_js_value_inserter
 from live.modules.datastructures import Module
 from live.settings import setting_module_id
+from live.sublime_util.edit import edit_for
+from live.sublime_util.edit import edits_self_view
 from live.sublime_util.hacks import set_viewport_position
 from live.sublime_util.misc import is_subregion
 from live.sublime_util.misc import read_only_set_to
@@ -26,7 +28,21 @@ class ModuleBrowser:
         self.is_editing = False
         self.new_node_parent = None
         self.new_node_position = None
-        self.region_edit_helper = None
+        self.reh = None
+        self.is_offline_placeholder_inserted = False
+
+    @property
+    def is_online(self):
+        """Whether the module browser displays actual module contents.
+
+        In case the BE disconnects, the module browser goes offline: it displays some
+        placeholder text.
+        """
+        return not self.is_offline
+
+    @property
+    def is_offline(self):
+        return self.root is None
 
     @property
     def is_editing_new_node(self):
@@ -38,18 +54,18 @@ class ModuleBrowser:
 
     @property
     def edit_region(self):
-        [reg] = self.view.get_regions('edit')
+        [reg] = self.view.get_regions(self.EDIT_REGION_KEY)
         return reg
 
     def edit_region_contents(self):
         return self.view.substr(self.edit_region).strip()
 
     def set_edit_region(self, reg):
-        self.view.add_regions('edit', [reg], 'region.bluish livejs.edit', '',
-                              sublime.DRAW_EMPTY | sublime.DRAW_NO_OUTLINE)
+        self.view.add_regions(self.EDIT_REGION_KEY, [reg], 'region.bluish livejs.edit',
+                              '', sublime.DRAW_EMPTY | sublime.DRAW_NO_OUTLINE)
 
     def discard_edit_region(self):
-        self.view.erase_regions('edit')
+        self.view.erase_regions(self.EDIT_REGION_KEY)
 
     def edit_node(self, node):
         """Start editing of the specified node"""
@@ -57,9 +73,10 @@ class ModuleBrowser:
         self.set_edit_region(node.region)
         self.is_editing = True
         self.node_being_edited = node
-        self.region_edit_helper = CodeBrowserRegionEditHelper(self)
+        self.reh = CodeBrowserRegionEditHelper(self)
 
-    def edit_new_node(self, edit, parent, pos):
+    @edits_self_view
+    def edit_new_node(self, parent, pos):
         """Start editing the contents of the to-be-added node"""
         nesting = parent.nesting + 1
         
@@ -75,7 +92,7 @@ class ModuleBrowser:
                 cur.insert('newValue')
 
         if 0 == pos == parent.num_children:
-            cur = Cursor(parent.begin + 1, self.view, edit)
+            cur = Cursor(parent.begin + 1, self.view)
             cur.push_region()
             cur.sep_initial(nesting)
             cur.push_region()
@@ -84,7 +101,7 @@ class ModuleBrowser:
             cur.sep_terminal(nesting)
             enclosing_reg = cur.pop_region()
         elif pos < parent.num_children:
-            cur = Cursor(parent.entries[pos].begin, self.view, edit)
+            cur = Cursor(parent.entries[pos].begin, self.view)
             cur.push_region()
             cur.push_region()
             placeholder(cur)
@@ -92,7 +109,7 @@ class ModuleBrowser:
             cur.sep_inter(nesting)
             enclosing_reg = cur.pop_region()
         else:
-            cur = Cursor(parent.entries[parent.num_children - 1].end, self.view, edit)
+            cur = Cursor(parent.entries[parent.num_children - 1].end, self.view)
             cur.push_region()
             cur.sep_inter(nesting)
             cur.push_region()
@@ -105,13 +122,16 @@ class ModuleBrowser:
         self.is_editing = True
         self.new_node_parent = parent
         self.new_node_position = pos
-        self.region_edit_helper = CodeBrowserRegionEditHelper(self, enclosing_reg)
+        self.reh = CodeBrowserRegionEditHelper(self, enclosing_reg)
 
     def done_editing(self):
         """Ensure the browser is in the ordinary view mode.
 
         No textual changes to the view are made.
         """
+        if not self.is_editing:
+            return
+
         self.view.erase_status('livejs_pending')
         self.discard_edit_region()
         self.view.set_read_only(True)
@@ -119,7 +139,7 @@ class ModuleBrowser:
         self.node_being_edited = None
         self.new_node_position = None
         self.new_node_parent = None
-        self.region_edit_helper = None
+        self.reh = None
 
     def find_containing_node(self, xreg, strict=False):
         """Find innermost node that fully contains xreg
@@ -168,26 +188,45 @@ class ModuleBrowser:
         
         return self.find_node_by_exact_region(self.view.sel()[0])
 
-    def invalidate(self, edit):
+    def go_offline(self):
+        """Free state (such as nodes) and replace view contents with placeholder"""
+        if self.is_offline:
+            return
+        
         self.done_editing()
+        self.root = None
+        self._insert_offline_placeholder()
+
+    @edits_self_view
+    def _insert_offline_placeholder(self):
         with read_only_set_to(self.view, False):
             self.view.replace(
-                edit, sublime.Region(0, self.view.size()),
-                "<<<<< Codebrowser contents outdated. Please refresh! >>>>>"
+                edit_for[self.view], sublime.Region(0, self.view.size()),
+                "<<<<< Codebrowser contents out of sync. Please refresh! >>>>>"
             )
+            self.is_offline_placeholder_inserted = True
 
-    def replace_value_node(self, edit, path, new_value):
+    def prepare_for_activation(self):
+        """Do what should be done before the view is activated
+
+        Currently, this inserts offline placholder text if needed
+        """
+        if self.is_offline and not self.is_offline_placeholder_inserted:
+            self._insert_offline_placeholder()
+
+    @edits_self_view
+    def replace_value_node(self, path, new_value):
         """Replace value node at given path with new_value"""
         node = self.root.value_node_at(path)
 
         if node is self.node_being_edited:
-            reg = self.region_edit_helper.enclosing_reg()
+            reg = self.reh.enclosing_reg()
             self.done_editing()
         else:
             reg = node.region
 
         with read_only_set_to(self.view, False):
-            cur = Cursor(reg.a, self.view, edit)
+            cur = Cursor(reg.a, self.view)
             cur.erase(reg.b)
 
             inserter = make_js_value_inserter(cur, new_value, node.nesting)
@@ -195,24 +234,26 @@ class ModuleBrowser:
 
         node.parent.replace_value_node_at(node.position, new_node, new_region)
 
-    def replace_key_node(self, edit, path, new_name):
+    @edits_self_view
+    def replace_key_node(self, path, new_name):
         node = self.root.key_node_at(path)
 
         if node is self.node_being_edited:
-            reg = self.region_edit_helper.enclosing_reg()
+            reg = self.reh.enclosing_reg()
             self.done_editing()
         else:
             reg = node.region
 
         with read_only_set_to(self.view, False):
-            self.view.erase(edit, reg)
-            cur = Cursor(reg.a, self.view, edit)
+            self.view.erase(edit_for[self.view], reg)
+            cur = Cursor(reg.a, self.view)
             cur.push_region()
             cur.insert(new_name)
 
         node.parent.replace_key_node_region_at(node.position, cur.pop_region())
 
-    def delete_node(self, edit, path):
+    @edits_self_view
+    def delete_node(self, path):
         node = self.root.value_node_at(path)
         parent, pos = node.parent, node.position
 
@@ -222,7 +263,7 @@ class ModuleBrowser:
             # If deleting a node that's currently being edited, we terminate editing mode
             # and delete whatever was typed so far by the user. Also handle the case when
             # the user is editing an object key,
-            reg = self.region_edit_helper.enclosing_reg()
+            reg = self.reh.enclosing_reg()
             if enode.keyval_match:
                 reg = reg.cover(enode.keyval_match.region)
 
@@ -239,11 +280,12 @@ class ModuleBrowser:
             diereg = sublime.Region(parent.entries[pos - 1].end, reg.b)
 
         with read_only_set_to(self.view, False):
-            self.view.erase(edit, diereg)
+            self.view.erase(edit_for[self.view], diereg)
 
         parent.delete_at(pos)
 
-    def insert_node(self, edit, path, key, value):
+    @edits_self_view
+    def insert_node(self, path, key, value):
         path, new_index = path[:-1], path[-1]
         parent = self.root.value_node_at(path)
         nesting = parent.nesting + 1
@@ -255,21 +297,21 @@ class ModuleBrowser:
                 self.new_node_position == new_index:
             # In this Code Browser view we were editing the new node which is now being
             # inserted. This is typical after the user commits.
-            self.view.erase(edit, self.region_edit_helper.enclosing_reg())
+            self.view.erase(edit_for[self.view], self.reh.enclosing_reg())
             self.done_editing()
 
         def insert():
             if parent.num_children == 0:
-                cur = Cursor(parent.begin + 1, self.view, edit)
+                cur = Cursor(parent.begin + 1, self.view)
                 cur.sep_initial(nesting)
                 yield cur
                 cur.sep_terminal(nesting)
             elif new_index >= parent.num_children:
-                cur = Cursor(parent.entries[-1].end, self.view, edit)
+                cur = Cursor(parent.entries[-1].end, self.view)
                 cur.sep_inter(nesting)
                 yield cur
             else:
-                cur = Cursor(parent.entries[new_index].begin, self.view, edit)
+                cur = Cursor(parent.entries[new_index].begin, self.view)
                 yield cur
                 cur.sep_inter(nesting)
 
@@ -296,7 +338,8 @@ class ModuleBrowser:
     def focus_view(self):
         self.view.window().focus_view(self.view)
 
-    def refresh(self, edit, entries):
+    @edits_self_view
+    def refresh(self, entries):
         prev_pos = list(self.view.sel())
         prev_viewport_pos = self.view.viewport_position()
 
@@ -305,8 +348,8 @@ class ModuleBrowser:
             self.root = None
 
         self.view.set_read_only(False)
-        self.view.erase(edit, sublime.Region(0, self.view.size()))
-        cur = Cursor(0, self.view, edit)
+        self.view.erase(edit_for[self.view], sublime.Region(0, self.view.size()))
+        cur = Cursor(0, self.view)
 
         root = JsObject()
 
@@ -380,10 +423,10 @@ class ModuleBrowser:
 
         If we are not in edit mode, do nothing.
         """
-        if self.region_edit_helper is None:
+        if self.reh is None:
             return
 
-        self.region_edit_helper.undo_modifications_outside_edit_region()
+        self.reh.undo_modifications_outside_edit_region()
 
     def set_view_read_only_if_region_editing(self):
         """If editing is constrained within a given region, set view's read_only status.
@@ -392,10 +435,10 @@ class ModuleBrowser:
         edit mode, the editing is always constrained by a region, i.e. we have no
         unconstrained editing mode.
         """
-        if self.region_edit_helper is None:
+        if self.reh is None:
             return
 
-        self.region_edit_helper.set_read_only()
+        self.reh.set_read_only()
 
 
 class CodeBrowserRegionEditHelper(RegionEditHelper):

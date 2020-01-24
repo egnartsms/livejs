@@ -4,8 +4,6 @@ import sublime_plugin
 
 from .operations import is_view_module_browser
 from .operations import module_browser_for
-from live.gstate import ws_handler
-from live.sublime_util.edit import call_with_edit
 
 
 __all__ = ['CodeBrowserEventListener']
@@ -44,8 +42,7 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
         return op(val, operand)
 
     def on_activated(self):
-        if not ws_handler.is_connected or self.mbrowser.root is None:
-            call_with_edit(self.view, self.mbrowser.invalidate)
+        self.mbrowser.prepare_for_activation()
 
     def on_modified(self):
         self.mbrowser.ensure_modifications_within_edit_region()

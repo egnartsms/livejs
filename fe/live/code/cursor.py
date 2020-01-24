@@ -1,9 +1,9 @@
+import contextlib
+import re
 import sublime
 
-import re
-import contextlib
-
 from live.gstate import config
+from live.sublime_util.edit import edit_for
 
 
 class UnexpectedContents(Exception):
@@ -21,13 +21,13 @@ re_of_interest = (
 
 
 class Cursor:
-    def __init__(self, pos, view, edit=None, **options):
+    def __init__(self, pos, view, read_only=False, inter_sep_newlines=2):
         super().__init__()
         self.pos = pos
         self.view = view
-        self.edit = edit
+        self.edit = None if read_only else edit_for.get(view)
         self.retain_stack = []
-        self.inter_sep_newlines = options.get('inter_sep_newlines', 2)
+        self.inter_sep_newlines = inter_sep_newlines
 
     def __getstate__(self):
         """retain_stack is not copied"""

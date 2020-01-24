@@ -41,12 +41,7 @@ def open_module_source_view(window, filepath):
 
 @persist_handler
 def replace(request, mbrowser, view_source):
-    call_with_edit(
-        mbrowser.view,
-        lambda edit: mbrowser.replace_value_node(
-            edit, request['path'], request['newValue']
-        )
-    )
+    mbrowser.replace_value_node(request['path'], request['newValue'])
 
     @on_load(view_source)
     def _():
@@ -63,61 +58,32 @@ def replace(request, mbrowser, view_source):
 
 @persist_handler
 def rename_key(request, mbrowser, view_source):
-    call_with_edit(
-        mbrowser.view,
-        lambda edit: mbrowser.replace_key_node(edit, request['path'], request['newName'])
-    )
+    mbrowser.replace_key_node(request['path'], request['newName'])
 
     @on_load(view_source)
     def _():
-        call_with_edit(
+        persist.rename_key(
             view_source,
-            lambda edit: persist.rename_key(
-                view=view_source,
-                edit=edit,
-                path=request['path'],
-                new_name=request['newName']
-            )
+            path=request['path'], new_name=request['newName']
         )
 
 
 @persist_handler
 def delete(request, mbrowser, view_source):
-    call_with_edit(
-        mbrowser.view,
-        lambda edit: mbrowser.delete_node(edit, request['path'])
-    )
+    mbrowser.delete_node(request['path'])
 
     @on_load(view_source)
     def _():
-        call_with_edit(
-            view_source,
-            lambda edit: persist.delete(
-                view=view_source,
-                edit=edit,
-                path=request['path']
-            )
-        )
+        persist.delete(view_source, path=request['path'])
 
 
 @persist_handler
 def insert(request, mbrowser, view_source):
-    call_with_edit(
-        mbrowser.view,
-        lambda edit: mbrowser.insert_node(
-            edit, request['path'], request['key'], request['value']
-        )
-    )
+    mbrowser.insert_node(request['path'], request['key'], request['value'])
 
     @on_load(view_source)
     def _():
-        call_with_edit(
+        persist.insert(
             view_source,
-            lambda edit: persist.insert(
-                view=view_source,
-                edit=edit,
-                path=request['path'],
-                key=request['key'],
-                value=request['value']
-            )
+            path=request['path'], key=request['key'], value=request['value']
         )

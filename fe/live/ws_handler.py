@@ -3,7 +3,7 @@ import sublime
 import json
 import collections
 
-from live.util import stopwatch, take_over_list_items, eraise
+from live.util import stopwatch, take_over_list_items
 from live.comm import BackendError
 from live.code.persist_handlers import persist_handlers
 from live.modules.operations import synch_modules_with_be
@@ -22,17 +22,15 @@ class WsHandler:
         return self.websocket is not None
 
     def connect(self, websocket):
-        if self.is_connected:
-            eraise("WsHandler attempted to connect while already connected")
+        assert not self.is_connected
         self.websocket = websocket
         print("LiveJS: BE websocket connected")
-        # TODO: synch_modules_with_be is decorated with @be_interaction which ignores
-        # if we're already interacting with the BE.  This feels dirty.
+        # TODO: synch_modules_with_be is decorated with @be_interaction which ignores if
+        # we're already interacting with the BE.  This feels dirty.
         sublime.set_timeout(synch_modules_with_be, 0)
 
     def disconnect(self):
-        if not self.is_connected:
-            eraise("WsHandler attempted to disconnect while not connected")
+        assert self.is_connected
         self.websocket = None
         self.cont = None
         print("LiveJS: BE websocket disconnected")

@@ -2,14 +2,14 @@ import re
 import sublime
 import sublime_plugin
 
-from .command import ModuleBrowserCommandMixin
+from .command import ModuleBrowserTextCommand
+from .operations import find_module_browser_view
 from .operations import module_browser_for
-from live.code.browser import operations as ops
-from live.comm import TextCommandInteractingWithBe
+from .operations import new_module_browser_view
 from live.comm import be_interaction
 from live.gstate import fe_modules
 from live.modules.datastructures import Module
-from live.sublime_util.edit import call_with_edit
+from live.sublime_util.edit import edit_for
 from live.sublime_util.misc import set_selection
 
 
@@ -20,25 +20,25 @@ __all__ = [
 ]
 
 
-class LivejsCbRefresh(TextCommandInteractingWithBe, ModuleBrowserCommandMixin):
-    def run(self, edit):
+class LivejsCbRefresh(ModuleBrowserTextCommand):
+    @be_interaction
+    def run(self):
         self.mbrowser.done_editing()
-        entries = yield 'sendAllEntries', {'mid': self.mbrowser.module.id}
-        self.mbrowser.refresh(edit, entries)
+        entries = yield 'sendAllEntries', {
+            'mid': self.mbrowser.module.id
+        }
+        self.mbrowser.refresh(entries)
 
 
 class LivejsBrowseModule(sublime_plugin.WindowCommand):
     @be_interaction
     def run(self, module_id):
         module = Module.with_id(module_id)
-        view = ops.find_module_browser_view(self.window, module)
+        view = find_module_browser_view(self.window, module)
         if view is None:
-            view = ops.new_module_browser_view(self.window, module)
+            view = new_module_browser_view(self.window, module)
             entries = yield 'sendAllEntries', {'mid': module.id}
-            call_with_edit(
-                view,
-                lambda edit: module_browser_for(view).refresh(edit, entries)
-            )
+            module_browser_for(view).refresh(entries)
         else:
             module_browser_for(view).focus_view()
 
@@ -54,8 +54,8 @@ class ModuleInputHandler(sublime_plugin.ListInputHandler):
         return [(fe_m.name, fe_m.id) for fe_m in fe_modules]
 
 
-class LivejsCbEdit(sublime_plugin.TextCommand, ModuleBrowserCommandMixin):
-    def run(self, edit):
+class LivejsCbEdit(ModuleBrowserTextCommand):
+    def run(self):
         if len(self.view.sel()) != 1:
             sublime.status_message("Cannot determine what to edit (multiple cursors)")
             return
@@ -70,8 +70,9 @@ class LivejsCbEdit(sublime_plugin.TextCommand, ModuleBrowserCommandMixin):
         self.mbrowser.edit_node(node)
 
 
-class LivejsCbCommit(TextCommandInteractingWithBe, ModuleBrowserCommandMixin):
-    def run(self, edit):
+class LivejsCbCommit(ModuleBrowserTextCommand):
+    @be_interaction
+    def run(self):
         if not self.mbrowser.is_editing:
             return  # shoult not normally happen
 
@@ -135,13 +136,14 @@ class LivejsCbCommit(TextCommandInteractingWithBe, ModuleBrowserCommandMixin):
             }
 
 
-class LivejsCbCancelEdit(TextCommandInteractingWithBe, ModuleBrowserCommandMixin):
-    def run(self, edit):
+class LivejsCbCancelEdit(ModuleBrowserTextCommand):
+    @be_interaction
+    def run(self):
         if not self.mbrowser.is_editing:
             return  # should not happen
 
         if self.mbrowser.is_editing_new_node:
-            self.view.erase(edit, self.mbrowser.region_edit_helper.enclosing_reg())
+            self.view.erase(edit_for[self.view], self.mbrowser.reh.enclosing_reg())
             self.mbrowser.done_editing()
             return
 
@@ -151,17 +153,18 @@ class LivejsCbCancelEdit(TextCommandInteractingWithBe, ModuleBrowserCommandMixin
                 'mid': self.mbrowser.module.id,
                 'path': node.path
             }
-            self.mbrowser.replace_key_node(edit, node.path, new_name)
+            self.mbrowser.replace_key_node(node.path, new_name)
         else:
             new_value = yield 'getValueAt', {
                 'mid': self.mbrowser.module.id,
                 'path': node.path
             }
-            self.mbrowser.replace_value_node(edit, node.path, new_value)
+            self.mbrowser.replace_value_node(node.path, new_value)
 
 
-class LivejsCbMoveNodeFwd(TextCommandInteractingWithBe, ModuleBrowserCommandMixin):
-    def run(self, edit):
+class LivejsCbMoveNodeFwd(ModuleBrowserTextCommand):
+    @be_interaction
+    def run(self):
         node = self.mbrowser.get_single_selected_node()
         if node is None:
             return  # should not normally happen, protected by key binding context
@@ -176,8 +179,9 @@ class LivejsCbMoveNodeFwd(TextCommandInteractingWithBe, ModuleBrowserCommandMixi
         set_selection(self.view, to_reg=node.region, show=True)
 
 
-class LivejsCbMoveNodeBwd(TextCommandInteractingWithBe, ModuleBrowserCommandMixin):
-    def run(self, edit):
+class LivejsCbMoveNodeBwd(ModuleBrowserTextCommand):
+    @be_interaction
+    def run(self):
         node = self.mbrowser.get_single_selected_node()
         if node is None:
             return  # should not normally happen, protected by key binding context
@@ -192,8 +196,9 @@ class LivejsCbMoveNodeBwd(TextCommandInteractingWithBe, ModuleBrowserCommandMixi
         set_selection(self.view, to_reg=node.region, show=True)
 
 
-class LivejsCbDelNode(TextCommandInteractingWithBe, ModuleBrowserCommandMixin):
-    def run(self, edit):
+class LivejsCbDelNode(ModuleBrowserTextCommand):
+    @be_interaction
+    def run(self):
         node = self.mbrowser.get_single_selected_node()
         if node is None:
             self.view.run_command('livejs_cb_select')
@@ -205,8 +210,8 @@ class LivejsCbDelNode(TextCommandInteractingWithBe, ModuleBrowserCommandMixin):
         }
 
 
-class LivejsCbAddNode(sublime_plugin.TextCommand, ModuleBrowserCommandMixin):
-    def run(self, edit):
+class LivejsCbAddNode(ModuleBrowserTextCommand):
+    def run(self):
         if len(self.view.sel()) != 1:
             sublime.status_message("Cannot determine where to add")
             return
@@ -223,4 +228,4 @@ class LivejsCbAddNode(sublime_plugin.TextCommand, ModuleBrowserCommandMixin):
             sublime.status_message("Cannot determine where to add")
             return
 
-        self.mbrowser.edit_new_node(edit, parent, pos)
+        self.mbrowser.edit_new_node(parent, pos)
