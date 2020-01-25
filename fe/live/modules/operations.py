@@ -1,11 +1,11 @@
-import sublime
+from .datastructures import Module
+from .datastructures import set_module_counter
+from live.comm import interacts_with_be
+from live.gstate import config
+from live.gstate import fe_modules
 
-from live.gstate import fe_modules, config
-from live.comm import be_interaction
-from .datastructures import Module, set_module_counter
 
-
-@be_interaction
+@interacts_with_be
 def synch_modules_with_be():
     be_modules = yield 'sendModules', {}
 

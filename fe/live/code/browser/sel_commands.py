@@ -11,7 +11,7 @@ __all__ = [
 
 
 class LivejsCbSelect(ModuleBrowserTextCommand):
-    def run(self, edit):
+    def run(self):
         if len(self.view.sel()) != 1:
             sublime.status_message("Could not determine the node to select: many cursors")
             return
@@ -27,7 +27,7 @@ class LivejsCbSelect(ModuleBrowserTextCommand):
 
 
 class LivejsCbMoveSelNext(ModuleBrowserTextCommand):
-    def run(self, edit, by_same_kind):
+    def run(self, by_same_kind):
         node = self.mbrowser.get_single_selected_node()
         if node is None:
             return  # should not normally happen
@@ -41,7 +41,7 @@ class LivejsCbMoveSelNext(ModuleBrowserTextCommand):
 
 
 class LivejsCbMoveSelPrev(ModuleBrowserTextCommand):
-    def run(self, edit, by_same_kind):
+    def run(self, by_same_kind):
         node = self.mbrowser.get_single_selected_node()
         if node is None:
             return  # should not normally happen
@@ -55,7 +55,7 @@ class LivejsCbMoveSelPrev(ModuleBrowserTextCommand):
 
 
 class LivejsCbMoveSelOutside(ModuleBrowserTextCommand):
-    def run(self, edit):
+    def run(self):
         node = self.mbrowser.get_single_selected_node()
         if node is None:
             return  # should not normally happen
@@ -68,7 +68,7 @@ class LivejsCbMoveSelOutside(ModuleBrowserTextCommand):
 
 
 class LivejsCbMoveSelInside(ModuleBrowserTextCommand):
-    def run(self, edit, into_key):
+    def run(self, into_key):
         node = self.mbrowser.get_single_selected_node()
         if node is None:
             return  # should not normally happen

@@ -2,11 +2,12 @@ import re
 import sublime
 import sublime_plugin
 
+from .command import ModuleBrowserBeInteractingTextCommand
 from .command import ModuleBrowserTextCommand
 from .operations import find_module_browser_view
 from .operations import module_browser_for
 from .operations import new_module_browser_view
-from live.comm import be_interaction
+from live.comm import interacts_with_be
 from live.gstate import fe_modules
 from live.modules.datastructures import Module
 from live.sublime_util.edit import edit_for
@@ -20,8 +21,7 @@ __all__ = [
 ]
 
 
-class LivejsCbRefresh(ModuleBrowserTextCommand):
-    @be_interaction
+class LivejsCbRefresh(ModuleBrowserBeInteractingTextCommand):
     def run(self):
         self.mbrowser.done_editing()
         entries = yield 'sendAllEntries', {
@@ -31,7 +31,7 @@ class LivejsCbRefresh(ModuleBrowserTextCommand):
 
 
 class LivejsBrowseModule(sublime_plugin.WindowCommand):
-    @be_interaction
+    @interacts_with_be
     def run(self, module_id):
         module = Module.with_id(module_id)
         view = find_module_browser_view(self.window, module)
@@ -70,8 +70,7 @@ class LivejsCbEdit(ModuleBrowserTextCommand):
         self.mbrowser.edit_node(node)
 
 
-class LivejsCbCommit(ModuleBrowserTextCommand):
-    @be_interaction
+class LivejsCbCommit(ModuleBrowserBeInteractingTextCommand):
     def run(self):
         if not self.mbrowser.is_editing:
             return  # shoult not normally happen
@@ -136,8 +135,7 @@ class LivejsCbCommit(ModuleBrowserTextCommand):
             }
 
 
-class LivejsCbCancelEdit(ModuleBrowserTextCommand):
-    @be_interaction
+class LivejsCbCancelEdit(ModuleBrowserBeInteractingTextCommand):
     def run(self):
         if not self.mbrowser.is_editing:
             return  # should not happen
@@ -162,8 +160,7 @@ class LivejsCbCancelEdit(ModuleBrowserTextCommand):
             self.mbrowser.replace_value_node(node.path, new_value)
 
 
-class LivejsCbMoveNodeFwd(ModuleBrowserTextCommand):
-    @be_interaction
+class LivejsCbMoveNodeFwd(ModuleBrowserBeInteractingTextCommand):
     def run(self):
         node = self.mbrowser.get_single_selected_node()
         if node is None:
@@ -179,8 +176,7 @@ class LivejsCbMoveNodeFwd(ModuleBrowserTextCommand):
         set_selection(self.view, to_reg=node.region, show=True)
 
 
-class LivejsCbMoveNodeBwd(ModuleBrowserTextCommand):
-    @be_interaction
+class LivejsCbMoveNodeBwd(ModuleBrowserBeInteractingTextCommand):
     def run(self):
         node = self.mbrowser.get_single_selected_node()
         if node is None:
@@ -196,8 +192,7 @@ class LivejsCbMoveNodeBwd(ModuleBrowserTextCommand):
         set_selection(self.view, to_reg=node.region, show=True)
 
 
-class LivejsCbDelNode(ModuleBrowserTextCommand):
-    @be_interaction
+class LivejsCbDelNode(ModuleBrowserBeInteractingTextCommand):
     def run(self):
         node = self.mbrowser.get_single_selected_node()
         if node is None:

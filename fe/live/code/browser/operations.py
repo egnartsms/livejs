@@ -1,12 +1,11 @@
 from .module_browser import ModuleBrowser
-from live.settings import setting_module_id
-from live.settings import setting_view
+from live.settings import setting
 from live.sublime_util.view_info import view_info_getter
-from live.util import first_or_none
+from live.util.misc import first_or_none
 
 
 def is_view_module_browser(view):
-    return setting_view[view] == 'Code Browser'
+    return setting.view[view] == 'Code Browser'
 
 
 def module_browser_view_name(module):
@@ -15,8 +14,8 @@ def module_browser_view_name(module):
 
 def new_module_browser_view(window, module):
     view = window.new_file()
-    setting_view[view] = 'Code Browser'
-    setting_module_id[view] = module.id
+    setting.view[view] = 'Code Browser'
+    setting.module_id[view] = module.id
     view.set_name(module_browser_view_name(module))
     view.set_scratch(True)
     view.set_read_only(True)
@@ -29,7 +28,7 @@ def find_module_browser_view(window, module):
     return first_or_none(
         view
         for view in window.views()
-        if is_view_module_browser(view) and setting_module_id[view] == module.id
+        if is_view_module_browser(view) and setting.module_id[view] == module.id
     )
 
 

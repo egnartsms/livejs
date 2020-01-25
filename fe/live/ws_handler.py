@@ -3,7 +3,7 @@ import sublime
 import json
 import collections
 
-from live.util import stopwatch, take_over_list_items
+from live.util.misc import stopwatch, take_over_list_items
 from live.comm import BackendError
 from live.code.persist_handlers import persist_handlers
 from live.modules.operations import synch_modules_with_be
@@ -25,7 +25,7 @@ class WsHandler:
         assert not self.is_connected
         self.websocket = websocket
         print("LiveJS: BE websocket connected")
-        # TODO: synch_modules_with_be is decorated with @be_interaction which ignores if
+        # TODO: synch_modules_with_be is decorated with @interacts_with_be which ignores if
         # we're already interacting with the BE.  This feels dirty.
         sublime.set_timeout(synch_modules_with_be, 0)
 

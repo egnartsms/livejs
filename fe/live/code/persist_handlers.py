@@ -45,14 +45,9 @@ def replace(request, mbrowser, view_source):
 
     @on_load(view_source)
     def _():
-        call_with_edit(
+        persist.replace_value(
             view_source,
-            lambda edit: persist.replace_value(
-                view=view_source,
-                edit=edit,
-                path=request['path'],
-                new_value=request['newValue']
-            )
+            path=request['path'], new_value=request['newValue']
         )
 
 

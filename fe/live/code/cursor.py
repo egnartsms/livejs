@@ -21,13 +21,16 @@ re_of_interest = (
 
 
 class Cursor:
-    def __init__(self, pos, view, read_only=False, inter_sep_newlines=2):
+    def __init__(self, pos, view, inter_sep_newlines=2):
         super().__init__()
         self.pos = pos
         self.view = view
-        self.edit = None if read_only else edit_for.get(view)
         self.retain_stack = []
         self.inter_sep_newlines = inter_sep_newlines
+
+    @property
+    def edit(self):
+        return edit_for[self.view]
 
     def __getstate__(self):
         """retain_stack is not copied"""
@@ -68,6 +71,9 @@ class Cursor:
         return sublime.Region(beg, end)
 
     def erase(self, upto):
+        if self.pos == upto:
+            return
+
         self.view.erase(self.edit, sublime.Region(self.pos, upto))
         if upto < self.pos:
             self.pos = upto

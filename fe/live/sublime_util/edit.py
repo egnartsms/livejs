@@ -1,12 +1,14 @@
 """When we need to perform some operation on a Sublime buffer (view), we have to run a
 TextCommand.  This is the only way to get an Edit object necessary for modifications."""
 
-import sublime
-import sublime_plugin
-import sublime_api
 import functools
-from live.util import mapping_key_set
 import inspect
+import sublime
+import sublime_api
+import sublime_plugin
+
+from live.util.misc import mapping_key_set
+
 
 __all__ = ['LivejsCallWithEditTokenCommand']
 
@@ -119,7 +121,7 @@ def edits_view_arg(fn):
     return decorated
 
 
-def run_method_remembering_edit(run):
+def run_method_remembers_edit(run):
     @functools.wraps(run)
     def decorated(self, edit, **kwargs):
         with mapping_key_set(edit_for, self.view, edit):

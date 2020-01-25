@@ -3,33 +3,37 @@ import sublime
 import sublime_plugin
 
 from .operations import module_browser_for
+from live.comm import run_method_interacts_with_be
 from live.gstate import ws_handler
-from live.sublime_util.edit import run_method_remembering_edit
+from live.sublime_util.edit import edit_for
+from live.sublime_util.edit import run_method_remembers_edit
+from live.util.inheritable_decorators import ClassWithInheritableDecorators
+from live.util.inheritable_decorators import decorator_for
+from live.util.misc import mapping_key_set
 
 
-def run_method_ensuring_modules_synched(run):
-    @functools.wraps(run)
-    def decorated(self, *args, **kwargs):
-        if self.mbrowser.module is None:
-            sublime.status_message("Modules not synchronized with BE")
-            return
+class BaseModuleBrowserTextCommand(sublime_plugin.TextCommand,
+                                   metaclass=ClassWithInheritableDecorators):
+    @decorator_for('run')
+    def _check_before_run(run):
+        @functools.wraps(run)
+        def decorated(self, *args, **kwargs):
+            if self.mbrowser.module is None:
+                sublime.status_message("Modules not synchronized with BE")
+                return
 
-        return run(self, *args, **kwargs)
+            return run(self, *args, **kwargs)
 
-    return decorated
+        return decorated
 
-
-class ModuleBrowserTextCommandMetaclass(type):
-    def __init__(cls, *args):
-        if 'run' not in cls.__dict__:
-            return
-
-        cls.run = run_method_remembering_edit(cls.run)
-        cls.run = run_method_ensuring_modules_synched(cls.run)
-
-
-class ModuleBrowserTextCommand(sublime_plugin.TextCommand,
-                               metaclass=ModuleBrowserTextCommandMetaclass):
     @property
     def mbrowser(self):
         return module_browser_for(self.view)
+
+
+class ModuleBrowserTextCommand(BaseModuleBrowserTextCommand):
+    _edit = decorator_for('run', run_method_remembers_edit)
+
+
+class ModuleBrowserBeInteractingTextCommand(BaseModuleBrowserTextCommand):
+    _be = decorator_for('run', run_method_interacts_with_be)

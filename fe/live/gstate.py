@@ -1,6 +1,6 @@
 import os
 
-from live.util import Proxy
+from live.util.misc import Proxy
 
 
 class Config:

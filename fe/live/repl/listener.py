@@ -1,8 +1,7 @@
 import sublime_plugin
+
 from .operations import is_view_repl
-from live.sublime_util.view_info import view_info_getter
-from live.sublime_util.region_edit import RegionEditHelper
-from live.sublime_util.misc import add_hidden_regions
+from .operations import repl_for
 
 
 __all__ = ['ReplEventListener']
@@ -17,8 +16,14 @@ class ReplEventListener(sublime_plugin.ViewEventListener):
     def applies_to_primary_view_only(cls):
         return True
 
+    @property
+    def repl(self):
+        return repl_for(self.view)
+
     def on_modified(self):
-        repl_to_region_edit_helper[self.view].undo_modifications_outside_edit_region()
+        if self.repl.reh is not None:
+            self.repl.reh.undo_modifications_outside_edit_region()
 
     def on_selection_modified(self):
-        repl_to_region_edit_helper[self.view].set_read_only()
+        if self.repl.reh is not None:
+            self.repl.reh.set_read_only()

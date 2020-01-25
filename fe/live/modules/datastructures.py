@@ -1,5 +1,5 @@
 from live.gstate import fe_modules, config
-from live.util import first_or_none
+from live.util.misc import first_or_none
 
 
 _module_id_counter = 1

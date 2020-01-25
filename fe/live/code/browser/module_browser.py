@@ -6,7 +6,7 @@ from .nodes import JsLeaf
 from .nodes import JsObject
 from live.code.common import make_js_value_inserter
 from live.modules.datastructures import Module
-from live.settings import setting_module_id
+from live.settings import setting
 from live.sublime_util.edit import edit_for
 from live.sublime_util.edit import edits_self_view
 from live.sublime_util.hacks import set_viewport_position
@@ -14,7 +14,7 @@ from live.sublime_util.misc import is_subregion
 from live.sublime_util.misc import read_only_set_to
 from live.sublime_util.misc import set_selection
 from live.sublime_util.region_edit import RegionEditHelper
-from live.util import tracking_last
+from live.util.misc import tracking_last
 
 
 class ModuleBrowser:
@@ -22,7 +22,7 @@ class ModuleBrowser:
 
     def __init__(self, view):
         self.view = view
-        self.module_id = setting_module_id[view]
+        self.module_id = setting.module_id[view]
         self.root = None
         self.node_being_edited = None
         self.is_editing = False
@@ -69,6 +69,8 @@ class ModuleBrowser:
 
     def edit_node(self, node):
         """Start editing of the specified node"""
+        assert not self.is_editing
+
         self.view.set_read_only(False)
         self.set_edit_region(node.region)
         self.is_editing = True

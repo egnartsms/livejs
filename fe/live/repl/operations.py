@@ -8,44 +8,36 @@ from live.code.common import jsval_placeholder
 from live.code.common import make_js_value_inserter
 from live.code.cursor import Cursor
 from live.comm import BackendError
-from live.comm import be_interaction
-from live.settings import setting_module_id
-from live.settings import setting_view
+from live.comm import interacts_with_be
+from live.settings import setting
 from live.sublime_util.edit import call_with_edit
 from live.sublime_util.view_info import view_info_getter
-from live.util import first_or_none
+from live.util.misc import first_or_none
 
 
 def is_view_repl(view):
-    return setting_view[view] == 'REPL'
+    return setting.view[view] == 'REPL'
 
 
 def find_repl_view(window):
-    return first_or_none(view for view in window.views()
-                         if setting_view[view] == 'REPL')
+    return first_or_none(view for view in window.views() if setting.view[view] == 'REPL')
 
 
 def new_repl_view(window, module):
     view = window.new_file()
-    setting_view[view] = 'REPL'
-    setting_module_id[view] = module.id
+    setting.view[view] = 'REPL'
+    setting.module_id[view] = module.id
+    setting.module_name[view] = module.name
     view.set_name('LiveJS: REPL')
     view.set_scratch(True)
     view.assign_syntax('Packages/LiveJS/LiveJS REPL.sublime-syntax')
 
-    def insert_initial_prompt(edit):
-        view.insert(edit, module.name + '> ')
-    
-    call_with_edit(view, insert_initial_prompt)
+    repl_for(view).erase_all_insert_prompt()
 
     return view
 
 
 repl_for = view_info_getter(Repl, is_view_repl)
-
-
-def insert_prompt(view):
-    pass
 
 
 PHANTOM_HTML_TEMPLATE = '''
@@ -105,7 +97,7 @@ class Node:
         self.is_expanded = False
         self._add_phantom(cur.pop_region())
 
-    @be_interaction
+    @interacts_with_be
     def _expand(self):
         """Abandon this node and insert a new expanded one"""
         assert not self.is_expanded
@@ -142,7 +134,7 @@ class Unrevealed:
         self.nesting = nesting
         self.phid = add_phantom(self.view, region, self.on_navigate, False)
 
-    @be_interaction
+    @interacts_with_be
     def on_navigate(self, href):
         """Abandon this node and insert a new expanded one"""
         def impl(edit, jsval=None, error_info=None):
