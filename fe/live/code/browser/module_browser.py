@@ -120,7 +120,7 @@ class ModuleBrowser:
             enclosing_reg = cur.pop_region()
 
         self.set_edit_region(edit_reg)
-        set_selection(self.view, to_reg=edit_reg)
+        set_selection(self.view, to=edit_reg)
         self.is_editing = True
         self.new_node_parent = parent
         self.new_node_position = pos
@@ -375,7 +375,7 @@ class ModuleBrowser:
         
         self.view.set_read_only(True)
         self.view.window().focus_view(self.view)
-        set_selection(self.view, to_regs=prev_pos)
+        set_selection(self.view, to_all=prev_pos)
         set_viewport_position(self.view, prev_viewport_pos, False)
 
     def insert_js_value(self, inserter):

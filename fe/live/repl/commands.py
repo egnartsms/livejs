@@ -10,6 +10,7 @@ from live.code.cursor import Cursor
 from live.comm import interacts_with_be
 from live.modules.datastructures import Module
 from live.sublime_util.edit import run_method_remembers_edit
+from live.sublime_util.misc import set_selection
 from live.util.inheritable_decorators import ClassWithInheritableDecorators
 from live.util.inheritable_decorators import decorator_for
 
@@ -56,3 +57,6 @@ class LivejsReplSendCommand(ReplBeInteractingTextCommand):
         )
         cur.insert('\n\n')
         self.repl.insert_prompt(cur)
+
+        self.view.sel().clear()
+        set_selection(self.view, to=cur.pos, show=True)

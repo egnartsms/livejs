@@ -173,7 +173,7 @@ class LivejsCbMoveNodeFwd(ModuleBrowserBeInteractingTextCommand):
         }
         root = self.mbrowser.root
         node = (root.key_node_at if node.is_key else root.value_node_at)(new_path)
-        set_selection(self.view, to_reg=node.region, show=True)
+        set_selection(self.view, to=node.region, show=True)
 
 
 class LivejsCbMoveNodeBwd(ModuleBrowserBeInteractingTextCommand):
@@ -189,7 +189,7 @@ class LivejsCbMoveNodeBwd(ModuleBrowserBeInteractingTextCommand):
         }
         root = self.mbrowser.root
         node = (root.key_node_at if node.is_key else root.value_node_at)(new_path)
-        set_selection(self.view, to_reg=node.region, show=True)
+        set_selection(self.view, to=node.region, show=True)
 
 
 class LivejsCbDelNode(ModuleBrowserBeInteractingTextCommand):

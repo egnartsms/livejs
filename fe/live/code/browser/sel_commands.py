@@ -23,7 +23,7 @@ class LivejsCbSelect(ModuleBrowserTextCommand):
                                    "selected region is not entirely inside a node")
             return
 
-        set_selection(self.view, to_reg=node.region)
+        set_selection(self.view, to=node.region)
 
 
 class LivejsCbMoveSelNext(ModuleBrowserTextCommand):
@@ -37,7 +37,7 @@ class LivejsCbMoveSelNext(ModuleBrowserTextCommand):
         else:
             right = node.textually_following_sibling_circ
 
-        set_selection(self.view, to_reg=right.region, show=True)
+        set_selection(self.view, to=right.region, show=True)
 
 
 class LivejsCbMoveSelPrev(ModuleBrowserTextCommand):
@@ -51,7 +51,7 @@ class LivejsCbMoveSelPrev(ModuleBrowserTextCommand):
         else:
             left = node.textually_preceding_sibling_circ
         
-        set_selection(self.view, to_reg=left.region, show=True)
+        set_selection(self.view, to=left.region, show=True)
 
 
 class LivejsCbMoveSelOutside(ModuleBrowserTextCommand):
@@ -64,7 +64,7 @@ class LivejsCbMoveSelOutside(ModuleBrowserTextCommand):
         if up.is_root:
             return
 
-        set_selection(self.view, to_reg=up.region, show=True)
+        set_selection(self.view, to=up.region, show=True)
 
 
 class LivejsCbMoveSelInside(ModuleBrowserTextCommand):
@@ -81,4 +81,4 @@ class LivejsCbMoveSelInside(ModuleBrowserTextCommand):
         else:
             down = node.value_nodes[0]
 
-        set_selection(self.view, to_reg=down.region, show=True)
+        set_selection(self.view, to=down.region, show=True)
