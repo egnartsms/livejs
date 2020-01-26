@@ -20,10 +20,11 @@ class ReplEventListener(sublime_plugin.ViewEventListener):
     def repl(self):
         return repl_for(self.view)
 
+    def on_activated(self):
+        self.repl.prepare_for_activation()
+
     def on_modified(self):
-        if self.repl.reh is not None:
-            self.repl.reh.undo_modifications_outside_edit_region()
+        self.repl.ensure_modifications_within_edit_region()
 
     def on_selection_modified(self):
-        if self.repl.reh is not None:
-            self.repl.reh.set_read_only()
+        self.repl.set_view_read_only()

@@ -3,6 +3,9 @@ import sublime
 from live.sublime_util.misc import is_subregion
 
 
+CLOSING_AUTOINSERT_CHARS = ')]}"\'`'
+
+
 class RegionEditHelper:
     def __init__(self, view, regkey, edit_region_setter):
         self.view = view
@@ -21,43 +24,74 @@ class RegionEditHelper:
         reg = self._get_edit_region()
         return reg.a, self.view.size() - reg.b
 
-    def _is_after_insertion_at_reg_begin(self):
-        """Does the current selection look like smth was inserted at region beginning.
+    def _is_after_insertion_at_reg_begin(self, delta):
+        """Does the current selection look like smth was inserted at region beginning?
 
-        This boils down to:
-          * single cursor
-          * and it is in front of the edit region
+        This is the case when the selection is a single empty cursor with the following
+        placement:
+
+            JUST INSERTEDpre-existing edit region contents
+                         ^
+
+            ()pre-existing edit region contents
+             ^
+        
+            In this case, "(" and ")" designate any kind of paired characters where the
+            matching closing char may be inserted automatically.  Such as "", '', [], (),
+            {}.
         """
-        reg = self._get_edit_region()
-        sel = self.view.sel()
-        return len(sel) == 1 and sel[0].a == reg.a
-
-    def _is_after_insertion_at_reg_end(self, delta):
-        """Does the current selection look like smth was inserted at region end
-
-        This boils down to:
-          * single cursor
-          AND
-          * it is "delta" positions after the editing region end
-          * or we have this: ---<edit region>(*)----, where the star * means cursor
-            position, and a parenthesis after it means a closing parenthesis character
-            that might be automatically inserted, such as ), ], }, etc. This is needed
-            becase when an opening parenthesis is inserted at region end, the whole
-            command fails since the closing parenthesis is attempted to be inserted but
-            fails. So we take this measure to allow for the closing parenthesis to get
-            automatically inserted.
-        """
-        reg = self._get_edit_region()
         sel = self.view.sel()
         if len(sel) != 1:
             return False
 
         [sel] = sel
-        if sel.a == reg.b + delta:
+        if not sel.empty():
+            return False
+
+        pt = sel.a
+        reg = self._get_edit_region()
+        
+        if pt == reg.a:
             return True
 
-        if delta == 2 and sel.a == reg.b + 1 and \
-                self.view.substr(reg.b + 1) in ')]}"\'`':
+        if delta == 2 and pt == reg.a - 1 and\
+                self.view.substr(pt) in CLOSING_AUTOINSERT_CHARS:
+            return True
+
+        return False
+
+    def _is_after_insertion_at_reg_end(self, delta):
+        """Does the current selection look like smth was inserted at region end?
+
+        This is the case when the selection is a single empty cursor with the following
+        placement:
+
+            pre-existing edit region contentsJUST INSERTED
+                                                          ^
+
+            pre-existing edit region contents()
+                                              ^
+
+            In this case, "(" and ")" designate any kind of paired characters where the
+            matching closing char may be inserted automatically.  Such as "", '', [], (),
+            {}.
+        """
+        sel = self.view.sel()
+        if len(sel) != 1:
+            return False
+
+        [sel] = sel
+        if not sel.empty():
+            return False
+
+        pt = sel.a
+        reg = self._get_edit_region()
+
+        if pt == reg.b + delta:
+            return True
+
+        if delta == 2 and pt == reg.b + 1 and\
+                self.view.substr(pt) in CLOSING_AUTOINSERT_CHARS:
             return True
 
         return False
@@ -77,7 +111,7 @@ class RegionEditHelper:
             if pre == self.pre and post == self.post:
                 break
             elif pre > self.pre and post == self.post and \
-                    self._is_after_insertion_at_reg_begin():
+                    self._is_after_insertion_at_reg_begin(pre - self.pre):
                 delta = pre - self.pre
                 reg = self._get_edit_region()
                 self._set_edit_region(sublime.Region(reg.a - delta, reg.b))

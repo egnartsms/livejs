@@ -31,7 +31,7 @@ class LivejsCbRefresh(ModuleBrowserBeInteractingTextCommand):
 
 
 class LivejsBrowseModule(sublime_plugin.WindowCommand):
-    @interacts_with_be
+    @interacts_with_be()
     def run(self, module_id):
         module = Module.with_id(module_id)
         view = find_module_browser_view(self.window, module)

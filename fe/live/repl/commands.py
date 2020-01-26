@@ -1,4 +1,3 @@
-import functools
 import sublime
 import sublime_plugin
 
@@ -8,21 +7,27 @@ from .operations import new_repl_view
 from .operations import repl_for
 from live.code.common import make_js_value_inserter
 from live.code.cursor import Cursor
+from live.comm import interacts_with_be
 from live.modules.datastructures import Module
+from live.sublime_util.edit import run_method_remembers_edit
 from live.util.inheritable_decorators import ClassWithInheritableDecorators
 from live.util.inheritable_decorators import decorator_for
-from live.util.misc import mapping_key_set
-from live.comm import run_method_interacts_with_be
-from live.sublime_util.edit import run_method_remembers_edit
 
 
 __all__ = ['LivejsOpenReplCommand', 'LivejsReplSendCommand']
 
 
-class ReplTextCommand(sublime_plugin.TextCommand):
+class ReplTextCommand(sublime_plugin.TextCommand,
+                      metaclass=ClassWithInheritableDecorators):
+    _edit = decorator_for('run', run_method_remembers_edit)
+
     @property
     def repl(self):
         return repl_for(self.view)
+
+
+class ReplBeInteractingTextCommand(ReplTextCommand):
+    _be = decorator_for('run', interacts_with_be(edits_view='self.view'))
 
 
 class LivejsOpenReplCommand(sublime_plugin.WindowCommand):
@@ -34,10 +39,9 @@ class LivejsOpenReplCommand(sublime_plugin.WindowCommand):
         self.window.focus_view(view)
 
 
-class LivejsReplSendCommand(ReplTextCommand):
-    @run_method_interacts_with_be
+class LivejsReplSendCommand(ReplBeInteractingTextCommand):
     def run(self):
-        cur = Cursor(self.repl.edit_region.b, self.view)
+        cur = Cursor(self.repl.edit_region.b, self.view, inter_sep_newlines=1)
         cur.push_region()
         cur.skip_ws_bwd()
         cur.pop_erase()
@@ -50,5 +54,5 @@ class LivejsReplSendCommand(ReplTextCommand):
             self.view,
             make_js_value_inserter(cur, jsval, 0)
         )
-        cur.insert('\n')
+        cur.insert('\n\n')
         self.repl.insert_prompt(cur)

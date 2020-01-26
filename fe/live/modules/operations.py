@@ -5,7 +5,7 @@ from live.gstate import config
 from live.gstate import fe_modules
 
 
-@interacts_with_be
+@interacts_with_be()
 def synch_modules_with_be():
     be_modules = yield 'sendModules', {}
 

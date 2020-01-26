@@ -1,10 +1,11 @@
+import contextlib
 import sublime
 
 from live.code.cursor import Cursor
 from live.modules.datastructures import Module
 from live.settings import setting
-from live.sublime_util.edit import edit_for
 from live.sublime_util.edit import edits_self_view
+from live.sublime_util.misc import read_only_set_to
 from live.sublime_util.misc import add_hidden_regions
 from live.sublime_util.region_edit import RegionEditHelper
 
@@ -36,11 +37,23 @@ class Repl:
     def current_prompt(self):
         return self.module_name + '> '
 
+    @property
+    def edit_region(self):
+        [reg] = self.view.get_regions(self.EDIT_REGION_KEY)
+        return reg
+
+    def _set_edit_region(self, reg):
+        add_hidden_regions(self.view, self.EDIT_REGION_KEY, [reg])
+
+    def _set_reh(self):
+        self.reh = RegionEditHelper(
+            self.view, self.EDIT_REGION_KEY, self._set_edit_region
+        )
+
     def insert_prompt(self, cur):
         cur.insert(self.current_prompt)
         self._set_edit_region(sublime.Region(cur.pos))
-        self.reh = RegionEditHelper(self.view, self.EDIT_REGION_KEY,
-                                    self._set_edit_region)
+        self._set_reh()
 
     @edits_self_view
     def erase_all_insert_prompt(self):
@@ -52,17 +65,25 @@ class Repl:
         if not self.is_ready:
             self.erase_all_insert_prompt()
 
-    @edits_self_view
-    def _clear_out_for_offline_work(self):
-        cur = Cursor(0, self.view)
-        cur.erase(self.view.size())
-        self.insert_prompt(cur)
-        self.is_cleared_out_for_offline_work = True
+    def ensure_modifications_within_edit_region(self):
+        """Undo any modifications outside edit region"""
+        if self.reh is not None:
+            self.reh.undo_modifications_outside_edit_region()
 
-    @property
-    def edit_region(self):
-        [reg] = self.view.get_regions(self.EDIT_REGION_KEY)
-        return reg
+    def set_view_read_only(self):
+        """Set the REPL view's read_only status depending on current selection"""
+        if self.reh is not None:
+            self.reh.set_read_only()
 
-    def _set_edit_region(self, reg):
-        add_hidden_regions(self.view, self.EDIT_REGION_KEY, [reg])
+    @contextlib.contextmanager
+    def _reh_suppressed(self):
+        self.reh = None
+        try:
+            yield
+        finally:
+            self._set_reh()
+
+    @contextlib.contextmanager
+    def suppressed_region_editing(self):
+        with self._reh_suppressed(), read_only_set_to(self.view, False):
+            yield

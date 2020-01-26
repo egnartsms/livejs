@@ -37,7 +37,7 @@ class LivejsAddModule(sublime_plugin.WindowCommand):
             partial(self.on_module_name_entered, view), None, None
         )
 
-    @interacts_with_be
+    @interacts_with_be()
     def on_module_name_entered(self, view, module_name):
         if not re.match(r'^[a-zA-Z0-9-]+$', module_name):
             self.window.status_message("Invalid module name (should be alphanums)")

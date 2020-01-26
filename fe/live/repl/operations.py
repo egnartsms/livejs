@@ -1,8 +1,6 @@
 import json
 import sublime
 
-from functools import partial
-
 from .repl import Repl
 from live.code.common import jsval_placeholder
 from live.code.common import make_js_value_inserter
@@ -10,8 +8,10 @@ from live.code.cursor import Cursor
 from live.comm import BackendError
 from live.comm import interacts_with_be
 from live.settings import setting
-from live.sublime_util.edit import call_with_edit
+from live.sublime_util.edit import edit_for
+from live.sublime_util.edit import edits_self_view
 from live.sublime_util.view_info import view_info_getter
+from live.sublime_util.misc import read_only_set_to
 from live.util.misc import first_or_none
 
 
@@ -77,6 +77,10 @@ class Node:
 
         self._add_phantom(region)
 
+    @property
+    def repl(self):
+        return repl_for(self.view)
+
     def _erase_phantom(self):
         assert self.phid is not None
         self.view.erase_phantom_by_id(self.phid)
@@ -86,36 +90,41 @@ class Node:
         assert self.phid is None
         self.phid = add_phantom(self.view, region, self.on_navigate, self.is_expanded)
 
-    def _collapse(self, edit):
+    @edits_self_view
+    def _collapse(self):
         assert self.is_expanded
+
         [reg] = self.view.query_phantom(self.phid)
         self._erase_phantom()
-        cur = Cursor(reg.a, self.view, edit, inter_sep_newlines=1)
-        cur.erase(reg.b)
-        cur.push_region()
-        cur.insert(jsval_placeholder(self.type))
+
+        with self.repl.suppressed_region_editing():
+            cur = Cursor(reg.a, self.view, inter_sep_newlines=1)
+            cur.erase(reg.b)
+            cur.push_region()
+            cur.insert(jsval_placeholder(self.type))
+
         self.is_expanded = False
         self._add_phantom(cur.pop_region())
 
-    @interacts_with_be
+    @interacts_with_be(edits_view='self.view')
     def _expand(self):
         """Abandon this node and insert a new expanded one"""
         assert not self.is_expanded
+
         jsval = yield 'inspectObjectById', {'id': self.id}
         
-        def impl(edit):
-            [reg] = self.view.query_phantom(self.phid)
-            self._erase_phantom()
-            self.view.erase(edit, reg)
-            cur = Cursor(reg.a, self.view, edit, inter_sep_newlines=1)
+        [reg] = self.view.query_phantom(self.phid)
+        self._erase_phantom()
+
+        with self.repl.suppressed_region_editing():
+            self.view.erase(edit_for[self.view], reg)
+            cur = Cursor(reg.a, self.view, inter_sep_newlines=1)
             inserter = make_js_value_inserter(cur, jsval, self.nesting)
             insert_js_value(self.view, inserter)
 
-        call_with_edit(self.view, impl)
-
     def on_navigate(self, href):
         if self.is_expanded:
-            call_with_edit(self.view, self._collapse)
+            self._collapse()
         else:
             self._expand()
 
@@ -134,24 +143,13 @@ class Unrevealed:
         self.nesting = nesting
         self.phid = add_phantom(self.view, region, self.on_navigate, False)
 
-    @interacts_with_be
+    @property
+    def repl(self):
+        return repl_for(self.view)
+
+    @interacts_with_be(edits_view='self.view')
     def on_navigate(self, href):
         """Abandon this node and insert a new expanded one"""
-        def impl(edit, jsval=None, error_info=None):
-            [reg] = self.view.query_phantom(self.phid)
-            self.view.erase_phantom_by_id(self.phid)
-            self.phid = None
-            self.view.erase(edit, reg)
-            cur = Cursor(reg.a, self.view, edit, inter_sep_newlines=1)
-            if jsval is not None:
-                inserter = make_js_value_inserter(cur, jsval, self.nesting)
-                insert_js_value(self.view, inserter)
-            else:
-                cur.insert("throw new {}({})".format(
-                    error_info['excClassName'],
-                    json.dumps(error_info['excMessage'])
-                ))
-
         error_info = jsval = None
 
         try:
@@ -165,7 +163,21 @@ class Unrevealed:
             else:
                 raise
 
-        call_with_edit(self.view, partial(impl, error_info=error_info, jsval=jsval))
+        [reg] = self.view.query_phantom(self.phid)
+        self.view.erase_phantom_by_id(self.phid)
+        self.phid = None
+        
+        with self.repl.suppressed_region_editing():
+            self.view.erase(edit_for[self.view], reg)
+            cur = Cursor(reg.a, self.view, inter_sep_newlines=1)
+            if jsval is not None:
+                inserter = make_js_value_inserter(cur, jsval, self.nesting)
+                insert_js_value(self.view, inserter)
+            else:
+                cur.insert("throw new {}({})".format(
+                    error_info['excClassName'],
+                    json.dumps(error_info['excMessage'])
+                ))
 
 
 def insert_js_value(view, inserter):
