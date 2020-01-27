@@ -5,13 +5,12 @@ from .repl import Repl
 from live.code.common import jsval_placeholder
 from live.code.common import make_js_value_inserter
 from live.code.cursor import Cursor
-from live.comm import BackendError
+from live.comm import GetterThrewError
 from live.comm import interacts_with_be
 from live.settings import setting
 from live.sublime_util.edit import edit_for
 from live.sublime_util.edit import edits_self_view
 from live.sublime_util.view_info import view_info_getter
-from live.sublime_util.misc import read_only_set_to
 from live.util.misc import first_or_none
 
 
@@ -150,18 +149,15 @@ class Unrevealed:
     @interacts_with_be(edits_view='self.view')
     def on_navigate(self, href):
         """Abandon this node and insert a new expanded one"""
-        error_info = jsval = None
+        error = jsval = None
 
         try:
             jsval = yield 'inspectGetterValue', {
                 'parentId': self.parent_id,
                 'prop': self.prop
             }
-        except BackendError as e:
-            if e.name == 'getter_threw':
-                error_info = e.info
-            else:
-                raise
+        except GetterThrewError as e:
+            error = e
 
         [reg] = self.view.query_phantom(self.phid)
         self.view.erase_phantom_by_id(self.phid)
@@ -175,8 +171,8 @@ class Unrevealed:
                 insert_js_value(self.view, inserter)
             else:
                 cur.insert("throw new {}({})".format(
-                    error_info['excClassName'],
-                    json.dumps(error_info['excMessage'])
+                    error.exc_class_name,
+                    json.dumps(error.exc_message)
                 ))
 
 

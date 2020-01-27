@@ -51,7 +51,9 @@ window.live = (function () {
             $.requestHandlers[request['type']].call(null, request['args']);
          }
          catch (e) {
-            $.respondFailure('generic', e.stack);
+            $.respondFailure('generic', {
+               message: e.stack
+            });
          }
       },
 
@@ -289,7 +291,8 @@ window.live = (function () {
             catch (e) {
                $.respondFailure('getter_threw', {
                   excClassName: e.constructor.name,
-                  excMessage: e.message
+                  excMessage: e.message,
+                  message: `Getter threw an exception`
                });
                return;
             }
@@ -307,7 +310,7 @@ window.live = (function () {
             type: 'response',
             success: false,
             error: error,
-            info: typeof info === 'string' ? {message: info} : info
+            info: info
          });
       },
 

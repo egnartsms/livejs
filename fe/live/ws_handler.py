@@ -1,12 +1,14 @@
 import sublime
 
-import json
 import collections
+import json
 
-from live.util.misc import stopwatch, take_over_list_items
-from live.comm import BackendError
 from live.code.persist_handlers import persist_handlers
+from live.comm import BackendError
+from live.comm import be_error
 from live.modules.operations import synch_modules_with_be
+from live.util.misc import stopwatch
+from live.util.misc import take_over_list_items
 
 
 class WsHandler:
@@ -25,8 +27,8 @@ class WsHandler:
         assert not self.is_connected
         self.websocket = websocket
         print("LiveJS: BE websocket connected")
-        # TODO: synch_modules_with_be is decorated with @interacts_with_be which ignores if
-        # we're already interacting with the BE.  This feels dirty.
+        # TODO: synch_modules_with_be is decorated with @interacts_with_be which ignores
+        # if we're already interacting with the BE.  This feels dirty.
         sublime.set_timeout(synch_modules_with_be, 0)
 
     def disconnect(self):
@@ -69,18 +71,17 @@ class WsHandler:
         if response['success']:
             self._cont_next(response['value'])
         else:
-            exc = BackendError(response['error'], response['info'])
+            error = be_error(response['error'], response['info'])
             try:
-                self._cont_next(exc)
+                self._cont_next(error)
             except Exception as e:
-                if e is exc:
-                    sublime.error_message(
-                        "LiveJS failure:\n{}".format(exc.info['message'])
-                    )
-                else:
+                if e is not error:
                     # It'll be handled by some default Sublime handler which prints
                     # the traceback to console
                     raise
+                sublime.error_message(
+                    "LiveJS failure:\n{}".format(error.message)
+                )
 
     def _process_persist_request(self, req):
         stopwatch.start('action_{}'.format(req['type']))

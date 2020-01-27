@@ -1,10 +1,11 @@
-import sublime
-import sublime_api
-import sublime_plugin
 import contextlib
 import functools
 import inspect
 import operator
+import re
+import sublime
+import sublime_api
+import sublime_plugin
 
 from live.gstate import ws_handler
 from live.sublime_util.edit import call_ensuring_edit_for
@@ -14,15 +15,55 @@ from live.util.misc import mapping_key_set
 
 
 class BackendError(Exception):
-    def __init__(self, name, info):
-        self.name = name
-        self.info = info
+    def __init__(self, message, **attrs):
+        self.message = message
+        self.__dict__.update(attrs)
+
+    @classmethod
+    def make(cls, info):
+        def camel_to_underscore(s):
+            return re.sub(r'(?<![A-Z])[A-Z]', lambda m: '_' + m.group().lower(), s)
+
+        return cls(**{camel_to_underscore(k): v for k, v in info.items()})
+
+
+class GenericError(BackendError):
+    name = 'generic'
+
+
+class DuplicateKeyError(BackendError):
+    name = 'duplicate_key'
+
+
+class GetterThrewError(BackendError):
+    name = 'getter_threw'
+
+
+be_errors = {sub.name: sub for sub in BackendError.__subclasses__()}
+
+
+def be_error(name, info):
+    return be_errors[name].make(info)
 
 
 def supply_edit_on_each_send(view, gtor):
-    x = None
+    resp = resp_exc = None
+
+    def thunk():
+        if resp_exc is None:
+            return gtor.send(resp)
+        else:
+            return gtor.throw(resp_exc)
+
     while True:
-        x = yield call_ensuring_edit_for(view, lambda: gtor.send(x))
+        request = call_ensuring_edit_for(view, thunk)
+
+        try:
+            resp = yield request
+            resp_exc = None
+        except Exception as e:
+            resp = None
+            resp_exc = e
 
 
 def interacts_with_be(edits_view=None):
