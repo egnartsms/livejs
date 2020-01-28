@@ -1,6 +1,7 @@
 import sublime
 
 from live.sublime_util.misc import is_subregion
+from live.sublime_util.misc import read_only_set_to
 
 
 CLOSING_AUTOINSERT_CHARS = ')]}"\'`'
@@ -9,19 +10,13 @@ CLOSING_AUTOINSERT_CHARS = ')]}"\'`'
 class RegionEditHelper:
     def __init__(self, view, edit_region_getter, edit_region_setter):
         self.view = view
-        self.edit_region_getter = edit_region_getter
-        self.edit_region_setter = edit_region_setter
-        self.pre, self.post = self._get_pre_post()
+        self.get_edit_region = edit_region_getter
+        self.set_edit_region = edit_region_setter
+        self.pre, self.post, self.rowcol = self._get_state()
 
-    def _get_edit_region(self):
-        return self.edit_region_getter()
-
-    def _set_edit_region(self, reg):
-        self.edit_region_setter(reg)
-
-    def _get_pre_post(self):
-        reg = self._get_edit_region()
-        return reg.a, self.view.size() - reg.b
+    def _get_state(self):
+        reg = self.get_edit_region()
+        return reg.a, self.view.size() - reg.b, self.view.rowcol(reg.a)
 
     def _is_after_insertion_at_reg_begin(self, delta):
         """Does the current selection look like smth was inserted at region beginning?
@@ -48,7 +43,7 @@ class RegionEditHelper:
             return False
 
         pt = sel.a
-        reg = self._get_edit_region()
+        reg = self.get_edit_region()
         
         if pt == reg.a:
             return True
@@ -84,7 +79,7 @@ class RegionEditHelper:
             return False
 
         pt = sel.a
-        reg = self._get_edit_region()
+        reg = self.get_edit_region()
 
         if pt == reg.b + delta:
             return True
@@ -106,28 +101,29 @@ class RegionEditHelper:
         and extend the edit region to include what was just inserted.
         """
         while True:
-            pre, post = self._get_pre_post()
-            if pre == self.pre and post == self.post:
+            pre, post, rowcol = self._get_state()
+            if pre == self.pre and post == self.post and rowcol == self.rowcol:
                 break
             elif pre > self.pre and post == self.post and \
                     self._is_after_insertion_at_reg_begin(pre - self.pre):
                 delta = pre - self.pre
-                reg = self._get_edit_region()
-                self._set_edit_region(sublime.Region(reg.a - delta, reg.b))
+                reg = self.get_edit_region()
+                self.set_edit_region(sublime.Region(reg.a - delta, reg.b))
                 break
             elif post > self.post and pre == self.pre and \
                     self._is_after_insertion_at_reg_end(post - self.post):
                 delta = post - self.post
-                reg = self._get_edit_region()
-                self._set_edit_region(sublime.Region(reg.a, reg.b + delta))
+                reg = self.get_edit_region()
+                self.set_edit_region(sublime.Region(reg.a, reg.b + delta))
                 break
 
-            self.view.run_command('undo')
+            with read_only_set_to(self.view, False):
+                self.view.run_command('undo')
             sublime.status_message("Cannot edit outside the editing region")
 
     @property
     def is_selection_within(self):
-        ereg = self._get_edit_region()
+        ereg = self.get_edit_region()
         return all(is_subregion(r, ereg) for r in self.view.sel())
     
     def set_read_only(self):

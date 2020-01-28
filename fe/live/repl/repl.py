@@ -61,11 +61,11 @@ class Repl:
         self.edit_region = sublime.Region(ereg.a, ereg.a + len(s))
 
     def _set_reh(self):
-        def setter(reg):
-            self.edit_region = reg
-
-        self.reh = RegionEditHelper(self.view, lambda: self.edit_region,
-                                    lambda reg: setattr(self, 'edit_region', reg))
+        self.reh = RegionEditHelper(
+            self.view,
+            edit_region_getter=lambda: self.edit_region,
+            edit_region_setter=lambda reg: setattr(self, 'edit_region', reg)
+        )
         self.reh.set_read_only()
 
     def insert_prompt(self, cur):

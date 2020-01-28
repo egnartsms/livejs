@@ -11,6 +11,7 @@ from live.comm import BackendError
 from live.comm import interacts_with_be
 from live.modules.datastructures import Module
 from live.sublime_util.edit import run_method_remembers_edit
+from live.sublime_util.misc import read_only_set_to
 from live.sublime_util.misc import set_selection
 from live.util.inheritable_decorators import ClassWithInheritableDecorators
 from live.util.inheritable_decorators import decorator_for
@@ -57,7 +58,7 @@ class LivejsReplSendCommand(ReplBeInteractingTextCommand):
         except BackendError as e:
             error = e
 
-        with self.repl.suppressed_region_editing():
+        with read_only_set_to(self.view, False):
             if error:
                 cur.insert('\n! ')
                 cur.insert(error.message)

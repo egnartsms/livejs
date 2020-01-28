@@ -13,6 +13,7 @@ window.live = (function () {
 
       init: function () {
          $.modules = Object.create(null);
+         // These values are also hardcoded in Python (FE)
          $.modules[1] = {
             id: 1,
             name: 'live',
@@ -193,7 +194,7 @@ window.live = (function () {
                   type: 'insert',
                   mid,
                   path: newPath,
-                  key: Array.isArray(parent) ? null : key,
+                  key: parent instanceof Array ? null : key,
                   value: $.serialize(value)
                }
             ]);
@@ -617,7 +618,7 @@ window.live = (function () {
       },
 
       serializeInspectedObjectShallowly: function (object) {
-         if (object instanceof Array && object !== Array.prototype) {
+         if (object instanceof Array) {
             return {
                type: 'array',
                id: $.inspectedId(object)
@@ -632,7 +633,7 @@ window.live = (function () {
       },
 
       serializeInspectedObjectDeeply: function (object) {
-         if (object instanceof Array && object !== Array.prototype) {
+         if (object instanceof Array) {
             return {
                type: 'array',
                id: $.inspectedId(object),
