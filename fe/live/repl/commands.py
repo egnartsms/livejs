@@ -7,6 +7,7 @@ from .operations import new_repl_view
 from .operations import repl_for
 from live.code.common import make_js_value_inserter
 from live.code.cursor import Cursor
+from live.comm import BackendError
 from live.comm import interacts_with_be
 from live.modules.datastructures import Module
 from live.sublime_util.edit import run_method_remembers_edit
@@ -48,15 +49,24 @@ class LivejsReplSendCommand(ReplBeInteractingTextCommand):
         cur.pop_erase()
 
         text = self.view.substr(self.repl.edit_region)
-        jsval = yield 'replEval', {'code': text}
+        try:
+            jsval = yield 'replEval', {'code': text}
+            error = None
+        except BackendError as e:
+            error = e
 
-        cur.insert('\n< ')
-        insert_js_value(
-            self.view,
-            make_js_value_inserter(cur, jsval, 0)
-        )
-        cur.insert('\n\n')
-        self.repl.insert_prompt(cur)
+        with self.repl.suppressed_region_editing():
+            if error:
+                cur.insert('\n! ')
+                cur.insert(error.message)
+            else:
+                cur.insert('\n< ')
+                insert_js_value(
+                    self.view,
+                    make_js_value_inserter(cur, jsval, 0)
+                )
+            cur.insert('\n\n')
+            self.repl.insert_prompt(cur)
 
         self.view.sel().clear()
         set_selection(self.view, to=cur.pos, show=True)

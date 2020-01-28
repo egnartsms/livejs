@@ -172,7 +172,7 @@ window.live = (function () {
             let value = parent[key];
             let newPos;
          
-            if (Array.isArray(parent)) {
+            if (parent instanceof Array) {
                newPos = $.moveArrayItem(parent, key, fwd);
             }
             else {
@@ -203,7 +203,7 @@ window.live = (function () {
          deleteEntry: function ({mid, path}) {
             let {parent, key} = $.parentKeyAt($.moduleObject(mid), path);
          
-            if (Array.isArray(parent)) {
+            if (parent instanceof Array) {
                parent.splice(path[path.length - 1], 1);
             }
             else {
@@ -323,7 +323,7 @@ window.live = (function () {
       },
 
       persist: function (requests) {
-         if (!Array.isArray(requests)) {
+         if (!(requests instanceof Array)) {
             requests = [requests];
          }
          $.send({
@@ -409,13 +409,13 @@ window.live = (function () {
                type: 'function',
                value: obj.toString()
             };
-
+      
             case 'string':
             return {
                type: 'leaf',
                value: JSON.stringify(obj)
             };
-
+      
             case 'number':
             case 'boolean':
             case 'undefined':
@@ -424,32 +424,32 @@ window.live = (function () {
                value: String(obj)
             };
          }
-
+      
          if (obj === null) {
             return {
                type: 'leaf',
                value: 'null'
             };
          }
-
+      
          if (obj instanceof RegExp) {
             return {
                type: 'leaf',
                value: obj.toString()
             };
          }
-
-         if (Array.isArray(obj)) {
+      
+         if (obj instanceof Array) {
             return {
                type: 'array',
                value: Array.from(obj, serialize)
             };
          }
-
+      
          if (Object.getPrototypeOf(obj) !== Object.prototype) {
             throw new Error(`Cannot serialize objects with non-standard prototype`);
          }
-
+      
          return {
             type: 'object',
             value: Object.fromEntries(
@@ -459,7 +459,7 @@ window.live = (function () {
       },
 
       nthValue: function (obj, n) {
-         if (Array.isArray(obj)) {
+         if (obj instanceof Array) {
             return obj[n];
          }
          else {
@@ -481,13 +481,13 @@ window.live = (function () {
          if (path.length === 0) {
             throw new Error(`Path cannot be empty`);
          }
-
+      
          let 
             parentPath = path.slice(0, -1),
             lastPos = path[path.length - 1],
             parent = $.valueAt(root, parentPath);
-
-         if (Array.isArray(parent)) {
+      
+         if (parent instanceof Array) {
             return {parent, key: lastPos};
          }
          else {
@@ -508,7 +508,7 @@ window.live = (function () {
       },
 
       checkArray: function (obj) {
-         if (!Array.isArray(obj)) {
+         if (!(obj instanceof Array)) {
             throw new Error(`Object/array mismatch: expected array, got ${obj}`)
          }
       },
@@ -617,7 +617,7 @@ window.live = (function () {
       },
 
       serializeInspectedObjectShallowly: function (object) {
-         if (Array.isArray(object)) {
+         if (object instanceof Array && object !== Array.prototype) {
             return {
                type: 'array',
                id: $.inspectedId(object)
@@ -632,7 +632,7 @@ window.live = (function () {
       },
 
       serializeInspectedObjectDeeply: function (object) {
-         if (Array.isArray(object)) {
+         if (object instanceof Array && object !== Array.prototype) {
             return {
                type: 'array',
                id: $.inspectedId(object),
