@@ -96,7 +96,7 @@ class Node:
         [reg] = self.view.query_phantom(self.phid)
         self._erase_phantom()
 
-        with self.repl.suppressed_region_editing():
+        with self.repl.region_editing_off_then_reestablished():
             cur = Cursor(reg.a, self.view, inter_sep_newlines=1)
             cur.erase(reg.b)
             cur.push_region()
@@ -115,7 +115,7 @@ class Node:
         [reg] = self.view.query_phantom(self.phid)
         self._erase_phantom()
 
-        with self.repl.suppressed_region_editing():
+        with self.repl.region_editing_off_then_reestablished():
             self.view.erase(edit_for[self.view], reg)
             cur = Cursor(reg.a, self.view, inter_sep_newlines=1)
             inserter = make_js_value_inserter(cur, jsval, self.nesting)
@@ -163,7 +163,7 @@ class Unrevealed:
         self.view.erase_phantom_by_id(self.phid)
         self.phid = None
         
-        with self.repl.suppressed_region_editing():
+        with self.repl.region_editing_off_then_reestablished():
             self.view.erase(edit_for[self.view], reg)
             cur = Cursor(reg.a, self.view, inter_sep_newlines=1)
             if jsval is not None:

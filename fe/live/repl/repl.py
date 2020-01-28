@@ -96,17 +96,13 @@ class Repl:
             self.reh.set_read_only()
 
     @contextlib.contextmanager
-    def _reh_suppressed(self):
+    def region_editing_off_then_reestablished(self):
         self.reh = None
+        self.view.set_read_only(False)
         try:
             yield
         finally:
             self._set_reh()
-
-    @contextlib.contextmanager
-    def suppressed_region_editing(self):
-        with self._reh_suppressed(), read_only_set_to(self.view, False):
-            yield
 
     @edits_self_view
     def to_prev_prompt(self):
