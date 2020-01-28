@@ -16,7 +16,9 @@ from live.util.inheritable_decorators import ClassWithInheritableDecorators
 from live.util.inheritable_decorators import decorator_for
 
 
-__all__ = ['LivejsOpenReplCommand', 'LivejsReplSendCommand']
+__all__ = [
+    'LivejsOpenReplCommand', 'LivejsReplSendCommand', 'LivejsReplMoveUserInputCommand'
+]
 
 
 class ReplTextCommand(sublime_plugin.TextCommand,
@@ -70,3 +72,15 @@ class LivejsReplSendCommand(ReplBeInteractingTextCommand):
 
         self.view.sel().clear()
         set_selection(self.view, to=cur.pos, show=True)
+
+
+class LivejsReplMoveUserInputCommand(ReplTextCommand):
+    def run(self, forward):
+        if forward:
+            res = self.repl.to_next_prompt()
+            if not res:
+                sublime.status_message("Already at newest input")
+        else:
+            res = self.repl.to_prev_prompt()
+            if not res:
+                sublime.status_message("Already at oldest input")

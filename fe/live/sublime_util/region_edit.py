@@ -7,15 +7,14 @@ CLOSING_AUTOINSERT_CHARS = ')]}"\'`'
 
 
 class RegionEditHelper:
-    def __init__(self, view, regkey, edit_region_setter):
+    def __init__(self, view, edit_region_getter, edit_region_setter):
         self.view = view
-        self.regkey = regkey
+        self.edit_region_getter = edit_region_getter
         self.edit_region_setter = edit_region_setter
         self.pre, self.post = self._get_pre_post()
 
     def _get_edit_region(self):
-        [reg] = self.view.get_regions(self.regkey)
-        return reg
+        return self.edit_region_getter()
 
     def _set_edit_region(self, reg):
         self.edit_region_setter(reg)
@@ -126,12 +125,15 @@ class RegionEditHelper:
             self.view.run_command('undo')
             sublime.status_message("Cannot edit outside the editing region")
 
+    @property
+    def is_selection_within(self):
+        ereg = self._get_edit_region()
+        return all(is_subregion(r, ereg) for r in self.view.sel())
+    
     def set_read_only(self):
         """Compute and set the read only status for the view at this moment of time.
 
-        If there are any cursors not inside the edit region, this is True (inhibit
+        If there are any cursors not within the edit region, this is True (inhibit
         modifications).  Otherwise, False (free to edit).
         """
-        ereg = self._get_edit_region()
-        ro = not all(is_subregion(r, ereg) for r in self.view.sel())
-        self.view.set_read_only(ro)
+        self.view.set_read_only(not self.is_selection_within)

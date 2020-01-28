@@ -445,8 +445,11 @@ class ModuleBrowser:
 
 class CodeBrowserRegionEditHelper(RegionEditHelper):
     def __init__(self, mbrowser, enclosing_reg=None):
-        super().__init__(mbrowser.view, mbrowser.EDIT_REGION_KEY,
-                         mbrowser.set_edit_region)
+        super().__init__(
+            mbrowser.view,
+            lambda: mbrowser.edit_region,
+            mbrowser.set_edit_region
+        )
         if enclosing_reg is None:
             self.enclosing_reg_offsets = (0, 0)
         else:

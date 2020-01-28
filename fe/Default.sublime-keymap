@@ -272,6 +272,7 @@
         ]
     },
 
+    // REPL
     {
         "keys": ["ctrl+enter"],
         "command": "livejs_repl_send",
@@ -279,6 +280,30 @@
             {
                 "key": "livejs_view",
                 "operand": "REPL"
+            }
+        ]
+    },
+    {
+        "keys": ["ctrl+up"],
+        "command": "livejs_repl_move_user_input",
+        "args": {
+            "forward": false
+        },
+        "context": [
+            {
+                "key": "livejs_repl_sel_within_edit_region"
+            }
+        ]
+    },
+    {
+        "keys": ["ctrl+down"],
+        "command": "livejs_repl_move_user_input",
+        "args": {
+            "forward": true
+        },
+        "context": [
+            {
+                "key": "livejs_repl_sel_within_edit_region"
             }
         ]
     }

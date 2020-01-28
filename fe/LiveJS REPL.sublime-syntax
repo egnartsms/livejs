@@ -7,19 +7,19 @@ scope: source.livejs-repl
 contexts:
   main:
     - match: ^[[:alnum:]]+?>
-      scope: punctuation.separator.livejs-repl
+      scope: punctuation.separator.livejs-repl.prompt
       push: Packages/JavaScript/JavaScript.sublime-syntax
       with_prototype:
         - match: (?=^[<!])
           pop: true
     - match: ^<
-      scope: punctuation.separator.livejs-repl
+      scope: punctuation.separator.livejs-repl.result.value
       push: Packages/JavaScript/JavaScript.sublime-syntax
       with_prototype:
         - match: (?=^[[:alnum:]]+?>)
           pop: true
     - match: ^!
-      scope: punctuation.separator.livejs-repl
+      scope: punctuation.separator.livejs-repl.result.exc
       push: skip
 
   skip:
