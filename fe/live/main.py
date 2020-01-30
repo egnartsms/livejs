@@ -13,6 +13,8 @@ from live.code import *  # noqa
 from live.sublime_util import *  # noqa
 from live.modules import *  # noqa
 from live.repl import *  # noqa
+from live.settings import setting  # noqa
+
 
 g_el = EventLoop()
 

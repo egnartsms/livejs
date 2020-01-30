@@ -14,19 +14,19 @@ from live.util.misc import mapping_key_set
 
 class ModuleBrowserTextCommand(sublime_plugin.TextCommand,
                                metaclass=ClassWithInheritableDecorators):
+    _edit = decorator_for('run', run_method_remembers_edit)
+
     @decorator_for('run')
     def _check_before_run(run):
         @functools.wraps(run)
         def decorated(self, *args, **kwargs):
             if self.mbrowser.module is None:
-                sublime.status_message("Modules not synchronized with BE")
+                self.mbrowser.invalidate_because_of_unknown_module()
                 return
 
             return run(self, *args, **kwargs)
 
         return decorated
-
-    _edit = decorator_for('run', run_method_remembers_edit)
 
     @property
     def mbrowser(self):

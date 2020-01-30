@@ -17,8 +17,21 @@ from live.sublime_util.region_edit import RegionEditHelper
 from live.util.misc import tracking_last
 
 
+class ModuleBrowserState:
+    """Module browser state make sense only when Module browser is offline"""
+    unaware = 'unaware'
+    needs_refresh = 'needs_refresh'
+    unknown_module = 'unknown_module'
+
+
 class ModuleBrowser:
     EDIT_REGION_KEY = 'edit'
+
+    PLACEHOLDERS = {
+        'needs_refresh': "<<< Module browser is out of sync. Please refresh! >>>",
+        'unknown_module': "<<< Module browser corresponds to an unknown module. Close "
+                          "this view and create another browser >>>"
+    }
 
     def __init__(self, view):
         self.view = view
@@ -29,7 +42,7 @@ class ModuleBrowser:
         self.new_node_parent = None
         self.new_node_position = None
         self.reh = None
-        self.is_offline_placeholder_inserted = False
+        self.state = ModuleBrowserState.unaware
 
     @property
     def is_online(self):
@@ -57,22 +70,50 @@ class ModuleBrowser:
         [reg] = self.view.get_regions(self.EDIT_REGION_KEY)
         return reg
 
-    def edit_region_contents(self):
-        return self.view.substr(self.edit_region).strip()
-
-    def set_edit_region(self, reg):
+    @edit_region.setter
+    def edit_region(self, reg):
         self.view.add_regions(self.EDIT_REGION_KEY, [reg], 'region.bluish livejs.edit',
                               '', sublime.DRAW_EMPTY | sublime.DRAW_NO_OUTLINE)
 
+    def edit_region_contents(self):
+        return self.view.substr(self.edit_region).strip()
+
     def discard_edit_region(self):
         self.view.erase_regions(self.EDIT_REGION_KEY)
+
+    @edits_self_view
+    def _insert_placeholder(self):
+        with read_only_set_to(self.view, False):
+            self.view.replace(
+                edit_for[self.view], sublime.Region(0, self.view.size()),
+                self.PLACEHOLDERS[self.state]
+            )
+
+    def prepare_for_activation(self):
+        """Check the module browser state and probably insert a placeholder text"""
+        if self.is_offline and self.state == ModuleBrowserState.unaware:
+            self.state = ModuleBrowserState.needs_refresh
+            self._insert_placeholder()
+
+    def invalidate_because_of_unknown_module(self):
+        if self.state == ModuleBrowserState.unknown_module:
+            # Already invalidated
+            return
+
+        if self.is_online:
+            self.done_editing()
+            self.root.put_offline()
+            self.root = None
+
+        self.state = ModuleBrowserState.unknown_module
+        self._insert_placeholder()
 
     def edit_node(self, node):
         """Start editing of the specified node"""
         assert not self.is_editing
 
         self.view.set_read_only(False)
-        self.set_edit_region(node.region)
+        self.edit_region = node.region
         self.is_editing = True
         self.node_being_edited = node
         self.reh = CodeBrowserRegionEditHelper(self)
@@ -119,7 +160,7 @@ class ModuleBrowser:
             edit_reg = cur.pop_reg_beg()
             enclosing_reg = cur.pop_reg_beg()
 
-        self.set_edit_region(edit_reg)
+        self.edit_region = edit_reg
         set_selection(self.view, to=edit_reg)
         self.is_editing = True
         self.new_node_parent = parent
@@ -198,23 +239,6 @@ class ModuleBrowser:
         self.done_editing()
         self.root = None
         self._insert_offline_placeholder()
-
-    @edits_self_view
-    def _insert_offline_placeholder(self):
-        with read_only_set_to(self.view, False):
-            self.view.replace(
-                edit_for[self.view], sublime.Region(0, self.view.size()),
-                "<<<<< Codebrowser contents out of sync. Please refresh! >>>>>"
-            )
-            self.is_offline_placeholder_inserted = True
-
-    def prepare_for_activation(self):
-        """Do what should be done before the view is activated
-
-        Currently, this inserts offline placholder text if needed
-        """
-        if self.is_offline and not self.is_offline_placeholder_inserted:
-            self._insert_offline_placeholder()
 
     @edits_self_view
     def replace_value_node(self, path, new_value):
@@ -346,7 +370,7 @@ class ModuleBrowser:
         prev_viewport_pos = self.view.viewport_position()
 
         if self.root is not None:
-            self.root._erase_regions_full_depth()
+            self.root.put_offline()
             self.root = None
 
         self.view.set_read_only(False)
@@ -372,7 +396,7 @@ class ModuleBrowser:
 
         self.root = root
         self.root.put_online(self.view)
-        
+
         self.view.set_read_only(True)
         self.view.window().focus_view(self.view)
         set_selection(self.view, to_all=prev_pos)
@@ -448,7 +472,7 @@ class CodeBrowserRegionEditHelper(RegionEditHelper):
         super().__init__(
             mbrowser.view,
             lambda: mbrowser.edit_region,
-            mbrowser.set_edit_region
+            lambda reg: setattr(mbrowser, 'edit_region', reg)
         )
         if enclosing_reg is None:
             self.enclosing_reg_offsets = (0, 0)

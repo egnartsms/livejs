@@ -354,6 +354,11 @@ class JsObject(JsComposite):
         self.__dict__['view'] = view
         self._add_retained_regions_full_depth()
 
+    def put_offline(self):
+        assert self.is_root and self.is_offline
+        self._erase_regions_full_depth()
+        del self.__dict__['view']
+
     @property
     def entries(self):
         return ObjectEntries(self)

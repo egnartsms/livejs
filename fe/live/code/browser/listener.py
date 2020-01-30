@@ -30,6 +30,9 @@ class CodeBrowserEventListener(sublime_plugin.ViewEventListener):
         else:
             return False
 
+        if self.mbrowser.is_offline:
+            return False
+
         if key == 'livejs_cb_exact_node_selected':
             val = self.mbrowser.get_single_selected_node() is not None
         elif key == 'livejs_cb_edit_mode':

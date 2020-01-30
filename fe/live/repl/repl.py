@@ -28,13 +28,7 @@ class Repl:
 
     @property
     def cur_module(self):
-        """Module object that is set as current one for this REPL
-
-        Look up by module ID. If fails, try to look up by name.  In case the latter
-        succeeds, then record the actual module ID into the view's settings.  This trick
-        is needed to re-establish a relation to the actual module in presense of FE/BE
-        reloads.
-        """
+        """Module object that is set as current one for this REPL"""
         return Module.with_id(self.cur_module_id)
 
     @cur_module.setter
