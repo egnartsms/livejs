@@ -9,7 +9,10 @@ from live.code.common import make_js_value_inserter
 from live.code.cursor import Cursor
 from live.comm import BackendError
 from live.comm import interacts_with_be
+from live.gstate import ws_handler
 from live.modules.datastructures import Module
+from live.settings import setting
+from live.shared.input_handlers import ModuleInputHandler
 from live.sublime_util.edit import run_method_remembers_edit
 from live.sublime_util.misc import read_only_set_to
 from live.sublime_util.misc import set_selection
@@ -18,7 +21,8 @@ from live.util.inheritable_decorators import decorator_for
 
 
 __all__ = [
-    'LivejsOpenReplCommand', 'LivejsReplSendCommand', 'LivejsReplMoveUserInputCommand'
+    'LivejsOpenReplCommand', 'LivejsReplSendCommand', 'LivejsReplMoveUserInputCommand',
+    'LivejsReplSetCurrentModuleCommand'
 ]
 
 
@@ -44,20 +48,26 @@ class LivejsOpenReplCommand(sublime_plugin.WindowCommand):
         self.window.focus_view(view)
 
 
-class LivejsReplSendCommand(ReplBeInteractingTextCommand):
+class LivejsReplSendCommand(ReplTextCommand):
+    @interacts_with_be(edits_view='self.view')
     def run(self):
-        cur = Cursor(self.repl.edit_region.b, self.view, inter_sep_newlines=1)
-        cur.push_region()
-        cur.skip_ws_bwd()
-        cur.pop_erase()
+        if self.repl.cur_module is None:
+            self.view.run_command('livejs_repl_set_current_module')
+            return
 
         text = self.view.substr(self.repl.edit_region)
+        stripped_text = text.rstrip()
+        if stripped_text != text:
+            self.repl.replace_edit_region_contents(stripped_text)
+            text = stripped_text
+
         try:
             jsval = yield 'replEval', {'code': text}
             error = None
         except BackendError as e:
             error = e
 
+        cur = Cursor(self.repl.edit_region.b, self.view)
         with read_only_set_to(self.view, False):
             if error:
                 cur.insert('\n! ')
@@ -71,7 +81,6 @@ class LivejsReplSendCommand(ReplBeInteractingTextCommand):
             cur.insert('\n\n')
             self.repl.insert_prompt(cur)
 
-        self.view.sel().clear()
         set_selection(self.view, to=cur.pos, show=True)
 
 
@@ -85,3 +94,13 @@ class LivejsReplMoveUserInputCommand(ReplTextCommand):
             res = self.repl.to_prev_prompt()
             if not res:
                 sublime.status_message("Already at oldest input")
+
+
+class LivejsReplSetCurrentModuleCommand(ReplTextCommand):
+    def run(self, module_id):
+        module = Module.with_id(module_id)
+        self.repl.cur_module = module
+        self.repl.reinsert_prompt()
+
+    def input(self, args):
+        return ModuleInputHandler()

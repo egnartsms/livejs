@@ -23,24 +23,31 @@ class Repl:
         self.pending_last_input = ''
 
     @property
-    def module_id(self):
-        return setting.module_id[self.view]
+    def cur_module_id(self):
+        return setting.cur_module_id[self.view]
 
     @property
-    def module_name(self):
-        return setting.module_name[self.view]
-    
-    @property
-    def module(self):
-        return Module.with_id(self.module_id)
+    def cur_module(self):
+        """Module object that is set as current one for this REPL
+
+        Look up by module ID. If fails, try to look up by name.  In case the latter
+        succeeds, then record the actual module ID into the view's settings.  This trick
+        is needed to re-establish a relation to the actual module in presense of FE/BE
+        reloads.
+        """
+        return Module.with_id(self.cur_module_id)
+
+    @cur_module.setter
+    def cur_module(self, module):
+        setting.cur_module_id[self.view] = module.id
 
     @property
     def is_ready(self):
         return self.reh is not None
     
     @property
-    def current_prompt(self):
-        return self.module_name + '> '
+    def cur_prompt(self):
+        return self.cur_module.name + '> '
 
     @property
     def edit_region(self):
@@ -55,9 +62,10 @@ class Repl:
     def is_selection_within_edit_region(self):
         return self.reh is not None and self.reh.is_selection_within
 
-    def _replace_edit_region_contents(self, s):
+    def replace_edit_region_contents(self, s):
         ereg = self.edit_region
-        self.view.replace(edit_for[self.view], ereg, s)
+        with read_only_set_to(self.view, False):
+            self.view.replace(edit_for[self.view], ereg, s)
         self.edit_region = sublime.Region(ereg.a, ereg.a + len(s))
 
     def _set_reh(self):
@@ -69,11 +77,17 @@ class Repl:
         self.reh.set_read_only()
 
     def insert_prompt(self, cur):
-        cur.insert(self.current_prompt)
+        cur.insert(self.cur_prompt)
         self.edit_region = sublime.Region(cur.pos)
         self._set_reh()
         self.n_inputs_back = -1
         self.pending_last_input = ''
+
+    def reinsert_prompt(self):
+        user_io = UserInputOutputInfo(self.view)
+        with self.region_editing_off_then_reestablished():
+            self.view.replace(edit_for[self.view], user_io.prompt_regs[-1],
+                              self.cur_prompt)
 
     @edits_self_view
     def erase_all_insert_prompt(self):
@@ -82,8 +96,13 @@ class Repl:
         self.insert_prompt(cur)
 
     def prepare_for_activation(self):
-        if not self.is_ready:
-            self.erase_all_insert_prompt()
+        """Prepare a pre-existing REPL view to continue functioning"""
+        if self.is_ready:
+            return
+
+        user_io = UserInputOutputInfo(self.view)
+        self.edit_region = user_io.input_reg(-1)
+        self._set_reh()
 
     def ensure_modifications_within_edit_region(self):
         """Undo any modifications outside edit region"""
@@ -116,9 +135,8 @@ class Repl:
 
         self.n_inputs_back -= 1
         user_input = self.view.substr(user_io.input_reg(self.n_inputs_back)).strip()
-        with read_only_set_to(self.view, False):
-            self._replace_edit_region_contents(user_input)
-            set_selection(self.view, to=self.edit_region.b, show=True)
+        self.replace_edit_region_contents(user_input)
+        set_selection(self.view, to=self.edit_region.b, show=True)
 
         return True
 
@@ -136,9 +154,8 @@ class Repl:
         else:
             user_input = self.view.substr(user_io.input_reg(self.n_inputs_back)).strip()
 
-        with read_only_set_to(self.view, False):
-            self._replace_edit_region_contents(user_input)
-            set_selection(self.view, to=self.edit_region.b, show=True)
+        self.replace_edit_region_contents(user_input)
+        set_selection(self.view, to=self.edit_region.b, show=True)
 
         return True
 
@@ -151,11 +168,12 @@ class UserInputOutputInfo:
         result_regs = view.find_by_selector('punctuation.separator.livejs-repl.result')
         if len(prompt_regs) != len(result_regs) + 1:
             sublime.error_message("REPL view is broken (number of prompts and results do "
-                                  " not match.")
+                                  "not match.")
             raise RuntimeError
 
         self.prompt_regs = prompt_regs
         self.result_regs = result_regs
+        self.view_size = view.size()
 
     @property
     def num_of_inputs(self):
@@ -163,4 +181,7 @@ class UserInputOutputInfo:
 
     def input_reg(self, n_inputs_back):
         idx = len(self.prompt_regs) + n_inputs_back
-        return sublime.Region(self.prompt_regs[idx].b, self.result_regs[idx].a)
+        if n_inputs_back == -1:
+            return sublime.Region(self.prompt_regs[idx].b, self.view_size)
+        else:
+            return sublime.Region(self.prompt_regs[idx].b, self.result_regs[idx].a)

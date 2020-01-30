@@ -62,10 +62,17 @@ class Cursor:
     def indent(self, n):
         self.insert(n * config.s_indent)
 
-    def push_region(self):
+    def __getitem__(self, n):
+        """Access the stack of pushed cursor positions.
+
+        cur[0] gives the current pos, cur[1] gives the most recently pushed, and so on.
+        """
+        return self.pos if n == 0 else self.retain_stack[-n]
+
+    def push(self):
         self.retain_stack.append(self.pos)
 
-    def pop_region(self):
+    def pop_reg_beg(self):
         beg = self.retain_stack.pop()
         end = self.pos
         return sublime.Region(beg, end)
@@ -102,9 +109,9 @@ class Cursor:
     def skip_ws(self):
         self.skip(r'\s*')
 
-    def skip_ws_bwd(self):
+    def skip_ws_bwd(self, limit=0):
         """Skip whitespace backwards from current position"""
-        while self.prec_char.isspace():  # [-1] is '\x00' and is not space
+        while self.pos > limit and self.prec_char.isspace():
             self.pos -= 1
 
     def sep_initial(self, nesting):

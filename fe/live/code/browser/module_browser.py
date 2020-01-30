@@ -95,29 +95,29 @@ class ModuleBrowser:
 
         if 0 == pos == parent.num_children:
             cur = Cursor(parent.begin + 1, self.view)
-            cur.push_region()
+            cur.push()
             cur.sep_initial(nesting)
-            cur.push_region()
+            cur.push()
             placeholder(cur)
-            edit_reg = cur.pop_region()
+            edit_reg = cur.pop_reg_beg()
             cur.sep_terminal(nesting)
-            enclosing_reg = cur.pop_region()
+            enclosing_reg = cur.pop_reg_beg()
         elif pos < parent.num_children:
             cur = Cursor(parent.entries[pos].begin, self.view)
-            cur.push_region()
-            cur.push_region()
+            cur.push()
+            cur.push()
             placeholder(cur)
-            edit_reg = cur.pop_region()
+            edit_reg = cur.pop_reg_beg()
             cur.sep_inter(nesting)
-            enclosing_reg = cur.pop_region()
+            enclosing_reg = cur.pop_reg_beg()
         else:
             cur = Cursor(parent.entries[parent.num_children - 1].end, self.view)
-            cur.push_region()
+            cur.push()
             cur.sep_inter(nesting)
-            cur.push_region()
+            cur.push()
             placeholder(cur)
-            edit_reg = cur.pop_region()
-            enclosing_reg = cur.pop_region()
+            edit_reg = cur.pop_reg_beg()
+            enclosing_reg = cur.pop_reg_beg()
 
         self.set_edit_region(edit_reg)
         set_selection(self.view, to=edit_reg)
@@ -249,10 +249,10 @@ class ModuleBrowser:
         with read_only_set_to(self.view, False):
             self.view.erase(edit_for[self.view], reg)
             cur = Cursor(reg.a, self.view)
-            cur.push_region()
+            cur.push()
             cur.insert(new_name)
 
-        node.parent.replace_key_node_region_at(node.position, cur.pop_region())
+        node.parent.replace_key_node_region_at(node.position, cur.pop_reg_beg())
 
     @edits_self_view
     def delete_node(self, path):
@@ -322,9 +322,9 @@ class ModuleBrowser:
             cur = next(gen)
 
             if key is not None:
-                cur.push_region()
+                cur.push()
                 cur.insert(key)
-                key_region = cur.pop_region()
+                key_region = cur.pop_reg_beg()
                 cur.sep_keyval(nesting)
             
             inserter = make_js_value_inserter(cur, value, nesting)
@@ -357,9 +357,9 @@ class ModuleBrowser:
 
         cur.sep_initial(nesting=0)
         for (key, value), islast in tracking_last(entries):
-            cur.push_region()
+            cur.push()
             cur.insert(key)
-            key_region = cur.pop_region()
+            key_region = cur.pop_reg_beg()
 
             cur.sep_keyval(nesting=0)
 

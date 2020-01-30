@@ -26,25 +26,25 @@ def make_js_value_inserter(cur, jsval, nesting):
       * nesting
     """
     def insert_any(jsval, nesting):
-        cur.push_region()
+        cur.push()
 
         if jsval['type'] == 'leaf':
             cur.insert(jsval['value'])
-            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
+            yield 'leaf', FreeObj(region=cur.pop_reg_beg(), jsval=jsval, nesting=nesting)
         elif jsval['type'] == 'unrevealed':
             cur.insert(jsval_placeholder('unrevealed'))
-            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
+            yield 'leaf', FreeObj(region=cur.pop_reg_beg(), jsval=jsval, nesting=nesting)
         elif jsval['type'] == 'function':
             insert_function(jsval['value'], nesting)
-            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
+            yield 'leaf', FreeObj(region=cur.pop_reg_beg(), jsval=jsval, nesting=nesting)
         elif jsval['type'] == 'object':
             yield from insert_object(jsval, nesting)
-            yield 'pop', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
+            yield 'pop', FreeObj(region=cur.pop_reg_beg(), jsval=jsval, nesting=nesting)
         elif jsval['type'] == 'array':
             yield from insert_array(jsval, nesting)
-            yield 'pop', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
+            yield 'pop', FreeObj(region=cur.pop_reg_beg(), jsval=jsval, nesting=nesting)
         else:
-            cur.pop_region()
+            cur.pop_reg_beg()
             assert 0, "Unknown type: {}".format(jsval['type'])
 
     def insert_array(arr, nesting):
@@ -81,9 +81,9 @@ def make_js_value_inserter(cur, jsval, nesting):
         cur.insert("{")
         cur.sep_initial(nesting + 1)
         for (k, v), islast in tracking_last(obj['value'].items()):
-            cur.push_region()
+            cur.push()
             cur.insert(k)
-            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=k)
+            yield 'leaf', FreeObj(region=cur.pop_reg_beg(), jsval=k)
 
             cur.sep_keyval(nesting + 1)
 

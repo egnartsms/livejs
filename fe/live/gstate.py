@@ -7,7 +7,7 @@ class Config:
     be_root = None  # set at plugin load time
     indent = 3
     s_indent = ' ' * indent
-    bootstrapping_module_id = 1  # hardcoded in BE
+    bootstrapping_module_id = 'acc0b54988854dd9b5e74d269ea731e1'  # also hardcoded in BE
     bootstrapping_module_name = 'live'  # hardcoded in BE => renaming disabled
     bootstrapping_module_filename = 'live.js'
 

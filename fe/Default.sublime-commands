@@ -18,5 +18,9 @@
     {
         "caption": "LiveJS REPL: Send to BE",
         "command": "livejs_repl_send"
+    },
+    {
+        "caption": "LiveJS REPL: Set current module",
+        "command": "livejs_repl_set_current_module"
     }
 ]

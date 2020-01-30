@@ -14,8 +14,8 @@ window.live = (function () {
       init: function () {
          $.modules = Object.create(null);
          // These values are also hardcoded in Python (FE)
-         $.modules[1] = {
-            id: 1,
+         $.modules['acc0b54988854dd9b5e74d269ea731e1'] = {
+            id: 'acc0b54988854dd9b5e74d269ea731e1',
             name: 'live',
             path: null,
             value: $

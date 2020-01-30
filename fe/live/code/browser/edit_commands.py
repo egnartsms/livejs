@@ -8,8 +8,8 @@ from .operations import find_module_browser_view
 from .operations import module_browser_for
 from .operations import new_module_browser_view
 from live.comm import interacts_with_be
-from live.gstate import fe_modules
 from live.modules.datastructures import Module
+from live.shared.input_handlers import ModuleInputHandler
 from live.sublime_util.edit import edit_for
 from live.sublime_util.misc import set_selection
 
@@ -44,14 +44,6 @@ class LivejsBrowseModule(sublime_plugin.WindowCommand):
 
     def input(self, args):
         return ModuleInputHandler()
-
-
-class ModuleInputHandler(sublime_plugin.ListInputHandler):
-    def name(self):
-        return 'module_id'
-
-    def list_items(self):
-        return [(fe_m.name, fe_m.id) for fe_m in fe_modules]
 
 
 class LivejsCbEdit(ModuleBrowserTextCommand):

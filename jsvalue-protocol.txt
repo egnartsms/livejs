@@ -10,7 +10,7 @@ various fields/values admissible for only one kind or the other.
     type: "object",
     // only for inspected objects
     id: 234,
-    // for shallow serialization of inspected objects, "value" will be missing 
+    // only for deep serialization of inspected objects
     value: {
        ...
     }
@@ -19,9 +19,9 @@ various fields/values admissible for only one kind or the other.
 
 {
     type: "array",
-    // only for present for inspected objects
+    // only for inspected objects
     id: 234,
-    // for shallow serialization of inspected objects, "value" will be missing 
+    // only for deep serialization of inspected objects
     value: [
        ...
     ]
@@ -30,7 +30,7 @@ various fields/values admissible for only one kind or the other.
 
 {
     type: 'function',
-    // only for present for inspected functions
+    // only for inspected functions
     id: 234,
     value: func.toString()
 }

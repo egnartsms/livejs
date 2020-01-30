@@ -1,5 +1,4 @@
 from .datastructures import Module
-from .datastructures import set_module_counter
 from live.comm import interacts_with_be
 from live.gstate import config
 from live.gstate import fe_modules
@@ -55,7 +54,6 @@ def set_fe_modules(be_modules):
         for be_m in be_modules
         if be_m['id'] != config.bootstrapping_module_id
     )
-    set_module_counter(max(m.id for m in fe_modules))
 
 
 def load_fe_modules_into_be():

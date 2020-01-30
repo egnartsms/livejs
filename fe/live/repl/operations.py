@@ -19,14 +19,13 @@ def is_view_repl(view):
 
 
 def find_repl_view(window):
-    return first_or_none(view for view in window.views() if setting.view[view] == 'REPL')
+    return first_or_none(view for view in window.views() if is_view_repl(view))
 
 
 def new_repl_view(window, module):
     view = window.new_file()
     setting.view[view] = 'REPL'
-    setting.module_id[view] = module.id
-    setting.module_name[view] = module.name
+    setting.cur_module_id[view] = module.id
     view.set_name('LiveJS: REPL')
     view.set_scratch(True)
     view.assign_syntax('Packages/LiveJS/LiveJS REPL.sublime-syntax')
@@ -99,11 +98,11 @@ class Node:
         with self.repl.region_editing_off_then_reestablished():
             cur = Cursor(reg.a, self.view, inter_sep_newlines=1)
             cur.erase(reg.b)
-            cur.push_region()
+            cur.push()
             cur.insert(jsval_placeholder(self.type))
 
         self.is_expanded = False
-        self._add_phantom(cur.pop_region())
+        self._add_phantom(cur.pop_reg_beg())
 
     @interacts_with_be(edits_view='self.view')
     def _expand(self):

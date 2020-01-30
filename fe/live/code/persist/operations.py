@@ -13,7 +13,7 @@ saver = Saver()
 @edits_view_arg
 def replace_value(view, path, new_value):
     cur = Cursor.at_value(path, view)
-    cur.push_region()
+    cur.push()
     cur.moveto_entry_end()
     cur.pop_erase()
     
@@ -26,7 +26,7 @@ def replace_value(view, path, new_value):
 @edits_view_arg
 def rename_key(view, path, new_name):
     cur = Cursor.at_key(path, view)
-    cur.push_region()
+    cur.push()
     cur.skip('[^:]+')
     cur.pop_erase()
     cur.insert(new_name)

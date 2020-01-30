@@ -6,22 +6,22 @@ scope: source.livejs-repl
 
 contexts:
   main:
-    - match: ^[[:alnum:]]+?>
+    - match: "^[[:alnum:]]+?> "
       scope: punctuation.separator.livejs-repl.prompt
       push: Packages/JavaScript/JavaScript.sublime-syntax
       with_prototype:
-        - match: (?=^[<!])
+        - match: (?=^[<!] )
           pop: true
-    - match: ^<
+    - match: "^< "
       scope: punctuation.separator.livejs-repl.result.value
       push: Packages/JavaScript/JavaScript.sublime-syntax
       with_prototype:
-        - match: (?=^[[:alnum:]]+?>)
+        - match: (?=^[[:alnum:]]+?> )
           pop: true
-    - match: ^!
+    - match: "^! "
       scope: punctuation.separator.livejs-repl.result.exc
       push: skip
 
   skip:
-    - match: (?=^[[:alnum:]]+?>)
+    - match: (?=^[[:alnum:]]+?> )
       pop: true
