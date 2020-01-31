@@ -291,6 +291,10 @@
         },
         "context": [
             {
+                "key": "livejs_view",
+                "operand": "REPL"
+            },
+            {
                 "key": "livejs_repl_sel_within_edit_region"
             }
         ]
@@ -302,6 +306,10 @@
             "forward": true
         },
         "context": [
+            {
+                "key": "livejs_view",
+                "operand": "REPL"
+            },
             {
                 "key": "livejs_repl_sel_within_edit_region"
             }

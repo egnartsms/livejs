@@ -20,11 +20,8 @@ class ModuleBrowserTextCommand(sublime_plugin.TextCommand,
     def _check_before_run(run):
         @functools.wraps(run)
         def decorated(self, *args, **kwargs):
-            if self.mbrowser.module is None:
-                self.mbrowser.invalidate_because_of_unknown_module()
-                return
-
-            return run(self, *args, **kwargs)
+            if self.mbrowser.verify_module():
+                return run(self, *args, **kwargs)
 
         return decorated
 

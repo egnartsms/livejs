@@ -17,7 +17,7 @@ from live.sublime_util.region_edit import RegionEditHelper
 from live.util.misc import tracking_last
 
 
-class ModuleBrowserState:
+class OfflineState:
     """Module browser state make sense only when Module browser is offline"""
     unaware = 'unaware'
     needs_refresh = 'needs_refresh'
@@ -30,7 +30,7 @@ class ModuleBrowser:
     PLACEHOLDERS = {
         'needs_refresh': "<<< Module browser is out of sync. Please refresh! >>>",
         'unknown_module': "<<< Module browser corresponds to an unknown module. Close "
-                          "this view and create another browser >>>"
+                          "it and create another browser >>>"
     }
 
     def __init__(self, view):
@@ -42,7 +42,7 @@ class ModuleBrowser:
         self.new_node_parent = None
         self.new_node_position = None
         self.reh = None
-        self.state = ModuleBrowserState.unaware
+        self.state = OfflineState.unaware
 
     @property
     def is_online(self):
@@ -82,31 +82,32 @@ class ModuleBrowser:
         self.view.erase_regions(self.EDIT_REGION_KEY)
 
     @edits_self_view
-    def _insert_placeholder(self):
-        with read_only_set_to(self.view, False):
-            self.view.replace(
-                edit_for[self.view], sublime.Region(0, self.view.size()),
-                self.PLACEHOLDERS[self.state]
-            )
-
-    def prepare_for_activation(self):
-        """Check the module browser state and probably insert a placeholder text"""
-        if self.is_offline and self.state == ModuleBrowserState.unaware:
-            self.state = ModuleBrowserState.needs_refresh
-            self._insert_placeholder()
-
-    def invalidate_because_of_unknown_module(self):
-        if self.state == ModuleBrowserState.unknown_module:
-            # Already invalidated
+    def put_to_offline_state(self, state):
+        """Stop editing (if any) and free nodes structure"""
+        if state == self.state:
             return
 
         if self.is_online:
             self.done_editing()
             self.root.put_offline()
             self.root = None
+        
+        with read_only_set_to(self.view, False):
+            self.view.replace(edit_for[self.view], sublime.Region(0, self.view.size()),
+                              self.PLACEHOLDERS[state])
+            self.state = state
 
-        self.state = ModuleBrowserState.unknown_module
-        self._insert_placeholder()
+    def verify_module(self):
+        if self.module is None:
+            self.put_to_offline_state(OfflineState.unknown_module)
+            return False
+
+        return True
+
+    def prepare_for_activation(self):
+        """Check the view before activating it: if offline, show placeholder"""
+        if self.is_offline and self.state == OfflineState.unaware:
+            self.put_to_offline_state(OfflineState.needs_refresh)
 
     def edit_node(self, node):
         """Start editing of the specified node"""
@@ -230,15 +231,6 @@ class ModuleBrowser:
             return None
         
         return self.find_node_by_exact_region(self.view.sel()[0])
-
-    def go_offline(self):
-        """Free state (such as nodes) and replace view contents with placeholder"""
-        if self.is_offline:
-            return
-        
-        self.done_editing()
-        self.root = None
-        self._insert_offline_placeholder()
 
     @edits_self_view
     def replace_value_node(self, path, new_value):
