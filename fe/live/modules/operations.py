@@ -1,11 +1,10 @@
-import sublime
+from .datastructures import Module
+from live.comm import interacts_with_be
+from live.gstate import config
+from live.gstate import fe_modules
 
-from live.gstate import fe_modules, config
-from live.comm import be_interaction
-from .datastructures import Module, set_module_counter
 
-
-@be_interaction
+@interacts_with_be()
 def synch_modules_with_be():
     be_modules = yield 'sendModules', {}
 
@@ -55,7 +54,6 @@ def set_fe_modules(be_modules):
         for be_m in be_modules
         if be_m['id'] != config.bootstrapping_module_id
     )
-    set_module_counter(max(m.id for m in fe_modules))
 
 
 def load_fe_modules_into_be():

@@ -1,7 +1,7 @@
-import sublime_plugin
+import sublime
 
-from live.sublime_util.selection import set_selection
-from . import operations as ops
+from .command import ModuleBrowserTextCommand
+from live.sublime_util.misc import set_selection
 
 
 __all__ = [
@@ -10,27 +10,25 @@ __all__ = [
 ]
 
 
-class LivejsCbSelect(sublime_plugin.TextCommand):
-    def run(self, edit):
+class LivejsCbSelect(ModuleBrowserTextCommand):
+    def run(self):
         if len(self.view.sel()) != 1:
-            self.view.window().status_message("Could not determine the node to select: "
-                                              "many cursors")
+            sublime.status_message("Could not determine the node to select: many cursors")
             return
 
-        r0 = self.view.sel()[0]
-        node = ops.find_containing_node(self.view, r0)
+        [reg] = self.view.sel()
+        node = self.mbrowser.find_containing_node(reg, strict=False)
         if node.is_root:
-            self.view.window().status_message("Could not determine the node to select: "
-                                              "selected region is not entirely inside a "
-                                              "node")
+            sublime.status_message("Could not determine the node to select: "
+                                   "selected region is not entirely inside a node")
             return
 
-        set_selection(self.view, to_reg=node.region)
+        set_selection(self.view, to=node.region)
 
 
-class LivejsCbMoveSelNext(sublime_plugin.TextCommand):
-    def run(self, edit, by_same_kind):
-        node = ops.get_single_selected_node(self.view)
+class LivejsCbMoveSelNext(ModuleBrowserTextCommand):
+    def run(self, by_same_kind):
+        node = self.mbrowser.get_single_selected_node()
         if node is None:
             return  # should not normally happen
 
@@ -39,12 +37,12 @@ class LivejsCbMoveSelNext(sublime_plugin.TextCommand):
         else:
             right = node.textually_following_sibling_circ
 
-        set_selection(self.view, to_reg=right.region, show=True)
+        set_selection(self.view, to=right.region, show=True)
 
 
-class LivejsCbMoveSelPrev(sublime_plugin.TextCommand):
-    def run(self, edit, by_same_kind):
-        node = ops.get_single_selected_node(self.view)
+class LivejsCbMoveSelPrev(ModuleBrowserTextCommand):
+    def run(self, by_same_kind):
+        node = self.mbrowser.get_single_selected_node()
         if node is None:
             return  # should not normally happen
 
@@ -53,12 +51,12 @@ class LivejsCbMoveSelPrev(sublime_plugin.TextCommand):
         else:
             left = node.textually_preceding_sibling_circ
         
-        set_selection(self.view, to_reg=left.region, show=True)
+        set_selection(self.view, to=left.region, show=True)
 
 
-class LivejsCbMoveSelOutside(sublime_plugin.TextCommand):
-    def run(self, edit):
-        node = ops.get_single_selected_node(self.view)
+class LivejsCbMoveSelOutside(ModuleBrowserTextCommand):
+    def run(self):
+        node = self.mbrowser.get_single_selected_node()
         if node is None:
             return  # should not normally happen
 
@@ -66,12 +64,12 @@ class LivejsCbMoveSelOutside(sublime_plugin.TextCommand):
         if up.is_root:
             return
 
-        set_selection(self.view, to_reg=up.region, show=True)
+        set_selection(self.view, to=up.region, show=True)
 
 
-class LivejsCbMoveSelInside(sublime_plugin.TextCommand):
-    def run(self, edit, into_key):
-        node = ops.get_single_selected_node(self.view)
+class LivejsCbMoveSelInside(ModuleBrowserTextCommand):
+    def run(self, into_key):
+        node = self.mbrowser.get_single_selected_node()
         if node is None:
             return  # should not normally happen
 
@@ -83,4 +81,4 @@ class LivejsCbMoveSelInside(sublime_plugin.TextCommand):
         else:
             down = node.value_nodes[0]
 
-        set_selection(self.view, to_reg=down.region, show=True)
+        set_selection(self.view, to=down.region, show=True)

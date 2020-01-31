@@ -1,62 +1,225 @@
-import collections
 import json
+import sublime
 
-from live.util import first_such
+from .repl import Repl
+from live.code.common import jsval_placeholder
+from live.code.common import make_js_value_inserter
+from live.code.cursor import Cursor
+from live.comm import GetterThrewError
+from live.comm import interacts_with_be
+from live.settings import setting
+from live.sublime_util.edit import edit_for
+from live.sublime_util.edit import edits_self_view
+from live.sublime_util.view_info import view_info_getter
+from live.util.misc import first_or_none
+from live.util.misc import gen_uid
 
 
-def find_repl(window):
-    return first_such(
-        view for view in window.views()
-        if view.settings().get('livejs_view') == 'REPL'
+def is_view_repl(view):
+    return setting.view[view] == 'REPL'
+
+
+def find_repl_view(window):
+    return first_or_none(view for view in window.views() if is_view_repl(view))
+
+
+def new_repl_view(window, module):
+    view = window.new_file()
+    setting.view[view] = 'REPL'
+    setting.cur_module_id[view] = module.id
+    setting.inspection_space_id[view] = gen_uid()
+    view.set_name('LiveJS: REPL')
+    view.set_scratch(True)
+    view.assign_syntax('Packages/LiveJS/LiveJS REPL.sublime-syntax')
+
+    repl_for(view).erase_all_insert_prompt()
+
+    return view
+
+
+repl_for = view_info_getter(Repl, is_view_repl)
+
+
+PHANTOM_HTML_TEMPLATE = '''
+<body id="casual">
+    <style>
+     a {{
+        display: block;
+        text-decoration: none;
+     }}
+    </style>
+    <div>
+        <a href="">{contents}</a>
+    </div>
+</body>
+'''
+
+
+def render_phantom_html(is_expanded):
+    return PHANTOM_HTML_TEMPLATE.format(
+        contents='—' if is_expanded else '+'
     )
 
 
-def new_repl(window):
-    repl = window.new_file()
-    repl.settings().set('livejs_view', 'REPL')
-    repl.set_name('LiveJS: REPL')
-    repl.set_scratch(True)
-    repl.assign_syntax('Packages/LiveJS/LiveJS REPL.sublime-syntax')
-    return repl
+def add_phantom(view, region, on_navigate, is_expanded):
+    return view.add_phantom('', region, render_phantom_html(is_expanded),
+                            sublime.LAYOUT_INLINE, on_navigate)
 
 
-BE_RESPONSE_STR = '''
-{
-    "type": "object",
-    "id": 102,
-    "value": {
-        "__proto__": {
-            "type": "object",
-            "id": 1
-        },
-        "name": {
-            "type": "leaf",
-            "value": "\\"John\\""
-        },
-        "age": {
-            "type": "leaf",
-            "value": "30"
-        },
-        "isMale": {
-            "type": "leaf",
-            "value": "true"
-        },
-        "howToFind": {
-            "type": "leaf",
-            "value": "/ab(?=c)/"
-        },
-        "stringRepr": {
-            "type": "function",
-            "value": "function ({mid, path, codeNewValue}) {\\n            let \\n               {parent, key} = $.parentKeyAt($.modulesRoot(mid), path),\\n               newValue = $.evalExpr(codeNewValue);\\n         \\n            parent[key] = newValue;\\n         \\n            $.persist({\\n               type: 'replace',\\n               mid,\\n               path,\\n               newValue: $.prepareForSerialization(newValue)\\n            });\\n            $.respondSuccess();\\n         }"
-        },
-        "formerJobs": {
-            "type": "array",
-            "id": 103
+class Node:
+    def __init__(self, view, jsval, nesting, region):
+        self.view = view
+        self.nesting = nesting
+        self.type = jsval['type']
+        self.id = jsval['id']
+        self.is_expanded = 'value' in jsval
+        self.phid = None
+
+        self._add_phantom(region)
+
+    @property
+    def repl(self):
+        return repl_for(self.view)
+
+    def _erase_phantom(self):
+        assert self.phid is not None
+        self.view.erase_phantom_by_id(self.phid)
+        self.phid = None
+
+    def _add_phantom(self, region):
+        assert self.phid is None
+        self.phid = add_phantom(self.view, region, self.on_navigate, self.is_expanded)
+
+    @edits_self_view
+    def _collapse(self):
+        assert self.is_expanded
+
+        [reg] = self.view.query_phantom(self.phid)
+        self._erase_phantom()
+
+        with self.repl.region_editing_off_then_reestablished():
+            cur = Cursor(reg.a, self.view, inter_sep_newlines=1)
+            cur.erase(reg.b)
+            cur.push()
+            cur.insert(jsval_placeholder(self.type))
+
+        self.is_expanded = False
+        self._add_phantom(cur.pop_reg_beg())
+
+    @interacts_with_be(edits_view='self.view')
+    def _expand(self):
+        """Abandon this node and insert a new expanded one"""
+        assert not self.is_expanded
+
+        jsval = yield 'inspectObjectById', {
+            'spaceId': self.repl.inspection_space_id,
+            'id': self.id
         }
-    }
-}
-'''
+        
+        [reg] = self.view.query_phantom(self.phid)
+        self._erase_phantom()
 
-BE_RESPONSE = json.loads(BE_RESPONSE_STR, object_pairs_hook=collections.OrderedDict)
+        with self.repl.region_editing_off_then_reestablished():
+            self.view.erase(edit_for[self.view], reg)
+            cur = Cursor(reg.a, self.view, inter_sep_newlines=1)
+            inserter = make_js_value_inserter(cur, jsval, self.nesting)
+            insert_js_value(self.view, inserter)
+
+    def on_navigate(self, href):
+        if self.is_expanded:
+            self._collapse()
+        else:
+            self._expand()
 
 
+class Unrevealed:
+    """Unrevealed is used for getters (actual value is obtained lazily)
+
+    Unrevealed instance is always collapsed. When expanded it's substituted with smth
+    else, and the Unrevealed instance is gone forever.
+    """
+
+    def __init__(self, view, parent_id, prop, nesting, region):
+        self.view = view
+        self.parent_id = parent_id
+        self.prop = prop
+        self.nesting = nesting
+        self.phid = add_phantom(self.view, region, self.on_navigate, False)
+
+    @property
+    def repl(self):
+        return repl_for(self.view)
+
+    @interacts_with_be(edits_view='self.view')
+    def on_navigate(self, href):
+        """Abandon this node and insert a new expanded one"""
+        error = jsval = None
+
+        try:
+            jsval = yield 'inspectGetterValue', {
+                'spaceId': self.repl.inspection_space_id,
+                'parentId': self.parent_id,
+                'prop': self.prop
+            }
+        except GetterThrewError as e:
+            error = e
+
+        [reg] = self.view.query_phantom(self.phid)
+        self.view.erase_phantom_by_id(self.phid)
+        self.phid = None
+        
+        with self.repl.region_editing_off_then_reestablished():
+            self.view.erase(edit_for[self.view], reg)
+            cur = Cursor(reg.a, self.view, inter_sep_newlines=1)
+            if jsval is not None:
+                inserter = make_js_value_inserter(cur, jsval, self.nesting)
+                insert_js_value(self.view, inserter)
+            else:
+                cur.insert("throw new {}({})".format(
+                    error.exc_class_name,
+                    json.dumps(error.exc_message)
+                ))
+
+
+def insert_js_value(view, inserter):
+    """Create Node instances which are inaccessible as of now.
+
+    They exist only for the sake of phantoms, and get GCed when we deleted phantoms.
+    """
+    def insert_object():
+        while True:
+            cmd, args = next(inserter)
+            if cmd == 'pop':
+                Node(view, args.jsval, args.nesting, args.region)
+                return
+
+            insert_any(*next(inserter))
+
+    def insert_array():
+        while True:
+            cmd, args = next(inserter)
+            if cmd == 'pop':
+                Node(view, args.jsval, args.nesting, args.region)
+                return
+
+            insert_any(cmd, args)
+
+    def insert_any(cmd, args):
+        if cmd == 'push_object':
+            insert_object()
+        elif cmd == 'push_array':
+            insert_array()
+        elif cmd == 'leaf':
+            if args.jsval['type'] == 'function':
+                # 1-line functions don't need to be collapsed
+                nline_beg, _ = view.rowcol(args.region.a)
+                nline_end, _ = view.rowcol(args.region.b)
+                if nline_end > nline_beg:
+                    Node(view, args.jsval, args.nesting, args.region)
+            elif args.jsval['type'] == 'unrevealed':
+                Unrevealed(view, args.jsval['parentId'], args.jsval['prop'],
+                           args.nesting, args.region)
+        else:
+            assert 0, "Inserter yielded unexpected command: {}".format(cmd)
+
+    insert_any(*next(inserter))

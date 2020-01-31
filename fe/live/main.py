@@ -1,7 +1,9 @@
+import sublime
+import sublime_plugin
+
 import os
 import traceback
-
-import sublime_plugin
+import operator as pyop
 
 from live.lowlvl.http_server import serve
 from live.lowlvl.eventloop import EventLoop
@@ -11,6 +13,8 @@ from live.code import *  # noqa
 from live.sublime_util import *  # noqa
 from live.modules import *  # noqa
 from live.repl import *  # noqa
+from live.settings import setting  # noqa
+
 
 g_el = EventLoop()
 
@@ -25,7 +29,7 @@ def eventloop_error_handler(msg, exc):
 def start_server():
     if not g_el.is_coroutine_live('server'):
         print("Starting the server...")
-        g_el.add_coroutine(serve(8001, ws_handler), 'server')
+        g_el.add_coroutine(serve(7000, ws_handler), 'server')
         print("Started")
 
 
@@ -53,7 +57,7 @@ def plugin_unloaded():
     print("Unloaded")
 
 
-class ToggleServerCommand(sublime_plugin.TextCommand):
+class LivejsToggleServerCommand(sublime_plugin.TextCommand):
     def run(self, edit):
         if g_el.is_coroutine_live('server'):
             stop_server()
@@ -61,6 +65,18 @@ class ToggleServerCommand(sublime_plugin.TextCommand):
             start_server()
 
 
-class LivejsIndicate(sublime_plugin.TextCommand):
-    def run(self, edit, msg):
-        self.view.window().status_message(msg)
+class QueryContextProcessor(sublime_plugin.EventListener):
+    def on_query_context(self, view, key, operator, operand, match_all):
+        if operator == sublime.OP_EQUAL:
+            op = pyop.eq
+        elif operator == sublime.OP_NOT_EQUAL:
+            op = pyop.ne
+        else:
+            return False
+
+        if key == 'livejs_view':
+            val = view.settings().get('livejs_view')
+        else:
+            return False
+
+        return op(val, operand)

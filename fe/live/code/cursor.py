@@ -1,9 +1,9 @@
+import contextlib
+import re
 import sublime
 
-import re
-import contextlib
-
 from live.gstate import config
+from live.sublime_util.edit import edit_for
 
 
 class UnexpectedContents(Exception):
@@ -21,12 +21,16 @@ re_of_interest = (
 
 
 class Cursor:
-    def __init__(self, pos, view, edit=None):
+    def __init__(self, pos, view, inter_sep_newlines=2):
         super().__init__()
         self.pos = pos
         self.view = view
-        self.edit = edit
         self.retain_stack = []
+        self.inter_sep_newlines = inter_sep_newlines
+
+    @property
+    def edit(self):
+        return edit_for[self.view]
 
     def __getstate__(self):
         """retain_stack is not copied"""
@@ -58,15 +62,25 @@ class Cursor:
     def indent(self, n):
         self.insert(n * config.s_indent)
 
-    def push_region(self):
+    def __getitem__(self, n):
+        """Access the stack of pushed cursor positions.
+
+        cur[0] gives the current pos, cur[1] gives the most recently pushed, and so on.
+        """
+        return self.pos if n == 0 else self.retain_stack[-n]
+
+    def push(self):
         self.retain_stack.append(self.pos)
 
-    def pop_region(self):
+    def pop_reg_beg(self):
         beg = self.retain_stack.pop()
         end = self.pos
         return sublime.Region(beg, end)
 
     def erase(self, upto):
+        if self.pos == upto:
+            return
+
         self.view.erase(self.edit, sublime.Region(self.pos, upto))
         if upto < self.pos:
             self.pos = upto
@@ -74,6 +88,10 @@ class Cursor:
     def pop_erase(self):
         beg = self.retain_stack.pop()
         self.erase(beg)
+
+    def replace(self, upto, new_text):
+        self.view.replace(self.edit, sublime.Region(self.pos, upto), new_text)
+        self.pos = (upto if upto < self.pos else self.pos) + len(new_text)
 
     def find(self, pattern):
         return self.view.find(pattern, self.pos)
@@ -91,9 +109,9 @@ class Cursor:
     def skip_ws(self):
         self.skip(r'\s*')
 
-    def skip_ws_bwd(self):
+    def skip_ws_bwd(self, limit=0):
         """Skip whitespace backwards from current position"""
-        while self.prec_char.isspace():  # [-1] is '\x00' and is not space
+        while self.pos > limit and self.prec_char.isspace():
             self.pos -= 1
 
     def sep_initial(self, nesting):
@@ -101,7 +119,8 @@ class Cursor:
         self.indent(nesting)
 
     def sep_inter(self, nesting):
-        self.insert(',\n\n')
+        self.insert(',')
+        self.insert('\n' * self.inter_sep_newlines)
         self.indent(nesting)
 
     def sep_terminal(self, nesting):

@@ -1,11 +1,20 @@
 import time
+import contextlib
+import uuid
 
 
-def eraise(msg, *args, **kwargs):
-    raise RuntimeError(msg.format(*args, **kwargs))
+def gen_uid():
+    return uuid.uuid4().hex
 
 
-def first_such(gen):
+def eraise(msg=None, *args, **kwargs):
+    if msg is None:
+        raise RuntimeError
+    else:
+        raise RuntimeError(msg.format(*args, **kwargs))
+
+
+def first_or_none(gen):
     return next(gen, None)
 
 
@@ -92,3 +101,24 @@ class Proxy:
 
 def _get_proxy_target(proxy):
     return object.__getattribute__(proxy, 'target_getter')()
+
+
+class FreeObj:
+    def __init__(self, **attrs):
+        self.__dict__.update(attrs)
+
+
+missing = object()
+
+
+@contextlib.contextmanager
+def mapping_key_set(mapping, key, value):
+    old_value = mapping[key] if key in mapping else missing
+    mapping[key] = value
+    try:
+        yield
+    finally:
+        if old_value is missing:
+            del mapping[key]
+        else:
+            mapping[key] = old_value

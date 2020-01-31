@@ -14,5 +14,17 @@
     {
         "caption": "LiveJS: Open REPL",
         "command": "livejs_open_repl"
+    },
+    {
+        "caption": "LiveJS REPL: Send to BE",
+        "command": "livejs_repl_send"
+    },
+    {
+        "caption": "LiveJS REPL: Set current module",
+        "command": "livejs_repl_set_current_module"
+    },
+    {
+        "caption": "LiveJS REPL: Clear",
+        "command": "livejs_repl_clear"
     }
 ]

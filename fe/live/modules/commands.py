@@ -6,7 +6,7 @@ import re
 from functools import partial
 
 from live.gstate import fe_modules
-from live.comm import be_interaction
+from live.comm import interacts_with_be
 from .operations import load_modules_request
 from .datastructures import Module
 
@@ -37,7 +37,7 @@ class LivejsAddModule(sublime_plugin.WindowCommand):
             partial(self.on_module_name_entered, view), None, None
         )
 
-    @be_interaction
+    @interacts_with_be()
     def on_module_name_entered(self, view, module_name):
         if not re.match(r'^[a-zA-Z0-9-]+$', module_name):
             self.window.status_message("Invalid module name (should be alphanums)")
@@ -48,7 +48,7 @@ class LivejsAddModule(sublime_plugin.WindowCommand):
                                        .format(module_name))
             return
 
-        new_module = Module(name=module_name, path=view.file_name())
+        new_module = Module(id=None, name=module_name, path=view.file_name())
         yield load_modules_request([new_module])
         fe_modules.append(new_module)
         self.window.status_message("Module {} added!".format(module_name))

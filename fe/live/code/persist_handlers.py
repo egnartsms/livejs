@@ -1,12 +1,13 @@
 import sublime
 
-from functools import partial, wraps
+from functools import wraps
 
-from live.sublime_util.technical_command import run_technical_command
-from live.sublime_util.on_view_loaded import on_load
-from live.modules.datastructures import Module
-from .browser import operations as browser
+from .browser.operations import find_module_browser_view
+from .browser.operations import module_browser_for
 from .persist import operations as persist
+from live.modules.datastructures import Module
+from live.sublime_util.edit import call_with_edit
+from live.sublime_util.on_view_loaded import on_load
 
 
 persist_handlers = {}
@@ -19,9 +20,11 @@ def persist_handler(fn):
     @wraps(fn)
     def wrapper(request):
         module = Module.with_id(request['mid'])
-        view_browser = browser.find_module_browser(sublime.active_window(), module)
+        # TODO: for now we ignore other windows except the active one
+        mb_view = find_module_browser_view(sublime.active_window(), module)
+        mbrowser = module_browser_for(mb_view)
         view_source = open_module_source_view(sublime.active_window(), module.path)
-        fn(request, view_browser, view_source)
+        fn(request, mbrowser, view_source)
 
     persist_handlers[request_name] = wrapper
     return wrapper
@@ -37,67 +40,45 @@ def open_module_source_view(window, filepath):
 
 
 @persist_handler
-def replace(request, view_browser, view_source):
-    run_technical_command(
-        view_browser,
-        partial(browser.replace_value_node,
-                path=request['path'], new_value=request['newValue'])
-    )
+def replace(request, mbrowser, view_source):
+    mbrowser.replace_value_node(request['path'], request['newValue'])
 
     @on_load(view_source)
     def _():
-        run_technical_command(
+        persist.replace_value(
             view_source,
-            partial(persist.replace_value,
-                    path=request['path'], new_value=request['newValue'])
+            path=request['path'], new_value=request['newValue']
         )
 
 
 @persist_handler
-def rename_key(request, view_browser, view_source):
-    run_technical_command(
-        view_browser,
-        partial(browser.replace_key_node,
-                path=request['path'],
-                new_name=request['newName'])
-    )
+def rename_key(request, mbrowser, view_source):
+    mbrowser.replace_key_node(request['path'], request['newName'])
 
     @on_load(view_source)
     def _():
-        run_technical_command(
+        persist.rename_key(
             view_source,
-            partial(persist.rename_key,
-                    path=request['path'], new_name=request['newName'])
+            path=request['path'], new_name=request['newName']
         )
 
 
 @persist_handler
-def delete(request, view_browser, view_source):
-    run_technical_command(
-        view_browser,
-        partial(browser.delete_node, path=request['path'])
-    )
+def delete(request, mbrowser, view_source):
+    mbrowser.delete_node(request['path'])
 
     @on_load(view_source)
     def _():
-        run_technical_command(
-            view_source,
-            partial(persist.delete, path=request['path'])
-        )
+        persist.delete(view_source, path=request['path'])
 
 
 @persist_handler
-def insert(request, view_browser, view_source):
-    run_technical_command(
-        view_browser,
-        partial(browser.insert_node,
-                path=request['path'], key=request['key'], value=request['value'])
-    )
+def insert(request, mbrowser, view_source):
+    mbrowser.insert_node(request['path'], request['key'], request['value'])
 
     @on_load(view_source)
     def _():
-        run_technical_command(
+        persist.insert(
             view_source,
-            partial(persist.insert,
-                    path=request['path'], key=request['key'], value=request['value'])
+            path=request['path'], key=request['key'], value=request['value']
         )

@@ -1,48 +1,58 @@
-import sublime
-
 import re
-import contextlib
 
-from live.util import tracking_last, eraise
+from live.util.misc import FreeObj
+from live.util.misc import tracking_last
 
 
 def make_js_value_inserter(cur, jsval, nesting):
     """Return a generator that inserts JS values with given cursor and yields commands.
     
+    It is currently used for both inspected (runtime) objects and tracked objects. This
+    doesn't have to be like that.
+
     :param nesting: nesting of jsval at point of insertion.
 
     Yields the following commands:
-      ('leaf', region): just inserted a leaf value
-      ('push_object', value): just started to lay out a js object
-      ('push_array', value): just started to lay out a js array
-      ('pop', region): finished to lay out whatever the current thing was (object or
-                       array)
+
+      * 'push_object', None: starting to lay out a js object
+      * 'push_array', None: starting to lay out a js array
+      * 'pop', args: finished to lay out whatever the current thing was
+                    (object or array)
+      * 'leaf', args: just inserted a leaf value
+    
+    args is an object with attributes:
+      * region
+      * jsval
+      * nesting
     """
     def insert_any(jsval, nesting):
-        cur.push_region()
+        cur.push()
 
         if jsval['type'] == 'leaf':
             cur.insert(jsval['value'])
-            yield 'leaf', cur.pop_region()
-        elif jsval['type'] == 'object':
-            yield from insert_object(jsval, nesting)
-            yield 'pop', cur.pop_region()
-        elif jsval['type'] == 'array':
-            yield from insert_array(jsval, nesting)
-            yield 'pop', cur.pop_region()
+            yield 'leaf', FreeObj(region=cur.pop_reg_beg(), jsval=jsval, nesting=nesting)
+        elif jsval['type'] == 'unrevealed':
+            cur.insert(jsval_placeholder('unrevealed'))
+            yield 'leaf', FreeObj(region=cur.pop_reg_beg(), jsval=jsval, nesting=nesting)
         elif jsval['type'] == 'function':
             insert_function(jsval['value'], nesting)
-            yield 'leaf', cur.pop_region()
+            yield 'leaf', FreeObj(region=cur.pop_reg_beg(), jsval=jsval, nesting=nesting)
+        elif jsval['type'] == 'object':
+            yield from insert_object(jsval, nesting)
+            yield 'pop', FreeObj(region=cur.pop_reg_beg(), jsval=jsval, nesting=nesting)
+        elif jsval['type'] == 'array':
+            yield from insert_array(jsval, nesting)
+            yield 'pop', FreeObj(region=cur.pop_reg_beg(), jsval=jsval, nesting=nesting)
         else:
-            cur.pop_region()
-            eraise("Unknown type: {}", jsval['type'])
+            cur.pop_reg_beg()
+            assert 0, "Unknown type: {}".format(jsval['type'])
 
     def insert_array(arr, nesting):
-        yield 'push_array', arr
+        yield 'push_array', None
 
         if 'value' not in arr:
             # This array is non-tracked, so value must be fetched separately
-            cur.insert("[..]")
+            cur.insert("[...]")
             return
 
         if not arr['value']:
@@ -57,11 +67,11 @@ def make_js_value_inserter(cur, jsval, nesting):
         cur.insert("]")
 
     def insert_object(obj, nesting):
-        yield 'push_object', obj
+        yield 'push_object', None
 
         if 'value' not in obj:
             # This object is non-tracked, so value must be fetched separately
-            cur.insert("{..}")
+            cur.insert("{...}")
             return
 
         if not obj['value']:
@@ -71,9 +81,9 @@ def make_js_value_inserter(cur, jsval, nesting):
         cur.insert("{")
         cur.sep_initial(nesting + 1)
         for (k, v), islast in tracking_last(obj['value'].items()):
-            cur.push_region()
+            cur.push()
             cur.insert(k)
-            yield 'leaf', cur.pop_region()
+            yield 'leaf', FreeObj(region=cur.pop_reg_beg(), jsval=k)
 
             cur.sep_keyval(nesting + 1)
 
@@ -107,21 +117,14 @@ def make_js_value_inserter(cur, jsval, nesting):
     yield from insert_any(jsval, nesting)
 
 
-@contextlib.contextmanager
-def read_only_set_to(view, new_status):
-    old_status = view.is_read_only()
-    view.set_read_only(new_status)
-    yield
-    view.set_read_only(old_status)
-
-
-def add_hidden_regions(view, key, regs):
-    """Marker region is a hidden"""
-    view.add_regions(key, regs, '', '', sublime.HIDDEN)
-
-
-@contextlib.contextmanager
-def hidden_region_list(view, key):
-    region_list = view.get_regions(key)
-    yield region_list
-    add_hidden_regions(view, key, region_list)
+def jsval_placeholder(jsval_type):
+    if jsval_type == 'object':
+        return "{...}"
+    elif jsval_type == 'array':
+        return "[...]"
+    elif jsval_type == 'function':
+        return "func {...}"
+    elif jsval_type == 'unrevealed':
+        return "(...)"
+    else:
+        assert 0

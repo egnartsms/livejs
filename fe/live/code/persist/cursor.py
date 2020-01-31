@@ -1,5 +1,6 @@
+from live.code.cursor import Cursor as BaseCursor
+from live.code.cursor import UnexpectedContents
 from live.gstate import config
-from live.code.cursor import Cursor as BaseCursor, UnexpectedContents
 
 
 ROOT_NESTING = 1
@@ -8,9 +9,9 @@ re_beginning = r'^[ ]{{{nspaces}}}.+?(?=\{{)'.format(nspaces=ROOT_NESTING * conf
 
 
 class Cursor(BaseCursor):
-    def __init__(self, view, edit):
+    def __init__(self, view):
         """Initialized to point right after the root object's opening brace"""
-        super().__init__(0, view, edit)
+        super().__init__(0, view)
         self.depth = 0
         self.is_inside_object = False
 
@@ -93,36 +94,36 @@ class Cursor(BaseCursor):
         self.skip(r'\S+?:\s*')
 
     @classmethod
-    def at_key(cls, path, view, edit):
+    def at_key(cls, path, view):
         path, nlast = path[:-1], path[-1]
-        cur = cls.at_entry_start(path, view, edit)
+        cur = cls.at_entry_start(path, view)
         cur.moveto_nth_key(nlast)
         return cur
 
     @classmethod
-    def at_value(cls, path, view, edit):
+    def at_value(cls, path, view):
         path, nlast = path[:-1], path[-1]
-        cur = cls.at_entry_start(path, view, edit)
+        cur = cls.at_entry_start(path, view)
         cur.moveto_nth_value(nlast)
         return cur
 
     @classmethod
-    def at_entry(cls, path, view, edit):
+    def at_entry(cls, path, view):
         path, nlast = path[:-1], path[-1]
-        cur = cls.at_entry_start(path, view, edit)
+        cur = cls.at_entry_start(path, view)
         cur.moveto_nth_entry(nlast)
         return cur
 
     @classmethod
-    def at_entry_or_end(cls, path, view, edit):
+    def at_entry_or_end(cls, path, view):
         path, nlast = path[:-1], path[-1]
-        cur = cls.at_entry_start(path, view, edit)
+        cur = cls.at_entry_start(path, view)
         found = cur.moveto_nth_entry_or_end(nlast)
         return cur, found
 
     @classmethod
-    def at_entry_start(cls, path, view, edit):
-        cur = cls(view, edit)
+    def at_entry_start(cls, path, view):
+        cur = cls(view)
 
         for n in path:
             cur.moveto_nth_value(n)

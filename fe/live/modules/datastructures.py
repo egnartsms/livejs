@@ -1,30 +1,14 @@
-from live.gstate import fe_modules, config
-from live.util import first_such, eraise
-
-
-_module_id_counter = 1
-
-
-def gen_new_module_id():
-    global _module_id_counter
-
-    _module_id_counter += 1
-    return _module_id_counter
-
-
-def set_module_counter(val):
-    global _module_id_counter
-    _module_id_counter = val
+from live.gstate import config
+from live.gstate import fe_modules
+from live.util.misc import first_or_none
+from live.util.misc import gen_uid
 
 
 class Module:
-    __slots__ = ('id', 'name', 'path')
-
-    def __init__(self, **attrs):
-        for k, v in attrs.items():
-            setattr(self, k, v)
-        if 'id' not in attrs:
-            self.id = gen_new_module_id()
+    def __init__(self, id, name, path):
+        self.id = id or gen_uid()
+        self.name = name
+        self.path = path
 
     @classmethod
     def bootstrapping(cls):
@@ -40,8 +24,8 @@ class Module:
 
     @staticmethod
     def with_id(mid):
-        module = first_such(m for m in fe_modules if m.id == mid)
-        if module is None:
-            eraise("Not found a module with ID: {}", mid)
+        return first_or_none(m for m in fe_modules if m.id == mid)
 
-        return module
+    @staticmethod
+    def with_name(name):
+        return first_or_none(m for m in fe_modules if m.name == name)
