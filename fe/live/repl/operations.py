@@ -12,6 +12,7 @@ from live.sublime_util.edit import edit_for
 from live.sublime_util.edit import edits_self_view
 from live.sublime_util.view_info import view_info_getter
 from live.util.misc import first_or_none
+from live.util.misc import gen_uid
 
 
 def is_view_repl(view):
@@ -26,6 +27,7 @@ def new_repl_view(window, module):
     view = window.new_file()
     setting.view[view] = 'REPL'
     setting.cur_module_id[view] = module.id
+    setting.inspection_space_id[view] = gen_uid()
     view.set_name('LiveJS: REPL')
     view.set_scratch(True)
     view.assign_syntax('Packages/LiveJS/LiveJS REPL.sublime-syntax')
@@ -109,7 +111,10 @@ class Node:
         """Abandon this node and insert a new expanded one"""
         assert not self.is_expanded
 
-        jsval = yield 'inspectObjectById', {'id': self.id}
+        jsval = yield 'inspectObjectById', {
+            'spaceId': self.repl.inspection_space_id,
+            'id': self.id
+        }
         
         [reg] = self.view.query_phantom(self.phid)
         self._erase_phantom()
@@ -152,6 +157,7 @@ class Unrevealed:
 
         try:
             jsval = yield 'inspectGetterValue', {
+                'spaceId': self.repl.inspection_space_id,
                 'parentId': self.parent_id,
                 'prop': self.prop
             }

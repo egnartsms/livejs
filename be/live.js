@@ -6,7 +6,7 @@ window.live = (function () {
          "socket",
          "orderedKeysMap",
          "modules",
-         "inspected"
+         "inspectionSpaces"
       ],
 
       socket: null,
@@ -21,11 +21,7 @@ window.live = (function () {
             value: $
          };
          $.orderedKeysMap = new WeakMap;
-         $.inspected = {
-            obj2id: new Map,
-            id2obj: new Map,
-            nextId: 1
-         };
+         $.inspectionSpaces = {};
       
          $.resetSocket();
       },
@@ -55,250 +51,6 @@ window.live = (function () {
             $.respondFailure('generic', {
                message: e.stack
             });
-         }
-      },
-
-      requestHandlers: {
-         getKeyAt: function ({mid, path}) {
-            $.respondSuccess($.keyAt($.moduleObject(mid), path));
-         },
-         
-         getValueAt: function ({mid, path}) {
-            $.respondSuccess(
-               $.serialize($.valueAt($.moduleObject(mid), path))
-            );
-         },
-         
-         sendAllEntries: function ({mid}) {
-            let result = [];
-            let module =  $.moduleObject(mid);
-         
-            for (let [key, value] of $.entries(module)) {
-               if (module.nontrackedKeys && module.nontrackedKeys.includes(key)) {
-                  result.push([key, $.serialize('new Object()')])
-               }
-               else {
-                  result.push([key, $.serialize(value)]);   
-               }
-            }
-         
-            $.respondSuccess(result);
-         },
-         
-         replace: function ({mid, path, codeNewValue}) {
-            let 
-               {parent, key} = $.parentKeyAt($.moduleObject(mid), path),
-               newValue = $.evalExpr(codeNewValue);
-         
-            parent[key] = newValue;
-         
-            $.persist({
-               type: 'replace',
-               mid,
-               path,
-               newValue: $.serialize(newValue)
-            });
-            $.respondSuccess();
-         },
-         
-         renameKey: function ({mid, path, newName}) {
-            let {parent, key} = $.parentKeyAt($.moduleObject(mid), path);
-         
-            $.checkObject(parent);
-         
-            if ($.hasOwnProperty(parent, newName)) {
-               $.respondFailure('duplicate_key', {
-                  objPath: path,
-                  duplicatedKey: newName,
-                  message: `Cannot rename to ${newName}: duplicate property name`
-               });
-               return;
-            }
-         
-            let ordkeys = $.ensureOrdkeys(parent);
-            ordkeys[ordkeys.indexOf(key)] = newName;
-            parent[newName] = parent[key];
-            delete parent[key];
-         
-            $.persist({
-               type: 'rename_key',
-               mid,
-               path,
-               newName
-            });
-            $.respondSuccess();
-         },
-         
-         addArrayEntry: function ({mid, parentPath, pos, codeValue}) {
-            let parent = $.valueAt($.moduleObject(mid), parentPath);
-            let value = $.evalExpr(codeValue);
-         
-            $.checkArray(parent);
-         
-            parent.splice(pos, 0, value);
-         
-            $.persist({
-               type: 'insert',
-               mid,
-               path: parentPath.concat(pos),
-               key: null,
-               value: $.serialize(value)
-            });
-            $.respondSuccess();
-         },
-         
-         addObjectEntry: function ({mid, parentPath, pos, key, codeValue}) {
-            let parent = $.valueAt($.moduleObject(mid), parentPath);
-            let value = $.evalExpr(codeValue);
-         
-            $.checkObject(parent);
-            if ($.hasOwnProperty(parent, key)) {
-               throw new Error(`Cannot insert property ${key}: it already exists`);
-            }
-         
-            $.insertProp(parent, key, value, pos);   
-         
-            $.persist({
-               type: 'insert',
-               mid,
-               path: parentPath.concat(pos),
-               key: key,
-               value: $.serialize(value)
-            });
-            $.respondSuccess();
-         },
-         
-         move: function ({mid, path, fwd}) {
-            let {parent, key} = $.parentKeyAt($.moduleObject(mid), path);
-            let value = parent[key];
-            let newPos;
-         
-            if (parent instanceof Array) {
-               newPos = $.moveArrayItem(parent, key, fwd);
-            }
-            else {
-               let props = $.ensureOrdkeys(parent);
-               newPos = $.moveArrayItem(props, props.indexOf(key), fwd);
-            }
-         
-            let newPath = path.slice(0, -1);
-            newPath.push(newPos);
-         
-            $.persist([
-               {
-                  type: 'delete',
-                  mid,
-                  path: path
-               }, 
-               {
-                  type: 'insert',
-                  mid,
-                  path: newPath,
-                  key: parent instanceof Array ? null : key,
-                  value: $.serialize(value)
-               }
-            ]);
-            $.respondSuccess(newPath);
-         },
-         
-         deleteEntry: function ({mid, path}) {
-            let {parent, key} = $.parentKeyAt($.moduleObject(mid), path);
-         
-            if (parent instanceof Array) {
-               parent.splice(path[path.length - 1], 1);
-            }
-            else {
-               $.deleteProp(parent, key);
-            }
-         
-            $.persist({
-               type: 'delete',
-               mid,
-               path: path
-            });
-            $.respondSuccess();
-         },
-         
-         sendModules: function () {
-            $.respondSuccess(
-               Object.values($.modules).map(m => ({
-                  id: m.id,
-                  name: m.name,
-                  path: m.path
-               }))
-            );
-         },
-         
-         loadModules: function ({modules}) {
-            // modules: [{id, name, path, source}]
-            //
-            // We keep module names unique.
-            function isModuleOk({name, id}) {
-               return (
-                  !$.hasOwnProperty($.modules, id) &&
-                  Object.values($.modules).every(({xname}) => xname !== name)
-               );
-            }
-         
-            if (!modules.every(isModuleOk)) {
-               throw new Error(`Cannot add modules: duplicates found`);
-            }
-         
-            let values = modules.map(({source}) => $.evalExpr(source));
-         
-            for (let i = 0; i < modules.length; i += 1) {
-               let m = modules[i], value = values[i];
-         
-               $.modules[m['id']] = {
-                  id: m['id'],
-                  name: m['name'],
-                  path: m['path'],
-                  value: value
-               };
-            }
-         
-            $.respondSuccess();
-         },
-
-         replEval: function ({code}) {
-            let obj = $.evalExpr(code);
-            $.respondSuccess($.serializeInspected(obj, true));
-         },
-
-         inspectObjectById: function ({id}) {
-            let object = $.inspected.id2obj.get(id);
-            if (!object) {
-               throw new Error(`Unknown object id: ${id}`);
-            }
-         
-            $.respondSuccess($.serializeInspectedObjectDeeply(object));
-         },
-
-         dismissInspectedObjects: function () {
-            $.dimissInspectedObjects();
-            $.respondSuccess();
-         },
-
-         inspectGetterValue: function ({parentId, prop}) {
-            let parent = $.inspected.id2obj.get(parentId);
-            if (!parent) {
-               throw new Error(`Unknown object id: ${parentId}`);
-            }
-         
-            let result;
-            try {
-               result = parent[prop];
-            }
-            catch (e) {
-               $.respondFailure('getter_threw', {
-                  excClassName: e.constructor.name,
-                  excMessage: e.message,
-                  message: `Getter threw an exception`
-               });
-               return;
-            }
-         
-            $.respondSuccess($.serializeInspected(result, true));
          }
       },
 
@@ -333,13 +85,13 @@ window.live = (function () {
          });
       },
 
-      evalFBody: function (code) {
+      evalFBody: function ($obj, code) {
          let func = new Function('$', "'use strict';\n" + code);
-         return func.call(null, $);
+         return func.call(null, $obj);
       },
 
-      evalExpr: function (code) {
-         return $.evalFBody(`return (${code});`);
+      evalExpr: function ($obj, code) {
+         return $.evalFBody($obj, `return (${code});`);
       },
 
       hasOwnProperty: function (obj, prop) {
@@ -448,6 +200,7 @@ window.live = (function () {
          }
       
          if (Object.getPrototypeOf(obj) !== Object.prototype) {
+            console.log(obj);
             throw new Error(`Cannot serialize objects with non-standard prototype`);
          }
       
@@ -536,32 +289,38 @@ window.live = (function () {
          return $.modules[mid].value;
       },
 
-      inspected: 0,
+      inspectionSpaces: 0,
 
-      inspectedId: function (object) {
+      inspectionSpace: function (spaceId) {
+         if (!(spaceId in $.inspectionSpaces)) {
+            $.inspectionSpaces[spaceId] = {
+               obj2id: new Map,
+               id2obj: new Map,
+               nextId: 1
+            };
+         }
+      
+         return $.inspectionSpaces[spaceId];
+      },
+
+      inspecteeId: function (space, object) {
          if (!((typeof object === 'object' && object !== null) || 
                (typeof object === 'function'))) {
             throw new Error(`Invalid inspected object: ${object}`);
          }
       
-         if ($.inspected.obj2id.has(object)) {
-            return $.inspected.obj2id.get(object);
+         if (space.obj2id.has(object)) {
+            return space.obj2id.get(object);
          }
       
-         let id = $.inspected.nextId++;
-         $.inspected.obj2id.set(object, id);
-         $.inspected.id2obj.set(id, object);
+         let id = space.nextId++;
+         space.obj2id.set(object, id);
+         space.id2obj.set(id, object);
       
          return id;
       },
 
-      dismissInspectedObjects: function () {
-         $.inspected.nextId = 1;
-         $.inspected.obj2id.clear();
-         $.inspected.id2obj.clear();
-      },
-
-      serializeInspected: function (obj, deeply) {
+      inspect: function (space, obj, deeply) {
          switch (typeof obj) {
             case 'bigint':
                throw new Error(`Serialization of bigints is not implemented`);
@@ -584,7 +343,7 @@ window.live = (function () {
             };
       
             case 'function':
-            return $.serializeInspectedFunc(obj);
+            return $.inspectFunc(space, obj);
          }
       
          if (obj === null) {
@@ -602,62 +361,62 @@ window.live = (function () {
          }
       
          if (deeply) {
-            return $.serializeInspectedObjectDeeply(obj);
+            return $.inspectObjectDeeply(space, obj);
          }
          else {
-            return $.serializeInspectedObjectShallowly(obj);
+            return $.inspectObjectShallowly(space, obj);
          }
       },
 
-      serializeInspectedFunc: function (func) {
+      inspectFunc: function (space, func) {
          return {
             type: 'function',
-            id: $.inspectedId(func),
+            id: $.inspecteeId(space, func),
             value: func.toString()
          };
       },
 
-      serializeInspectedObjectShallowly: function (object) {
+      inspectObjectShallowly: function (space, object) {
          if (object instanceof Array) {
             return {
                type: 'array',
-               id: $.inspectedId(object)
+               id: $.inspecteeId(space, object)
             };
          }
          else {
             return {
                type: 'object',
-               id: $.inspectedId(object)
+               id: $.inspecteeId(space, object)
             };
          }
       },
 
-      serializeInspectedObjectDeeply: function (object) {
+      inspectObjectDeeply: function (space, object) {
          if (object instanceof Array) {
             return {
                type: 'array',
-               id: $.inspectedId(object),
-               value: Array.from(object, x => $.serializeInspected(x, false))
+               id: $.inspecteeId(space, object),
+               value: Array.from(object, x => $.inspect(space, x, false))
             };
          }
       
          if (typeof object === 'function') {
-            return $.serializeInspectedFunc(object);
+            return $.inspectFunc(space, object);
          }
       
          let result = {
-            __proto: $.serializeInspected(Object.getPrototypeOf(object), false)
+            __proto: $.inspect(space, Object.getPrototypeOf(object), false)
          };
          let nonvalues = {};
       
          for (let [prop, desc] of Object.entries(Object.getOwnPropertyDescriptors(object))) {
             if ($.hasOwnProperty(desc, 'value')) {
-               result[prop] = $.serializeInspected(desc.value, false);
+               result[prop] = $.inspect(space, desc.value, false);
             }
             else {
                result[prop] = {
                   type: 'unrevealed',
-                  parentId: $.inspectedId(object),
+                  parentId: $.inspecteeId(space, object),
                   prop: prop
                };
                nonvalues[prop] = desc;
@@ -666,18 +425,260 @@ window.live = (function () {
       
          for (let [prop, desc] of Object.entries(nonvalues)) {
             if (desc.get) {
-               result['get ' + prop] = $.serializeInspectedFunc(desc.get);
+               result['get ' + prop] = $.inspecteeFunc(space, desc.get);
             }
             if (desc.set) {
-               result['set ' + prop] = $.serializeInspectedFunc(desc.set);
+               result['set ' + prop] = $.inspecteeFunc(space, desc.set);
             }
          }
       
          return {
             type: 'object',
-            id: $.inspectedId(object),
+            id: $.inspecteeId(space, object),
             value: result
          };
+      },
+
+      requestHandlers: {
+         getKeyAt: function ({mid, path}) {
+            $.respondSuccess($.keyAt($.moduleObject(mid), path));
+         },
+         getValueAt: function ({mid, path}) {
+            $.respondSuccess(
+               $.serialize($.valueAt($.moduleObject(mid), path))
+            );
+         },
+         sendAllEntries: function ({mid}) {
+            let result = [];
+            let module =  $.moduleObject(mid);
+         
+            for (let [key, value] of $.entries(module)) {
+               if (module.nontrackedKeys && module.nontrackedKeys.includes(key)) {
+                  result.push([key, $.serialize('new Object()')])
+               }
+               else {
+                  result.push([key, $.serialize(value)]);   
+               }
+            }
+         
+            $.respondSuccess(result);
+         },
+         replace: function ({mid, path, codeNewValue}) {
+            let 
+               {parent, key} = $.parentKeyAt($.moduleObject(mid), path),
+               newValue = $.evalExpr($.moduleObject(mid), codeNewValue);
+         
+            parent[key] = newValue;
+         
+            $.persist({
+               type: 'replace',
+               mid,
+               path,
+               newValue: $.serialize(newValue)
+            });
+            $.respondSuccess();
+         },
+         renameKey: function ({mid, path, newName}) {
+            let {parent, key} = $.parentKeyAt($.moduleObject(mid), path);
+         
+            $.checkObject(parent);
+         
+            if ($.hasOwnProperty(parent, newName)) {
+               $.respondFailure('duplicate_key', {
+                  objPath: path,
+                  duplicatedKey: newName,
+                  message: `Cannot rename to ${newName}: duplicate property name`
+               });
+               return;
+            }
+         
+            let ordkeys = $.ensureOrdkeys(parent);
+            ordkeys[ordkeys.indexOf(key)] = newName;
+            parent[newName] = parent[key];
+            delete parent[key];
+         
+            $.persist({
+               type: 'rename_key',
+               mid,
+               path,
+               newName
+            });
+            $.respondSuccess();
+         },
+         addArrayEntry: function ({mid, parentPath, pos, codeValue}) {
+            let parent = $.valueAt($.moduleObject(mid), parentPath);
+            let value = $.evalExpr($.moduleObject(mid), codeValue);
+         
+            $.checkArray(parent);
+         
+            parent.splice(pos, 0, value);
+         
+            $.persist({
+               type: 'insert',
+               mid,
+               path: parentPath.concat(pos),
+               key: null,
+               value: $.serialize(value)
+            });
+            $.respondSuccess();
+         },
+         addObjectEntry: function ({mid, parentPath, pos, key, codeValue}) {
+            let parent = $.valueAt($.moduleObject(mid), parentPath);
+            let value = $.evalExpr($.moduleObject(mid), codeValue);
+         
+            $.checkObject(parent);
+            if ($.hasOwnProperty(parent, key)) {
+               throw new Error(`Cannot insert property ${key}: it already exists`);
+            }
+         
+            $.insertProp(parent, key, value, pos);   
+         
+            $.persist({
+               type: 'insert',
+               mid,
+               path: parentPath.concat(pos),
+               key: key,
+               value: $.serialize(value)
+            });
+            $.respondSuccess();
+         },
+         move: function ({mid, path, fwd}) {
+            let {parent, key} = $.parentKeyAt($.moduleObject(mid), path);
+            let value = parent[key];
+            let newPos;
+         
+            if (parent instanceof Array) {
+               newPos = $.moveArrayItem(parent, key, fwd);
+            }
+            else {
+               let props = $.ensureOrdkeys(parent);
+               newPos = $.moveArrayItem(props, props.indexOf(key), fwd);
+            }
+         
+            let newPath = path.slice(0, -1);
+            newPath.push(newPos);
+         
+            $.persist([
+               {
+                  type: 'delete',
+                  mid,
+                  path: path
+               }, 
+               {
+                  type: 'insert',
+                  mid,
+                  path: newPath,
+                  key: parent instanceof Array ? null : key,
+                  value: $.nontrackedKeys.includes(key) ?
+                           'new Object()' : $.serialize(value)
+               }
+            ]);
+            $.respondSuccess(newPath);
+         },
+         deleteEntry: function ({mid, path}) {
+            let {parent, key} = $.parentKeyAt($.moduleObject(mid), path);
+         
+            if (parent instanceof Array) {
+               parent.splice(path[path.length - 1], 1);
+            }
+            else {
+               $.deleteProp(parent, key);
+            }
+         
+            $.persist({
+               type: 'delete',
+               mid,
+               path: path
+            });
+            $.respondSuccess();
+         },
+         sendModules: function () {
+            $.respondSuccess(
+               Object.values($.modules).map(m => ({
+                  id: m.id,
+                  name: m.name,
+                  path: m.path
+               }))
+            );
+         },
+         loadModules: function ({modules}) {
+            // modules: [{id, name, path, source}]
+            //
+            // We keep module names unique.
+            function isModuleOk({name, id}) {
+               return (
+                  !$.hasOwnProperty($.modules, id) &&
+                  Object.values($.modules).every(({xname}) => xname !== name)
+               );
+            }
+         
+            if (!modules.every(isModuleOk)) {
+               throw new Error(`Cannot add modules: duplicates found`);
+            }
+         
+            let values = modules.map(({source}) => $.evalExpr(null, source));
+         
+            for (let i = 0; i < modules.length; i += 1) {
+               let m = modules[i], value = values[i];
+         
+               $.modules[m['id']] = {
+                  id: m['id'],
+                  name: m['name'],
+                  path: m['path'],
+                  value: value
+               };
+            }
+         
+            $.respondSuccess();
+         },
+         replEval: function ({mid, spaceId, code}) {
+            let obj = $.evalExpr($.moduleObject(mid), code);
+            $.respondSuccess($.inspect($.inspectionSpace(spaceId), obj, true));
+         },
+         inspectObjectById: function ({spaceId, id}) {
+            let space = $.inspectionSpace(spaceId);
+            let object = space.id2obj.get(id);
+            if (!object) {
+               throw new Error(`Unknown object id: ${id}`);
+            }
+         
+            $.respondSuccess($.inspectObjectDeeply(space, object));
+         },
+         inspectGetterValue: function ({spaceId, parentId, prop}) {
+            let space = $.inspectionSpace(spaceId);
+            let parent = space.id2obj.get(parentId);
+            if (!parent) {
+               throw new Error(`Unknown object id: ${parentId}`);
+            }
+         
+            let result;
+            try {
+               result = parent[prop];
+            }
+            catch (e) {
+               $.respondFailure('getter_threw', {
+                  excClassName: e.constructor.name,
+                  excMessage: e.message,
+                  message: `Getter threw an exception`
+               });
+               return;
+            }
+         
+            $.respondSuccess($.inspect(space, result, true));
+         },
+         deleteInspectionSpace: function ({spaceId}) {
+            let space = $.inspectionSpaces[spaceId];
+            if (!space) {
+               $.respondSuccess(false);
+               return;
+            }
+         
+            space.id2obj.clear();
+            space.obj2id.clear();
+            delete $.inspectionSpaces[spaceId];
+         
+            $.respondSuccess(true);
+         }
       }
    };
 

@@ -355,7 +355,7 @@ class JsObject(JsComposite):
         self._add_retained_regions_full_depth()
 
     def put_offline(self):
-        assert self.is_root and self.is_offline
+        assert self.is_root and self.is_online
         self._erase_regions_full_depth()
         del self.__dict__['view']
 

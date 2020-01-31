@@ -2,6 +2,7 @@ import contextlib
 import sublime
 
 from live.code.cursor import Cursor
+from live.comm import interacts_with_be
 from live.modules.datastructures import Module
 from live.settings import setting
 from live.sublime_util.edit import edit_for
@@ -34,6 +35,10 @@ class Repl:
     @cur_module.setter
     def cur_module(self, module):
         setting.cur_module_id[self.view] = module.id
+
+    @property
+    def inspection_space_id(self):
+        return setting.inspection_space_id[self.view]
 
     @property
     def is_ready(self):
@@ -152,6 +157,12 @@ class Repl:
         set_selection(self.view, to=self.edit_region.b, show=True)
 
         return True
+
+    @interacts_with_be()
+    def delete_inspection_space(self):
+        yield 'deleteInspectionSpace', {
+            'spaceId': self.inspection_space_id
+        }
 
 
 class UserInputOutputInfo:

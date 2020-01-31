@@ -1,12 +1,12 @@
-import uuid
-
-from live.gstate import fe_modules, config
+from live.gstate import config
+from live.gstate import fe_modules
 from live.util.misc import first_or_none
+from live.util.misc import gen_uid
 
 
 class Module:
     def __init__(self, id, name, path):
-        self.id = id or uuid.uuid4().hex
+        self.id = id or gen_uid()
         self.name = name
         self.path = path
 

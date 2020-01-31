@@ -1,5 +1,10 @@
 import time
 import contextlib
+import uuid
+
+
+def gen_uid():
+    return uuid.uuid4().hex
 
 
 def eraise(msg=None, *args, **kwargs):

@@ -361,7 +361,7 @@ class ModuleBrowser:
         prev_pos = list(self.view.sel())
         prev_viewport_pos = self.view.viewport_position()
 
-        if self.root is not None:
+        if self.is_online:
             self.root.put_offline()
             self.root = None
 
@@ -469,11 +469,11 @@ class CodeBrowserRegionEditHelper(RegionEditHelper):
         if enclosing_reg is None:
             self.enclosing_reg_offsets = (0, 0)
         else:
-            reg = self._get_edit_region()
+            reg = self.get_edit_region()
             self.enclosing_reg_offsets = (reg.a - enclosing_reg.a,
                                           enclosing_reg.b - reg.b)
 
     def enclosing_reg(self):
-        reg = self._get_edit_region()
+        reg = self.get_edit_region()
         return sublime.Region(reg.a - self.enclosing_reg_offsets[0],
                               reg.b + self.enclosing_reg_offsets[1])

@@ -9,9 +9,7 @@ from live.code.common import make_js_value_inserter
 from live.code.cursor import Cursor
 from live.comm import BackendError
 from live.comm import interacts_with_be
-from live.gstate import ws_handler
 from live.modules.datastructures import Module
-from live.settings import setting
 from live.shared.input_handlers import ModuleInputHandler
 from live.sublime_util.edit import run_method_remembers_edit
 from live.sublime_util.misc import read_only_set_to
@@ -22,7 +20,7 @@ from live.util.inheritable_decorators import decorator_for
 
 __all__ = [
     'LivejsOpenReplCommand', 'LivejsReplSendCommand', 'LivejsReplMoveUserInputCommand',
-    'LivejsReplSetCurrentModuleCommand'
+    'LivejsReplSetCurrentModuleCommand', 'LivejsReplClearCommand'
 ]
 
 
@@ -62,12 +60,16 @@ class LivejsReplSendCommand(ReplTextCommand):
             text = stripped_text
 
         try:
-            jsval = yield 'replEval', {'code': text}
+            jsval = yield 'replEval', {
+                'spaceId': self.repl.inspection_space_id,
+                'mid': self.repl.cur_module.id,
+                'code': text
+            }
             error = None
         except BackendError as e:
             error = e
 
-        cur = Cursor(self.repl.edit_region.b, self.view)
+        cur = Cursor(self.repl.edit_region.b, self.view, inter_sep_newlines=1)
         with read_only_set_to(self.view, False):
             if error:
                 cur.insert('\n! ')
@@ -104,3 +106,9 @@ class LivejsReplSetCurrentModuleCommand(ReplTextCommand):
 
     def input(self, args):
         return ModuleInputHandler()
+
+
+class LivejsReplClearCommand(ReplTextCommand):
+    def run(self):
+        self.repl.erase_all_insert_prompt()
+        self.repl.delete_inspection_space()

@@ -15,3 +15,6 @@ class setting:
 
     cur_module_id = ViewSetting('livejs_cur_module_id')
     """ID of the current module (REPL views)"""
+
+    inspection_space_id = ViewSetting('livejs_inspection_space_id')
+    """For REPLs, this is the REPL's unique inspection space identifier."""
