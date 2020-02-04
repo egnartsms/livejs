@@ -425,10 +425,10 @@ window.live = (function () {
       
          for (let [prop, desc] of Object.entries(nonvalues)) {
             if (desc.get) {
-               result['get ' + prop] = $.inspecteeFunc(space, desc.get);
+               result['get ' + prop] = $.inspectFunc(space, desc.get);
             }
             if (desc.set) {
-               result['set ' + prop] = $.inspecteeFunc(space, desc.set);
+               result['set ' + prop] = $.inspectFunc(space, desc.set);
             }
          }
       
@@ -569,8 +569,8 @@ window.live = (function () {
                   mid,
                   path: newPath,
                   key: parent instanceof Array ? null : key,
-                  value: $.nontrackedKeys.includes(key) ?
-                           'new Object()' : $.serialize(value)
+                  value: $.moduleObject(mid).nontrackedKeys.includes(key) ?
+                           $.serialize('new Object()') : $.serialize(value)
                }
             ]);
             $.respondSuccess(newPath);
@@ -620,6 +620,10 @@ window.live = (function () {
          
             for (let i = 0; i < modules.length; i += 1) {
                let m = modules[i], value = values[i];
+         
+               if (value['init']) {
+                  value['init'].call(null);
+               }
          
                $.modules[m['id']] = {
                   id: m['id'],
