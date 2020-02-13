@@ -1,1 +1,8 @@
-* {  }
+#canvas-wrapper {
+    position: relative;
+}
+
+#rink {
+    position: absolute;
+    left: 0; top: 0;
+}
