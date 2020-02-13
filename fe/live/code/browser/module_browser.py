@@ -9,10 +9,12 @@ from live.modules.datastructures import Module
 from live.settings import setting
 from live.sublime_util.edit import edit_for
 from live.sublime_util.edit import edits_self_view
-from live.sublime_util.hacks import set_viewport_position
 from live.sublime_util.misc import is_subregion
 from live.sublime_util.misc import read_only_set_to
 from live.sublime_util.misc import set_selection
+from live.sublime_util.misc import set_viewport_position
+from live.sublime_util.misc import cursors_rowcol_preserved_on_replace
+from live.sublime_util.misc import viewport_position_preserved
 from live.sublime_util.region_edit import RegionEditHelper
 from live.util.misc import tracking_last
 
@@ -243,7 +245,9 @@ class ModuleBrowser:
         else:
             reg = node.region
 
-        with read_only_set_to(self.view, False):
+        with read_only_set_to(self.view, False),\
+                cursors_rowcol_preserved_on_replace(self.view, reg),\
+                viewport_position_preserved(self.view):
             cur = Cursor(reg.a, self.view)
             cur.erase(reg.b)
 
