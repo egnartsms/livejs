@@ -46,8 +46,7 @@ class LivejsOpenReplCommand(sublime_plugin.WindowCommand):
         self.window.focus_view(view)
 
 
-class LivejsReplSendCommand(ReplTextCommand):
-    @interacts_with_be(edits_view='self.view')
+class LivejsReplSendCommand(ReplBeInteractingTextCommand):
     def run(self):
         if self.repl.cur_module is None:
             self.view.run_command('livejs_repl_set_current_module')
@@ -110,5 +109,9 @@ class LivejsReplSetCurrentModuleCommand(ReplTextCommand):
 
 class LivejsReplClearCommand(ReplTextCommand):
     def run(self):
+        if self.repl.cur_module is None:
+            sublime.status_message("REPL current module is unknown, please first switch "
+                                   "to a valid module")
+            return
         self.repl.erase_all_insert_prompt()
         self.repl.delete_inspection_space()

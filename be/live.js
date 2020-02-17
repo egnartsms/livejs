@@ -35,7 +35,7 @@ window.live = (function () {
       },
 
       resetSocket: function () {
-         $.socket = new WebSocket('ws://localhost:7000/wsconnect');
+         $.socket = new WebSocket('ws://localhost:8020/ws');
          $.socket.onmessage = $.onSocketMessage;
          $.socket.onopen = $.onSocketOpen;
          $.socket.onclose = $.onSocketClose;
@@ -289,7 +289,7 @@ window.live = (function () {
          return $.modules[mid].value;
       },
 
-      inspectionSpaces: 0,
+      inspectionSpaces: null,
 
       inspectionSpace: function (spaceId) {
          if (!(spaceId in $.inspectionSpaces)) {

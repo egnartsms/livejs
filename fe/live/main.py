@@ -29,7 +29,7 @@ def eventloop_error_handler(msg, exc):
 def start_server():
     if not g_el.is_coroutine_live('server'):
         print("Starting the server...")
-        g_el.add_coroutine(serve(7000, ws_handler), 'server')
+        g_el.add_coroutine(serve(8020, ws_handler), 'server')
         print("Started")
 
 
