@@ -67,7 +67,7 @@ def handle_http_request(sock, ws_handler):
     headers = yield from recv_up_to_delimiter(sock, buf, b'\r\n\r\n')
     req = Request.from_network(sock, headers)
 
-    if req.path == '/wsconnect':
+    if req.path == '/ws':
         if ws_handler.is_connected:
             yield from Response(req, httpcli.BAD_REQUEST).send_empty()
         else:
@@ -83,9 +83,10 @@ def handle_http_request(sock, ws_handler):
     moveon = req.headers.get('connection') == 'keep-alive'
 
     if req.path == '/':
-        filename = 'page.html'
+        filename = 'live.js'
     else:
-        filename = req.path[1:]
+        yield from Response(req, httpcli.NOT_FOUND).send_empty()
+        return moveon
 
     filepath = os.path.join(config.be_root, filename)
     if not os.path.exists(filepath):

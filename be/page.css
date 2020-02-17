@@ -1,5 +1,8 @@
+#canvas-wrapper {
+    position: relative;
+}
+
 #rink {
-    border: 1px dashed blue;
-    width: 1200px;
-    height: 600px;
+    position: absolute;
+    left: 0; top: 0;
 }
