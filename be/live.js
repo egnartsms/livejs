@@ -1,4 +1,4 @@
-window.live = (function () {
+(function () {
    'use strict';
 
    let $ = {
@@ -10,6 +10,14 @@ window.live = (function () {
       ],
 
       socket: null,
+
+      bootload: function (modules) {
+         if (modules.length !== 0) {
+            throw new Error(`Loading multiple Live.JS modules not supported yet`);
+         }
+
+         $.init();
+      },
 
       init: function () {
          $.modules = Object.create(null);
@@ -35,7 +43,7 @@ window.live = (function () {
       },
 
       resetSocket: function () {
-         $.socket = new WebSocket('ws://localhost:8020/ws');
+         $.socket = new WebSocket('ws://localhost:8088/ws');
          $.socket.onmessage = $.onSocketMessage;
          $.socket.onopen = $.onSocketOpen;
          $.socket.onclose = $.onSocketClose;
@@ -98,7 +106,7 @@ window.live = (function () {
          return Object.prototype.hasOwnProperty.call(obj, prop);
       },
 
-      orderedKeysMap: null,
+      orderedKeysMap: "new Object()",
 
       ensureOrdkeys: function (obj) {
          let ordkeys = $.orderedKeysMap.get(obj);
@@ -685,8 +693,6 @@ window.live = (function () {
          }
       }
    };
-
-   $.init();
 
    return $;
 })();

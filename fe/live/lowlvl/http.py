@@ -39,7 +39,8 @@ class Response:
         self.sock = req.sock
         self.protocol = req.protocol
         self.headers = [
-            (b'Server', b'Sublime 3 plug-in webserver')
+            (b'Server', b'Sublime 3 plug-in webserver'),
+            (b'Access-Control-Allow-Origin', b'*')
         ]
         self.status_code = status_code
     
@@ -69,7 +70,14 @@ class Response:
         finally:
             os.close(fd)
 
-    def send_empty(self):
+    def send_string(self, s, mimetype):
+        s = s.encode('utf8')
+        self.add_header('Content-Length', str(len(s)))
+        self.add_header('Content-Type', mimetype)
+        yield from send_buffer(self.sock, self.collect_headers())
+        yield from send_buffer(self.sock, s)
+
+    def __iter__(self):
         self.add_header('Content-Length', '0')
         yield from send_buffer(self.sock, self.collect_headers())
 

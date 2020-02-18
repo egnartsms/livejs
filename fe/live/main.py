@@ -1,19 +1,21 @@
 import sublime
 import sublime_plugin
 
+import operator as pyop
 import os
 import traceback
-import operator as pyop
 
-from live.lowlvl.http_server import serve
-from live.lowlvl.eventloop import EventLoop
-from live.gstate import config
-from live.ws_handler import ws_handler
 from live.code import *  # noqa
-from live.sublime_util import *  # noqa
+from live.gstate import config
+from live.gstate import ws_handler
+from live.lowlvl.eventloop import EventLoop
+from live.lowlvl.http_server import serve
 from live.modules import *  # noqa
 from live.repl import *  # noqa
+from live.request_handler import request_handler
 from live.settings import setting  # noqa
+from live.sublime_util import *  # noqa
+from live.util.misc import set_proxy_target
 
 
 g_el = EventLoop()
@@ -29,7 +31,7 @@ def eventloop_error_handler(msg, exc):
 def start_server():
     if not g_el.is_coroutine_live('server'):
         print("Starting the server...")
-        g_el.add_coroutine(serve(8020, ws_handler), 'server')
+        g_el.add_coroutine(serve(config.port, request_handler), 'server')
         print("Started")
 
 
@@ -41,20 +43,21 @@ def stop_server():
 
 
 def plugin_loaded():
-    print("Loading LiveJS...")
     config.be_root = os.path.realpath(os.path.join(__file__, '../../../be'))
-    print("BE root:", config.be_root)
     assert not g_el.is_running
+    
+    from live.ws_handler import ws_handler as real_ws_handler
+    set_proxy_target(ws_handler, real_ws_handler)
+
     g_el.run_in_new_thread()
     start_server()
-    print("Loaded")
+    print("Loaded Live.JS")
 
 
 def plugin_unloaded():
-    print("Unloading LiveJS...")
     stop_server()
     g_el.stop()
-    print("Unloaded")
+    print("Unloaded Live.JS")
 
 
 class LivejsToggleServerCommand(sublime_plugin.TextCommand):

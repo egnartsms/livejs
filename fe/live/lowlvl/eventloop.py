@@ -298,9 +298,8 @@ class EventLoop:
             self.ready.add(co)
             self.co_parent[co] = self.co_running
             if name is not None:
-                if self.run_by_thread == threading.current_thread():
-                    raise RuntimeError("Temp restriction: cannot create nested named "
-                                       "coroutines")
+                assert self.run_by_thread != threading.current_thread(),\
+                    "Temp restriction: cannot create nested named coroutines"
                 self.co_named[name] = co
             if self.is_running:
                 self.evt_interrupt.set()

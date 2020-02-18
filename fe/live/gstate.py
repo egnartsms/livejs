@@ -4,6 +4,7 @@ from live.util.misc import Proxy
 
 
 class Config:
+    port = 8088
     be_root = None  # set at plugin load time
     indent = 3
     s_indent = ' ' * indent
@@ -18,12 +19,6 @@ class Config:
 
 config = Config()
 
-
-def _get_ws_handler():
-    from live.ws_handler import ws_handler
-    return ws_handler
-
-
-ws_handler = Proxy(_get_ws_handler)
+ws_handler = Proxy()
 
 fe_modules = []

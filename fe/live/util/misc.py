@@ -3,6 +3,11 @@ import contextlib
 import uuid
 
 
+def file_contents(filepath):
+    with open(filepath, 'r') as fl:
+        return fl.read()
+
+
 def gen_uid():
     return uuid.uuid4().hex
 
@@ -81,10 +86,10 @@ stopwatch = Stopwatch()
 
 
 class Proxy:
-    __slots__ = 'target_getter',
+    __slots__ = 'target',
 
-    def __init__(self, target_getter):
-        object.__setattr__(self, 'target_getter', target_getter)
+    def __init__(self):
+        object.__setattr__(self, 'target', None)
 
     def __getattribute__(self, name):
         return getattr(_get_proxy_target(self), name)
@@ -99,13 +104,12 @@ class Proxy:
         return _get_proxy_target(self)(*args, **kwargs)
 
 
+def set_proxy_target(proxy, target):
+    object.__setattr__(proxy, 'target', target)
+
+
 def _get_proxy_target(proxy):
-    return object.__getattribute__(proxy, 'target_getter')()
-
-
-class FreeObj:
-    def __init__(self, **attrs):
-        self.__dict__.update(attrs)
+    return object.__getattribute__(proxy, 'target')
 
 
 missing = object()
@@ -122,3 +126,8 @@ def mapping_key_set(mapping, key, value):
             del mapping[key]
         else:
             mapping[key] = old_value
+
+
+class FreeObj:
+    def __init__(self, **attrs):
+        self.__dict__.update(attrs)
