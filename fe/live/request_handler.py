@@ -32,10 +32,12 @@ def request_handler(req):
             thing = mo.group(1).lower()
             if thing == 'port':
                 return str(config.port)
-            elif thing == 'main_module':
+            elif thing == 'main_module_name':
                 return json.dumps('live.js')
-            elif thing == 'other_modules':
-                return json.dumps([])
+            elif thing == 'other_module_names':
+                return json.dumps(['fake.js'])
+            elif thing == 'project_path':
+                return json.dumps(config.be_root)
             else:
                 assert False
 

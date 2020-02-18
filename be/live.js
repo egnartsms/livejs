@@ -2,35 +2,67 @@
    'use strict';
 
    let $ = {
-      nontrackedKeys: [
-         "socket",
-         "orderedKeysMap",
-         "modules",
-         "inspectionSpaces"
-      ],
+      livejs: {
+         projectId: 'a559f0f3ff8744bb944f1dda48650b4f',
+         moduleId: 'acc0b54988854dd9b5e74d269ea731e1',
+         nontrackedKeys: [
+            "port",
+            "socket",
+            "projects",
+            "modules",
+            "orderedKeysMap",
+            "inspectionSpaces"
+         ],
+      },
+
+      port: null,
 
       socket: null,
 
-      bootload: function (modules) {
-         if (modules.length !== 0) {
-            throw new Error(`Loading multiple Live.JS modules not supported yet`);
+      bootload: function ({otherModules, projectPath, port}) {
+         function byId(things) {
+            let res = {};
+            for (let thing of things) {
+               res[thing.id] = thing;
+            }
+            return res;
          }
-
-         $.init();
 
          // This is just to be able to access things in Chrome console
          window.live = $;
-      },
 
-      init: function () {
-         $.modules = Object.create(null);
-         // These values are also hardcoded in Python (FE)
-         $.modules['acc0b54988854dd9b5e74d269ea731e1'] = {
-            id: 'acc0b54988854dd9b5e74d269ea731e1',
-            name: 'live',
-            path: null,
+         // Initialize .projects and .modules structures
+         let modules = [{
+            id: $.livejs.moduleId,
+            projectId: $.livejs.projectId,
+            name: 'live.js',
             value: $
+         }];
+
+         for (let {name, src} of otherModules) {
+            let value = window.eval(src);
+            
+            value['init'].call(null);
+
+            modules.push({
+               id: value['livejs']['moduleId'],
+               projectId: $.livejs.projectId,
+               name: name,
+               value: value
+            })
+         }
+
+         $.projects = {
+            [$.livejs.projectId]: {
+               id: $.livejs.projectId,
+               name: 'Live.JS',
+               path: projectPath,
+               modules: byId(modules)
+            }
          };
+         $.modules = byId(modules);
+
+         $.port = port;
          $.orderedKeysMap = new WeakMap;
          $.inspectionSpaces = {};
       
@@ -46,7 +78,7 @@
       },
 
       resetSocket: function () {
-         $.socket = new WebSocket('ws://localhost:8088/ws');
+         $.socket = new WebSocket(`ws://localhost:${$.port}/ws`);
          $.socket.onmessage = $.onSocketMessage;
          $.socket.onopen = $.onSocketOpen;
          $.socket.onclose = $.onSocketClose;
@@ -294,7 +326,7 @@
                       (i === 0 ? len - 1 : i - 1);
       },
 
-      modules: null,
+      projects: null,
 
       moduleObject: function (mid) {
          return $.modules[mid].value;
@@ -450,6 +482,10 @@
          };
       },
 
+      isKeyNontracked: function (module, key) {
+         return module.livejs.nontrackedKeys.includes(key);
+      },
+
       requestHandlers: {
          getKeyAt: function ({mid, path}) {
             $.respondSuccess($.keyAt($.moduleObject(mid), path));
@@ -461,10 +497,10 @@
          },
          sendAllEntries: function ({mid}) {
             let result = [];
-            let module =  $.moduleObject(mid);
+            let module = $.moduleObject(mid);
          
             for (let [key, value] of $.entries(module)) {
-               if (module.nontrackedKeys && module.nontrackedKeys.includes(key)) {
+               if ($.isKeyNontracked(module, key)) {
                   result.push([key, $.serialize('new Object()')])
                }
                else {
@@ -580,8 +616,8 @@
                   mid,
                   path: newPath,
                   key: parent instanceof Array ? null : key,
-                  value: $.moduleObject(mid).nontrackedKeys.includes(key) ?
-                           $.serialize('new Object()') : $.serialize(value)
+                  value: $.isKeyNontracked($.moduleObject(mid), key) ?
+                     $.serialize('new Object()') : $.serialize(value)
                }
             ]);
             $.respondSuccess(newPath);
