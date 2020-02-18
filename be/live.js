@@ -17,6 +17,9 @@
          }
 
          $.init();
+
+         // This is just to be able to access things in Chrome console
+         window.live = $;
       },
 
       init: function () {

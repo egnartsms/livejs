@@ -25,7 +25,7 @@ def request_handler(req):
         return
     
     if req.path == '/':
-        bootload_path = os.path.join(config.be_root, 'bootload.js')
+        bootload_path = os.path.join(config.be_root, '_bootload_template.js')
         bootload_code = file_contents(bootload_path)
 
         def replacer(mo):
