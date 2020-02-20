@@ -33,9 +33,9 @@ def request_handler(req):
             if thing == 'port':
                 return str(config.port)
             elif thing == 'main_module_name':
-                return json.dumps('live.js')
+                return json.dumps('live')
             elif thing == 'other_module_names':
-                return json.dumps(['fake.js'])
+                return json.dumps(['fake'])
             elif thing == 'project_path':
                 return json.dumps(config.be_root)
             else:

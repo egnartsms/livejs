@@ -10,6 +10,10 @@
 
       init: function () {
          
+      },
+
+      inspectThing: function (thing) {
+         console.log(thing, "was just inspected");
       }
    };
 

@@ -8,9 +8,11 @@ import traceback
 from live.code import *  # noqa
 from live.gstate import config
 from live.gstate import ws_handler
+from live.gstate import projects
 from live.lowlvl.eventloop import EventLoop
 from live.lowlvl.http_server import serve
-from live.modules import *  # noqa
+from live.projects import *  # noqa
+from live.projects.datastructures import Project
 from live.repl import *  # noqa
 from live.request_handler import request_handler
 from live.settings import setting  # noqa
@@ -43,8 +45,15 @@ def stop_server():
 
 
 def plugin_loaded():
-    config.be_root = os.path.realpath(os.path.join(__file__, '../../../be'))
     assert not g_el.is_running
+    
+    config.be_root = os.path.realpath(os.path.join(__file__, '../../../be'))
+    config.livejs_project = Project(
+        id=config.livejs_project_id,
+        name='LiveJS',
+        path=config.be_root
+    )
+    projects[:] = [config.livejs_project]
     
     from live.ws_handler import ws_handler as real_ws_handler
     set_proxy_target(ws_handler, real_ws_handler)

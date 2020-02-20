@@ -5,35 +5,23 @@ from .nodes import JsArray
 from .nodes import JsLeaf
 from .nodes import JsObject
 from live.code.common import make_js_value_inserter
-from live.modules.datastructures import Module
 from live.settings import setting
 from live.sublime_util.edit import edit_for
 from live.sublime_util.edit import edits_self_view
 from live.sublime_util.misc import is_subregion
 from live.sublime_util.misc import read_only_set_to
-from live.sublime_util.misc import set_selection
-from live.sublime_util.misc import set_viewport_position
-from live.sublime_util.misc import cursors_rowcol_preserved_on_replace
-from live.sublime_util.misc import viewport_position_preserved
 from live.sublime_util.region_edit import RegionEditHelper
+from live.sublime_util.selection import selection_rowcol_preserved_on_replace
+from live.sublime_util.selection import set_selection
+from live.sublime_util.selection import viewport_and_selection_globally_preserved
+from live.sublime_util.selection import viewport_position_preserved
 from live.util.misc import tracking_last
-
-
-class OfflineState:
-    """Module browser state make sense only when Module browser is offline"""
-    unaware = 'unaware'
-    needs_refresh = 'needs_refresh'
-    unknown_module = 'unknown_module'
 
 
 class ModuleBrowser:
     EDIT_REGION_KEY = 'edit'
 
-    PLACEHOLDERS = {
-        'needs_refresh': "<<< Module browser is out of sync. Please refresh! >>>",
-        'unknown_module': "<<< Module browser corresponds to an unknown module. Close "
-                          "it and create another browser >>>"
-    }
+    MSG_NEEDS_REFRESH = "<<< Module browser is out of sync. Please refresh! >>>"
 
     def __init__(self, view):
         self.view = view
@@ -44,7 +32,7 @@ class ModuleBrowser:
         self.new_node_parent = None
         self.new_node_position = None
         self.reh = None
-        self.state = OfflineState.unaware
+        self.is_pristine = True
 
     @property
     def is_online(self):
@@ -64,10 +52,6 @@ class ModuleBrowser:
         return self.is_editing and self.node_being_edited is None
 
     @property
-    def module(self):
-        return Module.with_id(self.module_id)
-
-    @property
     def edit_region(self):
         [reg] = self.view.get_regions(self.EDIT_REGION_KEY)
         return reg
@@ -84,32 +68,16 @@ class ModuleBrowser:
         self.view.erase_regions(self.EDIT_REGION_KEY)
 
     @edits_self_view
-    def put_to_offline_state(self, state):
-        """Stop editing (if any) and free nodes structure"""
-        if state == self.state:
-            return
-
-        if self.is_online:
-            self.done_editing()
-            self.root.put_offline()
-            self.root = None
-        
-        with read_only_set_to(self.view, False):
-            self.view.replace(edit_for[self.view], sublime.Region(0, self.view.size()),
-                              self.PLACEHOLDERS[state])
-            self.state = state
-
-    def verify_module(self):
-        if self.module is None:
-            self.put_to_offline_state(OfflineState.unknown_module)
-            return False
-
-        return True
-
     def prepare_for_activation(self):
-        """Check the view before activating it: if offline, show placeholder"""
-        if self.is_offline and self.state == OfflineState.unaware:
-            self.put_to_offline_state(OfflineState.needs_refresh)
+        """Invalidate the view before first activating it"""
+        if self.is_offline and self.is_pristine:
+            with read_only_set_to(self.view, False):
+                self.view.replace(
+                    edit_for[self.view],
+                    sublime.Region(0, self.view.size()),
+                    self.MSG_NEEDS_REFRESH
+                )
+                self.is_pristine = False
 
     def edit_node(self, node):
         """Start editing of the specified node"""
@@ -246,7 +214,7 @@ class ModuleBrowser:
             reg = node.region
 
         with read_only_set_to(self.view, False),\
-                cursors_rowcol_preserved_on_replace(self.view, reg),\
+                selection_rowcol_preserved_on_replace(self.view, reg),\
                 viewport_position_preserved(self.view):
             cur = Cursor(reg.a, self.view)
             cur.erase(reg.b)
@@ -362,41 +330,36 @@ class ModuleBrowser:
 
     @edits_self_view
     def refresh(self, entries):
-        prev_pos = list(self.view.sel())
-        prev_viewport_pos = self.view.viewport_position()
-
         if self.is_online:
             self.root.put_offline()
             self.root = None
 
-        self.view.set_read_only(False)
-        self.view.erase(edit_for[self.view], sublime.Region(0, self.view.size()))
-        cur = Cursor(0, self.view)
+        with read_only_set_to(self.view, False),\
+                viewport_and_selection_globally_preserved(self.view):
+            self.view.erase(edit_for[self.view], sublime.Region(0, self.view.size()))
+            cur = Cursor(0, self.view)
 
-        root = JsObject()
+            root = JsObject()
 
-        cur.sep_initial(nesting=0)
-        for (key, value), islast in tracking_last(entries):
-            cur.push()
-            cur.insert(key)
-            key_region = cur.pop_reg_beg()
+            cur.sep_initial(nesting=0)
+            for (key, value), islast in tracking_last(entries):
+                cur.push()
+                cur.insert(key)
+                key_region = cur.pop_reg_beg()
 
-            cur.sep_keyval(nesting=0)
+                cur.sep_keyval(nesting=0)
 
-            inserter = make_js_value_inserter(cur, value, 0)
-            value_node, value_region = self.insert_js_value(inserter)
+                inserter = make_js_value_inserter(cur, value, 0)
+                value_node, value_region = self.insert_js_value(inserter)
 
-            root.append(key_region, value_node, value_region)
-            
-            (cur.sep_terminal if islast else cur.sep_inter)(nesting=0)
+                root.append(key_region, value_node, value_region)
+                
+                (cur.sep_terminal if islast else cur.sep_inter)(nesting=0)
 
-        self.root = root
-        self.root.put_online(self.view)
+            self.root = root
+            self.root.put_online(self.view)
 
-        self.view.set_read_only(True)
-        self.view.window().focus_view(self.view)
-        set_selection(self.view, to_all=prev_pos)
-        set_viewport_position(self.view, prev_viewport_pos, False)
+            self.view.window().focus_view(self.view)
 
     def insert_js_value(self, inserter):
         """Return (node, region)"""

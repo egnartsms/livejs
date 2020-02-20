@@ -3,14 +3,13 @@ import sublime
 
 from live.code.cursor import Cursor
 from live.comm import interacts_with_be
-from live.modules.datastructures import Module
 from live.settings import setting
 from live.sublime_util.edit import edit_for
 from live.sublime_util.edit import edits_self_view
 from live.sublime_util.misc import add_hidden_regions
 from live.sublime_util.misc import read_only_set_to
-from live.sublime_util.misc import set_selection
 from live.sublime_util.region_edit import RegionEditHelper
+from live.sublime_util.selection import set_selection
 
 
 class Repl:
@@ -28,17 +27,20 @@ class Repl:
         return setting.cur_module_id[self.view]
 
     @property
-    def cur_module(self):
-        """Module object that is set as current one for this REPL"""
-        return Module.with_id(self.cur_module_id)
+    def cur_module_name(self):
+        return setting.cur_module_name[self.view]
 
-    @cur_module.setter
-    def cur_module(self, module):
+    def set_current_module(self, module):
         setting.cur_module_id[self.view] = module.id
+        setting.cur_module_name[self.view] = module.name
 
     @property
     def inspection_space_id(self):
         return setting.inspection_space_id[self.view]
+
+    @inspection_space_id.setter
+    def inspection_space_id(self, value):
+        setting.inspection_space_id[self.view] = value
 
     @property
     def is_ready(self):
@@ -46,7 +48,7 @@ class Repl:
     
     @property
     def cur_prompt(self):
-        return self.cur_module.name + '> '
+        return self.cur_module_name + '> '
 
     @property
     def edit_region(self):

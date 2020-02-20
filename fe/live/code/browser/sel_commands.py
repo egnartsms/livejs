@@ -1,7 +1,7 @@
 import sublime
 
 from .command import ModuleBrowserTextCommand
-from live.sublime_util.misc import set_selection
+from live.sublime_util.selection import set_selection
 
 
 __all__ = [

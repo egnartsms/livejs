@@ -15,9 +15,13 @@
          ],
       },
 
-      port: null,
+      projects: null,
+      
+      modules: null,
 
-      socket: null,
+      port: "new Object()",
+
+      socket: "new Object()",
 
       bootload: function ({otherModules, projectPath, port}) {
          function byId(things) {
@@ -35,7 +39,7 @@
          let modules = [{
             id: $.livejs.moduleId,
             projectId: $.livejs.projectId,
-            name: 'live.js',
+            name: 'live',
             value: $
          }];
 
@@ -55,7 +59,7 @@
          $.projects = {
             [$.livejs.projectId]: {
                id: $.livejs.projectId,
-               name: 'Live.JS',
+               name: 'LiveJS',
                path: projectPath,
                modules: byId(modules)
             }
@@ -119,13 +123,24 @@
       },
 
       persist: function (requests) {
-         if (!(requests instanceof Array)) {
-            requests = [requests];
-         }
          $.send({
             type: 'persist',
             requests: requests
          });
+      },
+
+      persistInModule: function (module, requests) {
+         if (!(requests instanceof Array)) {
+            requests = [requests];
+         }
+
+         for (let req of requests) {
+            req['projectId'] = module.projectId;
+            req['moduleId'] = module.id;
+            req['moduleName'] = module.name;
+         }
+
+         $.persist(requests);
       },
 
       evalFBody: function ($obj, code) {
@@ -326,8 +341,6 @@
                       (i === 0 ? len - 1 : i - 1);
       },
 
-      projects: null,
-
       moduleObject: function (mid) {
          return $.modules[mid].value;
       },
@@ -486,7 +499,32 @@
          return module.livejs.nontrackedKeys.includes(key);
       },
 
+      isModuleMain: function (module) {
+         return !!module.value['livejs']['projectId'];
+      },
+
       requestHandlers: {
+         getProjectModules: function ({projectId}) {
+            let project = $.projects[projectId];
+
+            $.respondSuccess(Object.values(project.modules).map(module => ({
+               id: module.id,
+               name: module.name
+            })));
+         },
+         getProjectMainModule: function ({projectId}) {
+            let project = $.projects[projectId];
+            let mainModule = Object.values(project.modules).find($.isModuleMain);
+
+            if (!mainModule) {
+               throw new Error(`No main module found in project UID ${projectId}`);
+            }
+
+            $.respondSuccess({
+               id: mainModule.id,
+               name: mainModule.name
+            });
+         },
          getKeyAt: function ({mid, path}) {
             $.respondSuccess($.keyAt($.moduleObject(mid), path));
          },
@@ -496,11 +534,12 @@
             );
          },
          sendAllEntries: function ({mid}) {
-            let result = [];
-            let module = $.moduleObject(mid);
+            let
+               result = [],
+               moduleValue = $.modules[mid].value;
          
-            for (let [key, value] of $.entries(module)) {
-               if ($.isKeyNontracked(module, key)) {
+            for (let [key, value] of $.entries(moduleValue)) {
+               if ($.isKeyNontracked(moduleValue, key)) {
                   result.push([key, $.serialize('new Object()')])
                }
                else {
@@ -512,21 +551,23 @@
          },
          replace: function ({mid, path, codeNewValue}) {
             let 
-               {parent, key} = $.parentKeyAt($.moduleObject(mid), path),
-               newValue = $.evalExpr($.moduleObject(mid), codeNewValue);
+               module = $.modules[mid],
+               {parent, key} = $.parentKeyAt(module.value, path),
+               newValue = $.evalExpr(module.value, codeNewValue);
          
             parent[key] = newValue;
          
-            $.persist({
+            $.persistInModule(module, {
                type: 'replace',
-               mid,
                path,
                newValue: $.serialize(newValue)
             });
             $.respondSuccess();
          },
          renameKey: function ({mid, path, newName}) {
-            let {parent, key} = $.parentKeyAt($.moduleObject(mid), path);
+            let 
+               module = $.modules[mid],
+               {parent, key} = $.parentKeyAt(module.value, path);
          
             $.checkObject(parent);
          
@@ -544,25 +585,25 @@
             parent[newName] = parent[key];
             delete parent[key];
          
-            $.persist({
+            $.persistInModule(module, {
                type: 'rename_key',
-               mid,
                path,
                newName
             });
             $.respondSuccess();
          },
          addArrayEntry: function ({mid, parentPath, pos, codeValue}) {
-            let parent = $.valueAt($.moduleObject(mid), parentPath);
-            let value = $.evalExpr($.moduleObject(mid), codeValue);
+            let
+               module = $.modules[mid],
+               parent = $.valueAt(module.value, parentPath),
+               value = $.evalExpr(module.value, codeValue);
          
             $.checkArray(parent);
          
             parent.splice(pos, 0, value);
          
-            $.persist({
+            $.persistInModule(module, {
                type: 'insert',
-               mid,
                path: parentPath.concat(pos),
                key: null,
                value: $.serialize(value)
@@ -570,8 +611,10 @@
             $.respondSuccess();
          },
          addObjectEntry: function ({mid, parentPath, pos, key, codeValue}) {
-            let parent = $.valueAt($.moduleObject(mid), parentPath);
-            let value = $.evalExpr($.moduleObject(mid), codeValue);
+            let 
+               module = $.modules[mid],
+               parent = $.valueAt(module.value, parentPath),
+               value = $.evalExpr(module.value, codeValue);
          
             $.checkObject(parent);
             if ($.hasOwnProperty(parent, key)) {
@@ -580,9 +623,8 @@
          
             $.insertProp(parent, key, value, pos);   
          
-            $.persist({
+            $.persistInModule(module, {
                type: 'insert',
-               mid,
                path: parentPath.concat(pos),
                key: key,
                value: $.serialize(value)
@@ -590,9 +632,11 @@
             $.respondSuccess();
          },
          move: function ({mid, path, fwd}) {
-            let {parent, key} = $.parentKeyAt($.moduleObject(mid), path);
-            let value = parent[key];
-            let newPos;
+            let 
+               module = $.modules[mid],
+               {parent, key} = $.parentKeyAt(module.value, path),
+               value = parent[key],
+               newPos;
          
             if (parent instanceof Array) {
                newPos = $.moveArrayItem(parent, key, fwd);
@@ -605,25 +649,25 @@
             let newPath = path.slice(0, -1);
             newPath.push(newPos);
          
-            $.persist([
+            $.persistInModule(module, [
                {
                   type: 'delete',
-                  mid,
                   path: path
                }, 
                {
                   type: 'insert',
-                  mid,
                   path: newPath,
                   key: parent instanceof Array ? null : key,
-                  value: $.isKeyNontracked($.moduleObject(mid), key) ?
+                  value: $.isKeyNontracked(module.value, key) ?
                      $.serialize('new Object()') : $.serialize(value)
                }
             ]);
             $.respondSuccess(newPath);
          },
          deleteEntry: function ({mid, path}) {
-            let {parent, key} = $.parentKeyAt($.moduleObject(mid), path);
+            let 
+               module = $.modules[mid],
+               {parent, key} = $.parentKeyAt(module.value, path);
          
             if (parent instanceof Array) {
                parent.splice(path[path.length - 1], 1);
@@ -632,9 +676,8 @@
                $.deleteProp(parent, key);
             }
          
-            $.persist({
+            $.persistInModule(module, {
                type: 'delete',
-               mid,
                path: path
             });
             $.respondSuccess();
@@ -683,7 +726,7 @@
             $.respondSuccess();
          },
          replEval: function ({mid, spaceId, code}) {
-            let obj = $.evalExpr($.moduleObject(mid), code);
+            let obj = $.evalExpr($.modules[mid].value, code);
             $.respondSuccess($.inspect($.inspectionSpace(spaceId), obj, true));
          },
          inspectObjectById: function ({spaceId, id}) {

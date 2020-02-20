@@ -4,11 +4,15 @@
       mainModuleName = LIVEJS_MAIN_MODULE_NAME,
       otherModuleNames = LIVEJS_OTHER_MODULE_NAMES,
       projectPath = LIVEJS_PROJECT_PATH,
-      url = `http://localhost:${port}/bootload/`;
+      bootloadUrl = `http://localhost:${port}/bootload/`;
+
+   function moduleUrl(moduleName) {
+      return bootloadUrl + moduleName + '.js';
+   }
 
    let
-      promiseMain = fetch(url + mainModuleName).then(r => r.text()),
-      promises = otherModuleNames.map(name => fetch(url + name).then(r => r.text()));
+      promiseMain = fetch(moduleUrl(mainModuleName)).then(r => r.text()),
+      promises = otherModuleNames.map(name => fetch(moduleUrl(name)).then(r => r.text()));
 
    promises.unshift(promiseMain);
 

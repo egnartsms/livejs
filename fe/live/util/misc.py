@@ -38,9 +38,9 @@ def tracking_last(iterable):
         e0 = e1
 
 
-def index_where(iterable):
+def index_where(iterable, pred=None):
     for i, x in enumerate(iterable):
-        if x:
+        if pred and pred(x) or x:
             return i
 
 
@@ -73,8 +73,11 @@ class Stopwatch:
     def start(self, name):
         self.moments[name] = time.perf_counter()
 
+    def elapsed(self, name):
+        return time.perf_counter() - self.moments[name]
+
     def print(self, name, msg):
-        elapsed = time.perf_counter() - self.moments[name]
+        elapsed = self.elapsed(name)
         print(msg.format(name=name, elapsed=elapsed))
 
     def printstop(self, name):

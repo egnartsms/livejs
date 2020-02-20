@@ -1,12 +1,13 @@
+import os
 import sublime
 
 from functools import wraps
 
-from .browser.operations import find_module_browser_view
 from .browser.operations import module_browser_for
+from .browser.operations import module_browser_view_for_module_id
 from .persist import operations as persist
-from live.modules.datastructures import Module
-from live.sublime_util.edit import call_with_edit
+from live.projects.operations import project_by_id
+from live.projects.operations import window_for_project_id
 from live.sublime_util.on_view_loaded import on_load
 
 
@@ -19,11 +20,21 @@ def persist_handler(fn):
 
     @wraps(fn)
     def wrapper(request):
-        module = Module.with_id(request['mid'])
-        # TODO: for now we ignore other windows except the active one
-        mb_view = find_module_browser_view(sublime.active_window(), module)
-        mbrowser = module_browser_for(mb_view)
-        view_source = open_module_source_view(sublime.active_window(), module.path)
+        wnd = window_for_project_id(request['projectId'])
+        project = project_by_id(request['projectId'])
+
+        if wnd is None or project is None:
+            sublime.error_message(
+                "LiveJS back-end attempted to use project that the FE does not know about"
+            )
+            raise RuntimeError
+
+        mb_view = module_browser_view_for_module_id(wnd, request['moduleId'])
+        mbrowser = module_browser_for(mb_view) if mb_view else None
+        view_source = open_module_source_view(
+            wnd,
+            os.path.join(project.path, request['moduleName'] + '.js')
+        )
         fn(request, mbrowser, view_source)
 
     persist_handlers[request_name] = wrapper
