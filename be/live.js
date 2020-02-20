@@ -24,53 +24,41 @@
       socket: "new Object()",
 
       bootload: function ({otherModules, projectPath, port}) {
-         function byId(things) {
-            let res = {};
-            for (let thing of things) {
-               res[thing.id] = thing;
-            }
-            return res;
-         }
-
-         // This is just to be able to access things in Chrome console
-         window.live = $;
-
          // Initialize .projects and .modules structures
-         let modules = [{
+         let modules = $.loadModulesSetProjectId(otherModules, $.livejs.projectId);
+         modules.unshift({
             id: $.livejs.moduleId,
             projectId: $.livejs.projectId,
             name: 'live',
             value: $
-         }];
-
-         for (let {name, src} of otherModules) {
-            let value = window.eval(src);
-            
-            value['init'].call(null);
-
-            modules.push({
-               id: value['livejs']['moduleId'],
-               projectId: $.livejs.projectId,
-               name: name,
-               value: value
-            })
-         }
-
+         });
+      
          $.projects = {
             [$.livejs.projectId]: {
                id: $.livejs.projectId,
                name: 'LiveJS',
                path: projectPath,
-               modules: byId(modules)
+               modules: $.byId(modules)
             }
          };
-         $.modules = byId(modules);
-
+         $.modules = $.byId(modules);
+      
          $.port = port;
          $.orderedKeysMap = new WeakMap;
          $.inspectionSpaces = {};
       
          $.resetSocket();
+      
+         // This is just to be able to access things in Chrome console
+         window.live = $;
+      },
+
+      byId: function byId(things) {
+         let res = {};
+         for (let thing of things) {
+            res[thing.id] = thing;
+         }
+         return res;
       },
 
       onSocketOpen: function () {
@@ -503,6 +491,56 @@
          return !!module.value['livejs']['projectId'];
       },
 
+      loadModules: function (modulesData) {
+         // modulesData: [{name, src}]
+         let modules = [];
+      
+         for (let {name, src} of modulesData) {
+            let value = window.eval(src);
+      
+            if (value['init']) {
+               value['init'].call(null);
+            }
+      
+            modules.push({
+               id: value['livejs']['moduleId'],
+               projectId: null,  // will be initialized later, we don't know project id here
+               name: name,
+               value: value
+            });
+         }
+      
+         return modules;
+      },
+
+      loadModulesDetermineProjectId: function (modulesData) {
+         let 
+            modules = $.loadModules(modulesData),
+            mainModule = modules.find($.isModuleMain);
+      
+         if (!mainModule) {
+            throw new Error(`No main module could be determined`);
+         }
+      
+         let projectId = mainModule.value['livejs']['projectId'];
+      
+         for (let module of modules) {
+            module.projectId = projectId;
+         }
+      
+         return {projectId, modules};  
+      },
+
+      loadModulesSetProjectId: function (modulesData, projectId) {
+         let modules = $.loadModules(modulesData);
+      
+         for (let module of modules) {
+            module.projectId = projectId;
+         }
+      
+         return modules;
+      },
+
       requestHandlers: {
          getProjectModules: function ({projectId}) {
             let project = $.projects[projectId];
@@ -524,6 +562,27 @@
                id: mainModule.id,
                name: mainModule.name
             });
+         },
+         loadProject: function ({name, path, modulesData}) {
+            let {projectId, modules} = $.loadModulesDetermineProjectId(modulesData);
+         
+            if (projectId in $.projects) {
+               throw new Error(`Attempted to load same project twice`);
+            }
+            if (modules.some(m => m.id in $.modules)) {
+               throw new Error(`Module id collided with another project's module`)
+            }
+         
+            $.projects[projectId] = {
+               id: projectId,
+               name: name,
+               path: path,
+               modules: $.byId(modules)
+            };
+         
+            Object.assign($.modules, $.byId(modules));
+         
+            $.respondSuccess(projectId);
          },
          getKeyAt: function ({mid, path}) {
             $.respondSuccess($.keyAt($.moduleObject(mid), path));
@@ -681,15 +740,6 @@
                path: path
             });
             $.respondSuccess();
-         },
-         sendModules: function () {
-            $.respondSuccess(
-               Object.values($.modules).map(m => ({
-                  id: m.id,
-                  name: m.name,
-                  path: m.path
-               }))
-            );
          },
          loadModules: function ({modules}) {
             // modules: [{id, name, path, source}]

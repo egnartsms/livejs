@@ -5,13 +5,54 @@ import os
 import re
 from functools import partial
 
-from live.gstate import fe_modules
 from live.comm import interacts_with_be
-from .operations import load_modules_request
-from .datastructures import Module
+from .datastructures import Module, Project
+from live.gstate import projects
+from live.util.misc import file_contents
+from live.settings import setting
 
 
-__all__ = ['LivejsAddModule']
+__all__ = ['LivejsLoadProject']
+
+
+class LivejsLoadProject(sublime_plugin.WindowCommand):
+    @interacts_with_be()
+    def run(self):
+        folders = self.window.folders()
+        if len(folders) != 1:
+            sublime.status_message(
+                "Must have exactly 1 folder open to determine project root"
+            )
+            raise RuntimeError
+
+        if setting.project_id[self.window] is not None:
+            sublime.status_message("Already loaded LiveJS project in this window")
+            raise RuntimeError
+
+        [root] = folders
+
+        project_id = yield 'loadProject', {
+            'name': 'hockey',
+            'path': root,
+            'modulesData': get_modules_data(root)
+        }
+
+        projects.append(Project(id=project_id, name='hockey', path=root))
+        setting.project_id[self.window] = project_id
+
+
+def get_modules_data(root):
+    res = []
+
+    for fname in os.listdir(root):
+        mo = re.match(r'(\w+)\.js$', fname)
+        if mo:
+            res.append({
+                'name': mo.group(1),
+                'src': file_contents(os.path.join(root, mo.group()))
+            })
+
+    return res
 
 
 class LivejsAddModule(sublime_plugin.WindowCommand):

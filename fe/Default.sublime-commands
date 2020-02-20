@@ -4,8 +4,8 @@
         "command": "toggle_server"
     },
     {
-        "caption": "LiveJS: Add module",
-        "command": "livejs_add_module"
+        "caption": "LiveJS: Load project",
+        "command": "livejs_load_project"
     },
     {
         "caption": "LiveJS: Browse module",
