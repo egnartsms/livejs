@@ -20,7 +20,7 @@ def _get_settings(vs):
         return vs.settings()
 
 
-class ViewSetting:
+class Setting:
     def __init__(self, name):
         self.name = name
 

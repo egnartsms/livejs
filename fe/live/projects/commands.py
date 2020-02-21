@@ -1,22 +1,25 @@
+import json
+import os
+import re
 import sublime
 import sublime_plugin
 
-import os
-import re
-from functools import partial
-
+from .datastructures import Project
+from .operations import get_project_modules_contents
+from .operations import project_for_window
 from live.comm import interacts_with_be
-from .datastructures import Module, Project
-from live.gstate import projects
-from live.util.misc import file_contents
+from live.gstate import config
+from live.gstate import fe_projects
+from live.gstate import ws_handler
 from live.settings import setting
+from live.util.misc import file_contents
+from live.util.misc import gen_uid
 
 
-__all__ = ['LivejsLoadProject']
+__all__ = ['LivejsLoadProject', 'LivejsAddModule']
 
 
 class LivejsLoadProject(sublime_plugin.WindowCommand):
-    @interacts_with_be()
     def run(self):
         folders = self.window.folders()
         if len(folders) != 1:
@@ -25,71 +28,65 @@ class LivejsLoadProject(sublime_plugin.WindowCommand):
             )
             raise RuntimeError
 
-        if setting.project_id[self.window] is not None:
+        if project_for_window(self.window):
             sublime.status_message("Already loaded LiveJS project in this window")
             raise RuntimeError
 
         [root] = folders
+        
+        @interacts_with_be()
+        def on_project_name_entered(project_name):
+            project_id = yield 'loadProject', {
+                'name': project_name,
+                'path': root,
+                'modulesData': get_project_modules_contents(root)
+            }
 
-        project_id = yield 'loadProject', {
-            'name': 'hockey',
-            'path': root,
-            'modulesData': get_modules_data(root)
-        }
-
-        projects.append(Project(id=project_id, name='hockey', path=root))
-        setting.project_id[self.window] = project_id
-
-
-def get_modules_data(root):
-    res = []
-
-    for fname in os.listdir(root):
-        mo = re.match(r'(\w+)\.js$', fname)
-        if mo:
-            res.append({
-                'name': mo.group(1),
-                'src': file_contents(os.path.join(root, mo.group()))
-            })
-
-    return res
+            fe_projects.append(Project(id=project_id, name='hockey', path=root))
+            setting.project_id[self.window] = project_id
+        
+        intuitive_project_name = os.path.basename(root)
+        self.window.show_input_panel('Project name:', intuitive_project_name,
+                                     on_project_name_entered, None, None)
 
 
 class LivejsAddModule(sublime_plugin.WindowCommand):
-    def run(self):
-        view = self.window.active_view()
-        if view.settings().get('syntax') !=\
-                'Packages/JavaScript/JavaScript.sublime-syntax':
-            sublime.error_message("Not a JavaScript file")
+    def run_(self, *args, **kwargs):
+        if not project_for_window(self.window):
+            sublime.error_message("This window is not associated with any LiveJS project")
             return
 
-        if not view.file_name():
-            sublime.error_message("This view does not correspond to a real file on disk")
-            return
-
-        if view.is_dirty():
-            sublime.error_message("The file is dirty, please save it before loading as "
-                                  "LiveJS module")
-            return
-
-        intuitive_module_name = os.path.splitext(os.path.basename(view.file_name()))[0]
-        self.window.show_input_panel(
-            'New module name:', intuitive_module_name,
-            partial(self.on_module_name_entered, view), None, None
-        )
+        return super().run_(*args, **kwargs)
 
     @interacts_with_be()
-    def on_module_name_entered(self, view, module_name):
-        if not re.match(r'^[a-zA-Z0-9-]+$', module_name):
-            self.window.status_message("Invalid module name (should be alphanums)")
-            return
+    def run(self, module_name):
+        project = project_for_window(self.window)
+        module_contents = (
+            file_contents(os.path.join(config.be_root, '_new_module_template.js'))
+            .replace('LIVEJS_MODULE_ID', json.dumps(gen_uid()))
+        )
+        yield 'loadModule', {
+            'projectId': project.id,
+            'name': module_name,
+            'src': module_contents
+        }
 
-        if any(m.name == module_name for m in fe_modules):
-            self.window.status_message("Module with the name {} already exists"
-                                       .format(module_name))
-            return
+        with open(os.path.join(project.path, module_name + '.js'), 'w') as file:
+            file.write(module_contents)
 
-        new_module = Module(id=None, name=module_name, path=view.file_name())
-        yield load_modules_request([new_module])
-        fe_modules.append(new_module)
-        self.window.status_message("Module {} added!".format(module_name))
+    def input(self, args):
+        return ModuleNameInputHandler(self.window)
+
+
+class ModuleNameInputHandler(sublime_plugin.TextInputHandler):
+    def __init__(self, window):
+        modules_data = ws_handler.sync_request('getProjectModules', {
+            'projectId': setting.project_id[window]
+        })
+        self.existing_module_names = [md['name'] for md in modules_data]
+
+    def validate(self, text):
+        if not re.match(r'^[a-zA-Z0-9-]+$', text):
+            return False
+
+        return text not in self.existing_module_names

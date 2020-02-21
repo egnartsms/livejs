@@ -8,7 +8,7 @@ import traceback
 from live.code import *  # noqa
 from live.gstate import config
 from live.gstate import ws_handler
-from live.gstate import projects
+from live.gstate import fe_projects
 from live.lowlvl.eventloop import EventLoop
 from live.lowlvl.http_server import serve
 from live.projects import *  # noqa
@@ -53,7 +53,7 @@ def plugin_loaded():
         name='LiveJS',
         path=config.be_root
     )
-    projects[:] = [config.livejs_project]
+    fe_projects[:] = [config.livejs_project]
     
     from live.ws_handler import ws_handler as real_ws_handler
     set_proxy_target(ws_handler, real_ws_handler)

@@ -36,7 +36,7 @@
          $.projects = {
             [$.livejs.projectId]: {
                id: $.livejs.projectId,
-               name: 'LiveJS',
+               name: 'livejS',
                path: projectPath,
                modules: $.byId(modules)
             }
@@ -53,7 +53,7 @@
          window.live = $;
       },
 
-      byId: function byId(things) {
+      byId: function (things) {
          let res = {};
          for (let thing of things) {
             res[thing.id] = thing;
@@ -542,6 +542,13 @@
       },
 
       requestHandlers: {
+         getProjects: function () {
+            $.respondSuccess(Object.values($.projects).map(proj => ({
+               id: proj.id,
+               name: proj.name,
+               path: proj.path
+            })));
+         },
          getProjectModules: function ({projectId}) {
             let project = $.projects[projectId];
 
@@ -583,6 +590,23 @@
             Object.assign($.modules, $.byId(modules));
          
             $.respondSuccess(projectId);
+         },
+         loadModule: function ({projectId, name, src}) {
+            let project = $.projects[projectId];
+
+            if (Object.values(project.modules).find(m => m.name == name)) {
+               throw new Error(`Cannot add module: duplicate name`);
+            }
+
+            let module = $.loadModulesSetProjectId([{name, src}], projectId)[0];
+            if (module.id in $.modules) {
+               throw new Error(`Module ID duplicated`);
+            }
+
+            $.modules[module.id] = module;
+            project.modules[module.id] = module;
+
+            $.respondSuccess();
          },
          getKeyAt: function ({mid, path}) {
             $.respondSuccess($.keyAt($.moduleObject(mid), path));
@@ -739,40 +763,6 @@
                type: 'delete',
                path: path
             });
-            $.respondSuccess();
-         },
-         loadModules: function ({modules}) {
-            // modules: [{id, name, path, source}]
-            //
-            // We keep module names unique.
-            function isModuleOk({name, id}) {
-               return (
-                  !$.hasOwnProperty($.modules, id) &&
-                  Object.values($.modules).every(({xname}) => xname !== name)
-               );
-            }
-         
-            if (!modules.every(isModuleOk)) {
-               throw new Error(`Cannot add modules: duplicates found`);
-            }
-         
-            let values = modules.map(({source}) => $.evalExpr(null, source));
-         
-            for (let i = 0; i < modules.length; i += 1) {
-               let m = modules[i], value = values[i];
-         
-               if (value['init']) {
-                  value['init'].call(null);
-               }
-         
-               $.modules[m['id']] = {
-                  id: m['id'],
-                  name: m['name'],
-                  path: m['path'],
-                  value: value
-               };
-            }
-         
             $.respondSuccess();
          },
          replEval: function ({mid, spaceId, code}) {

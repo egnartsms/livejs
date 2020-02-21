@@ -8,7 +8,7 @@ from live.code.persist_handlers import persist_handlers
 from live.comm import BackendError
 from live.comm import make_be_error
 from live.gstate import config
-from live.projects.operations import assign_window_for_livejs_project
+from live.projects.operations import on_be_connected
 from live.util.misc import index_where
 from live.util.misc import stopwatch
 
@@ -31,7 +31,7 @@ class WsHandler:
         assert not self.is_connected
         
         self.websocket = websocket
-        assign_window_for_livejs_project()
+        sublime.set_timeout(on_be_connected, 0)
         print("LiveJS: BE websocket connected")
 
     def disconnect(self):

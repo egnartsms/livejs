@@ -18,4 +18,4 @@ config = Config()
 
 ws_handler = Proxy()
 
-projects = []  # LiveJS is appended on plugin start
+fe_projects = []  # LiveJS is appended on plugin start
