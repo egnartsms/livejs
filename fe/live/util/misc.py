@@ -3,6 +3,11 @@ import contextlib
 import uuid
 
 
+def file_contents(filepath):
+    with open(filepath, 'r') as fl:
+        return fl.read()
+
+
 def gen_uid():
     return uuid.uuid4().hex
 
@@ -33,9 +38,9 @@ def tracking_last(iterable):
         e0 = e1
 
 
-def index_where(iterable):
+def index_where(iterable, pred=None):
     for i, x in enumerate(iterable):
-        if x:
+        if pred and pred(x) or x:
             return i
 
 
@@ -68,8 +73,11 @@ class Stopwatch:
     def start(self, name):
         self.moments[name] = time.perf_counter()
 
+    def elapsed(self, name):
+        return time.perf_counter() - self.moments[name]
+
     def print(self, name, msg):
-        elapsed = time.perf_counter() - self.moments[name]
+        elapsed = self.elapsed(name)
         print(msg.format(name=name, elapsed=elapsed))
 
     def printstop(self, name):
@@ -81,10 +89,10 @@ stopwatch = Stopwatch()
 
 
 class Proxy:
-    __slots__ = 'target_getter',
+    __slots__ = 'target',
 
-    def __init__(self, target_getter):
-        object.__setattr__(self, 'target_getter', target_getter)
+    def __init__(self):
+        object.__setattr__(self, 'target', None)
 
     def __getattribute__(self, name):
         return getattr(_get_proxy_target(self), name)
@@ -99,13 +107,12 @@ class Proxy:
         return _get_proxy_target(self)(*args, **kwargs)
 
 
+def set_proxy_target(proxy, target):
+    object.__setattr__(proxy, 'target', target)
+
+
 def _get_proxy_target(proxy):
-    return object.__getattribute__(proxy, 'target_getter')()
-
-
-class FreeObj:
-    def __init__(self, **attrs):
-        self.__dict__.update(attrs)
+    return object.__getattribute__(proxy, 'target')
 
 
 missing = object()
@@ -122,3 +129,8 @@ def mapping_key_set(mapping, key, value):
             del mapping[key]
         else:
             mapping[key] = old_value
+
+
+class FreeObj:
+    def __init__(self, **attrs):
+        self.__dict__.update(attrs)

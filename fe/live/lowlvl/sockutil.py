@@ -11,7 +11,7 @@ class SocketClosedPrematurely(Exception):
 
 
 def send_buffer(socket, buf):
-    """Send any kind of buffer (e.g. bytes object, bytearray)"""
+    """Send a bytes object or a bytearray"""
     mv = memoryview(buf)
     try:
         while mv:

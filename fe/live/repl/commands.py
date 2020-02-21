@@ -9,11 +9,13 @@ from live.code.common import make_js_value_inserter
 from live.code.cursor import Cursor
 from live.comm import BackendError
 from live.comm import interacts_with_be
-from live.modules.datastructures import Module
+from live.gstate import ws_handler
+from live.projects.datastructures import Module
+from live.settings import setting
 from live.shared.input_handlers import ModuleInputHandler
 from live.sublime_util.edit import run_method_remembers_edit
 from live.sublime_util.misc import read_only_set_to
-from live.sublime_util.misc import set_selection
+from live.sublime_util.selection import set_selection
 from live.util.inheritable_decorators import ClassWithInheritableDecorators
 from live.util.inheritable_decorators import decorator_for
 
@@ -41,17 +43,17 @@ class LivejsOpenReplCommand(sublime_plugin.WindowCommand):
     def run(self):
         view = find_repl_view(self.window)
         if view is None:
-            view = new_repl_view(self.window, Module.bootstrapping())
+            module = ws_handler.sync_request('getProjectMainModule', {
+                'projectId': setting.project_id[self.window]
+            })
+            view = new_repl_view(self.window,
+                                 Module(id=module['id'], name=module['name']))
         
         self.window.focus_view(view)
 
 
 class LivejsReplSendCommand(ReplBeInteractingTextCommand):
     def run(self):
-        if self.repl.cur_module is None:
-            self.view.run_command('livejs_repl_set_current_module')
-            return
-
         text = self.view.substr(self.repl.edit_region)
         stripped_text = text.rstrip()
         if stripped_text != text:
@@ -61,7 +63,7 @@ class LivejsReplSendCommand(ReplBeInteractingTextCommand):
         try:
             jsval = yield 'replEval', {
                 'spaceId': self.repl.inspection_space_id,
-                'mid': self.repl.cur_module.id,
+                'mid': self.repl.cur_module_id,
                 'code': text
             }
             error = None
@@ -98,20 +100,19 @@ class LivejsReplMoveUserInputCommand(ReplTextCommand):
 
 
 class LivejsReplSetCurrentModuleCommand(ReplTextCommand):
-    def run(self, module_id):
-        module = Module.with_id(module_id)
-        self.repl.cur_module = module
+    def run(self, module):
+        module = Module(id=module['id'], name=module['name'])
+        self.repl.set_current_module(module)
         self.repl.reinsert_prompt()
 
     def input(self, args):
-        return ModuleInputHandler()
+        modules = ws_handler.sync_request('getProjectModules', {
+            'projectId': setting.project_id[self.view.window()]
+        })
+        return ModuleInputHandler(modules)
 
 
 class LivejsReplClearCommand(ReplTextCommand):
     def run(self):
-        if self.repl.cur_module is None:
-            sublime.status_message("REPL current module is unknown, please first switch "
-                                   "to a valid module")
-            return
         self.repl.erase_all_insert_prompt()
         self.repl.delete_inspection_space()

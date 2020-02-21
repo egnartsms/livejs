@@ -42,7 +42,7 @@ class GetterThrewError(BackendError):
 be_errors = {sub.name: sub for sub in BackendError.__subclasses__()}
 
 
-def be_error(name, info):
+def make_be_error(name, info):
     return be_errors[name].make(info)
 
 
@@ -71,16 +71,11 @@ def interacts_with_be(edits_view=None):
 
     The decorated function always returns None.
     """
-    if edits_view:
-        param, *attrs = edits_view.split('.', maxsplit=1)
-        if attrs:
-            view_getter = operator.attrgetter(attrs[0])
-        else:
-            view_getter = lambda x: x  # noqa
+    view_accessor = param_attr_accessor(edits_view) if edits_view else None
 
     def wrapper(func):
         funcsig = inspect.signature(func)
-        assert not edits_view or param in funcsig.parameters
+        assert not view_accessor or view_accessor.param in funcsig.parameters
 
         @functools.wraps(func)
         def wrapped(*args, **kwargs):
@@ -94,8 +89,8 @@ def interacts_with_be(edits_view=None):
                 return
             
             gtor = func(*args, **kwargs)
-            if edits_view:
-                view = view_getter(funcsig.bind(*args, **kwargs).arguments[param])
+            if view_accessor:
+                view = view_accessor(funcsig.bind(*args, **kwargs))
                 gtor = supply_edit_on_each_send(view, gtor)
 
             ws_handler.install_cont(gtor)
@@ -105,3 +100,19 @@ def interacts_with_be(edits_view=None):
         return wrapped
 
     return wrapper
+
+
+def param_attr_accessor(s):
+    param, *attr = s.split('.', maxsplit=1)
+    attr = attr[0] if attr else None
+
+    def accessor(bound_arguments):
+        val = bound_arguments.arguments[param]
+        if attr:
+            return getattr(val, attr)
+        else:
+            return val
+
+    accessor.param = param
+
+    return accessor

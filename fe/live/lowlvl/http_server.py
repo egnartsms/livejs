@@ -3,37 +3,34 @@
 It serves some static files and websocket requests. Websocket is where all the FE/BE
 communication is done."""
 import socket
-import os
-import http.client as httpcli
+
+from .eventloop import Fd
+from .eventloop import get_event_loop
+from .http import Request
+from .sockutil import SocketClosedPrematurely
+from .sockutil import recv_up_to_delimiter
 
 
-from live.gstate import config
-from .eventloop import get_event_loop, Fd
-from .sockutil import recv_up_to_delimiter, SocketClosedPrematurely
-from .http import Request, Response
-from .websocket import WebSocket
+def serve(port, request_handler):
+    """Http server coroutine.
 
+    :param request_handler: generator that processes all the HTTP requests, including
+        websockets. It is called from a per-client coroutine like this:
 
-def serve(port, ws_handler):
-    """Http server main coroutine.
+        yield from request_handler()
 
-    :param ws_handler: a WebSocket handler object. Required to have this interface:
-        ws_handler.connect(websocket)
-        ws_handler.disconnect()
-        ws_handler.is_connected
-        ws_handler(message)
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setblocking(False)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(('127.0.0.1', port))
+    sock.bind(('localhost', port))
     sock.listen(5)
 
     try:
         while True:
             yield Fd.read(sock)
             cli, address = sock.accept()
-            co = handle_http_request_wrapper(cli, ws_handler)
+            co = handle_http_request_wrapper(cli, request_handler)
             co.send(None)
             get_event_loop().add_coroutine(co)
     finally:
@@ -41,7 +38,7 @@ def serve(port, ws_handler):
         sock.close()
 
 
-def handle_http_request_wrapper(sock, ws_handler):
+def handle_http_request_wrapper(sock, request_handler):
     """Make sure sock is properly closed"""
     try:
         yield None
@@ -49,7 +46,7 @@ def handle_http_request_wrapper(sock, ws_handler):
         moveon = True
         while moveon:
             try:
-                moveon = yield from handle_http_request(sock, ws_handler)
+                moveon = yield from handle_http_request(sock, request_handler)
             except SocketClosedPrematurely:
                 moveon = False
     finally:
@@ -57,7 +54,7 @@ def handle_http_request_wrapper(sock, ws_handler):
         sock.close()
 
 
-def handle_http_request(sock, ws_handler):
+def handle_http_request(sock, request_handler):
     """Handle 1 HTTP request.
 
     :return: True if another request should be handled through this connection
@@ -67,31 +64,6 @@ def handle_http_request(sock, ws_handler):
     headers = yield from recv_up_to_delimiter(sock, buf, b'\r\n\r\n')
     req = Request.from_network(sock, headers)
 
-    if req.path == '/ws':
-        if ws_handler.is_connected:
-            yield from Response(req, httpcli.BAD_REQUEST).send_empty()
-        else:
-            websocket = WebSocket(req, ws_handler)
-            ws_handler.connect(websocket)
-            try:
-                yield from websocket
-            finally:
-                ws_handler.disconnect()
-
-        return False
-
-    moveon = req.headers.get('connection') == 'keep-alive'
-
-    if req.path == '/':
-        filename = 'live.js'
-    else:
-        yield from Response(req, httpcli.NOT_FOUND).send_empty()
-        return moveon
-
-    filepath = os.path.join(config.be_root, filename)
-    if not os.path.exists(filepath):
-        yield from Response(req, httpcli.NOT_FOUND).send_empty()
-        return moveon
-
-    yield from Response(req, httpcli.OK).send_file(filepath)
-    return moveon
+    yield from request_handler(req)
+    
+    return req.headers.get('connection') == 'keep-alive'

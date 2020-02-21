@@ -24,11 +24,11 @@ def new_module_browser_view(window, module):
     return view
 
 
-def find_module_browser_view(window, module):
+def module_browser_view_for_module_id(window, module_id):
     return first_or_none(
         view
         for view in window.views()
-        if is_view_module_browser(view) and setting.module_id[view] == module.id
+        if is_view_module_browser(view) and setting.module_id[view] == module_id
     )
 
 

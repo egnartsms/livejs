@@ -26,13 +26,15 @@ def find_repl_view(window):
 def new_repl_view(window, module):
     view = window.new_file()
     setting.view[view] = 'REPL'
-    setting.cur_module_id[view] = module.id
-    setting.inspection_space_id[view] = gen_uid()
     view.set_name('LiveJS: REPL')
     view.set_scratch(True)
     view.assign_syntax('Packages/LiveJS/LiveJS REPL.sublime-syntax')
 
-    repl_for(view).erase_all_insert_prompt()
+    repl = repl_for(view)
+    repl.set_current_module(module)
+    repl.inspection_space_id = gen_uid()
+    
+    repl.erase_all_insert_prompt()
 
     return view
 

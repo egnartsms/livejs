@@ -4,14 +4,16 @@ import sublime_plugin
 
 from .command import ModuleBrowserBeInteractingTextCommand
 from .command import ModuleBrowserTextCommand
-from .operations import find_module_browser_view
 from .operations import module_browser_for
+from .operations import module_browser_view_for_module_id
 from .operations import new_module_browser_view
 from live.comm import interacts_with_be
-from live.modules.datastructures import Module
+from live.gstate import ws_handler
+from live.projects.datastructures import Module
+from live.settings import setting
 from live.shared.input_handlers import ModuleInputHandler
 from live.sublime_util.edit import edit_for
-from live.sublime_util.misc import set_selection
+from live.sublime_util.selection import set_selection
 
 
 __all__ = [
@@ -25,16 +27,16 @@ class LivejsCbRefresh(ModuleBrowserBeInteractingTextCommand):
     def run(self):
         self.mbrowser.done_editing()
         entries = yield 'sendAllEntries', {
-            'mid': self.mbrowser.module.id
+            'mid': self.mbrowser.module_id
         }
         self.mbrowser.refresh(entries)
 
 
 class LivejsBrowseModule(sublime_plugin.WindowCommand):
     @interacts_with_be()
-    def run(self, module_id):
-        module = Module.with_id(module_id)
-        view = find_module_browser_view(self.window, module)
+    def run(self, module):
+        module = Module(id=module['id'], name=module['name'])
+        view = module_browser_view_for_module_id(self.window, module.id)
         if view is None:
             view = new_module_browser_view(self.window, module)
             entries = yield 'sendAllEntries', {'mid': module.id}
@@ -43,7 +45,11 @@ class LivejsBrowseModule(sublime_plugin.WindowCommand):
             module_browser_for(view).focus_view()
 
     def input(self, args):
-        return ModuleInputHandler()
+        modules = ws_handler.sync_request('getProjectModules', {
+            'projectId': setting.project_id[self.window]
+        })
+
+        return ModuleInputHandler(modules)
 
 
 class LivejsCbEdit(ModuleBrowserTextCommand):
@@ -85,7 +91,7 @@ class LivejsCbCommit(ModuleBrowserBeInteractingTextCommand):
             self.mbrowser.set_status_be_pending()
 
             yield 'addObjectEntry', {
-                'mid': self.mbrowser.module.id,
+                'mid': self.mbrowser.module_id,
                 'parentPath': self.mbrowser.new_node_parent.path,
                 'pos': self.mbrowser.new_node_position,
                 'key': mo.group(1),
@@ -95,7 +101,7 @@ class LivejsCbCommit(ModuleBrowserBeInteractingTextCommand):
             self.mbrowser.set_status_be_pending()
 
             yield 'addArrayEntry', {
-                'mid': self.mbrowser.module.id,
+                'mid': self.mbrowser.module_id,
                 'parentPath': self.mbrowser.new_node_parent.path,
                 'pos': self.mbrowser.new_node_position,
                 'codeValue': js_entered
@@ -113,7 +119,7 @@ class LivejsCbCommit(ModuleBrowserBeInteractingTextCommand):
             self.mbrowser.set_status_be_pending()
 
             yield 'renameKey', {
-                'mid': self.mbrowser.module.id,
+                'mid': self.mbrowser.module_id,
                 'path': node.path,
                 'newName': js_entered
             }
@@ -121,7 +127,7 @@ class LivejsCbCommit(ModuleBrowserBeInteractingTextCommand):
             self.mbrowser.set_status_be_pending()
 
             yield 'replace', {
-                'mid': self.mbrowser.module.id,
+                'mid': self.mbrowser.module_id,
                 'path': node.path,
                 'codeNewValue': js_entered
             }
@@ -140,13 +146,13 @@ class LivejsCbCancelEdit(ModuleBrowserBeInteractingTextCommand):
         node = self.mbrowser.node_being_edited
         if node.is_key:
             new_name = yield 'getKeyAt', {
-                'mid': self.mbrowser.module.id,
+                'mid': self.mbrowser.module_id,
                 'path': node.path
             }
             self.mbrowser.replace_key_node(node.path, new_name)
         else:
             new_value = yield 'getValueAt', {
-                'mid': self.mbrowser.module.id,
+                'mid': self.mbrowser.module_id,
                 'path': node.path
             }
             self.mbrowser.replace_value_node(node.path, new_value)
@@ -159,7 +165,7 @@ class LivejsCbMoveNodeFwd(ModuleBrowserBeInteractingTextCommand):
             return  # should not normally happen, protected by key binding context
 
         new_path = yield 'move', {
-            'mid': self.mbrowser.module.id,
+            'mid': self.mbrowser.module_id,
             'path': node.path,
             'fwd': True
         }
@@ -175,7 +181,7 @@ class LivejsCbMoveNodeBwd(ModuleBrowserBeInteractingTextCommand):
             return  # should not normally happen, protected by key binding context
 
         new_path = yield 'move', {
-            'mid': self.mbrowser.module.id,
+            'mid': self.mbrowser.module_id,
             'path': node.path,
             'fwd': False
         }
@@ -192,7 +198,7 @@ class LivejsCbDelNode(ModuleBrowserBeInteractingTextCommand):
             return
 
         yield 'deleteEntry', {
-            'mid': self.mbrowser.module.id,
+            'mid': self.mbrowser.module_id,
             'path': node.path
         }
 

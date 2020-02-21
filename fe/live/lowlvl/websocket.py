@@ -58,26 +58,26 @@ class WebSocket:
         headers = self.req.headers
         if (headers.get('connection') != 'Upgrade' or
                 headers.get('upgrade') != 'websocket'):
-            yield from Response(self.req, httpcli.BAD_REQUEST).send_empty()
+            yield from Response(self.req, httpcli.BAD_REQUEST)
             return False
 
         wskey = headers.get('sec-websocket-key')
         if wskey is None:
-            yield from Response(self.req, httpcli.BAD_REQUEST).send_empty()
+            yield from Response(self.req, httpcli.BAD_REQUEST)
             return False
 
         wsver = headers.get('sec-websocket-version')
         if wsver != '13':
             resp = Response(self.req, httpcli.BAD_REQUEST)
             resp.add_header('Sec-WebSocket-Version', '13')
-            yield from resp.send_empty()
+            yield from resp
             return False
 
         resp = Response(self.req, httpcli.SWITCHING_PROTOCOLS)
         resp.add_header('Upgrade', 'websocket')
         resp.add_header('Connection', 'Upgrade')
         resp.add_header('Sec-WebSocket-Accept', sec_websocket_accept(wskey))
-        yield from resp.send_empty()
+        yield from resp
         return True
 
     def process_message(self):

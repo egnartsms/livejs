@@ -1,11 +1,12 @@
 import sublime_plugin
 
-from live.gstate import fe_modules
-
 
 class ModuleInputHandler(sublime_plugin.ListInputHandler):
+    def __init__(self, modules):
+        self.modules = modules
+
     def name(self):
-        return 'module_id'
+        return 'module'
 
     def list_items(self):
-        return [(fe_m.name, fe_m.id) for fe_m in fe_modules]
+        return [(mod['name'], mod) for mod in self.modules]

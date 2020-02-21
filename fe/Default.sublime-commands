@@ -4,7 +4,11 @@
         "command": "toggle_server"
     },
     {
-        "caption": "LiveJS: Add module",
+        "caption": "LiveJS: Load this window's project",
+        "command": "livejs_load_project"
+    },
+    {
+        "caption": "LiveJS: Add new module",
         "command": "livejs_add_module"
     },
     {
