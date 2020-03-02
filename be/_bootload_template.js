@@ -1,42 +1,45 @@
 (function () {
    const 
       port = LIVEJS_PORT,
-      mainModuleName = LIVEJS_MAIN_MODULE_NAME,
-      otherModuleNames = LIVEJS_OTHER_MODULE_NAMES,
-      projectPath = LIVEJS_PROJECT_PATH,
-      bootloadUrl = `http://localhost:${port}/bootload/`;
+      projectModuleName = LIVEJS_PROJECT_MODULE_NAME,
+      projectPath = LIVEJS_PROJECT_PATH;
 
-   function moduleUrl(moduleName) {
-      return bootloadUrl + moduleName + '.js';
+   function urlOf(moduleName) {
+      return `http://localhost:LIVEJS_PORT/bootload/${moduleName}.js`;
    }
 
-   let
-      promiseMain = fetch(moduleUrl(mainModuleName)).then(r => r.text()),
-      promises = otherModuleNames.map(name => fetch(moduleUrl(name)).then(r => r.text()));
+   function sourceOf(moduleName) {
+      return fetch(urlOf(moduleName)).then(r => r.text());
+   }
 
-   promises.unshift(promiseMain);
-
-   Promise.all(promises).then(srcModules => {
-      let srcMain = srcModules.shift();
-      let otherModules = [];
-
-      for (let i = 0; i < otherModuleNames.length; i += 1) {
-         otherModules.push({
-            name: otherModuleNames[i],
-            src: srcModules[i]
-         });
-      }
-      
-      let main = window.eval(srcMain);
-
-      main['bootload'].call(null, {
-         otherModules,
-         projectPath,
-         port
-      });
-   })
-   .catch(function (e) {
+   function onError(e) {
       console.error("LiveJS: bootloading process failed:", e);
-   });
+   }
 
+   (async function () {
+      let
+         project = window.eval(await sourceOf(projectModuleName)),
+         projectModules = project['modules'],
+         sources = await Promise.all(projectModules.map(({name}) => sourceOf(name))),
+         idxBootstrapper = projectModules.findIndex(
+            ({id}) => id === project['bootstrapper']
+         ),
+         [moduleBootstrapper] = projectModules.splice(idxBootstrapper, 1),
+         [sourceBootstrapper] = sources.splice(idxBootstrapper, 1);
+
+      for (let i = 0; i < projectModules.length; i += 1) {
+         projectModules[i]['source'] = sources[i];
+      }
+
+      let bootstrapper$ = window.eval(sourceBootstrapper);
+
+      bootstrapper$['bootload'].call(null, {
+         myself: moduleBootstrapper,
+         modules: projectModules,
+         projectId: project['projectId'],
+         projectPath: projectPath,
+         port: port
+      });
+   })()
+      .catch(onError);
 })();

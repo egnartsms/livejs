@@ -32,10 +32,8 @@ def request_handler(req):
             thing = mo.group(1).lower()
             if thing == 'port':
                 return str(config.port)
-            elif thing == 'main_module_name':
-                return json.dumps('live')
-            elif thing == 'other_module_names':
-                return json.dumps(['fake'])
+            elif thing == 'project_module_name':
+                return json.dumps('project.live')
             elif thing == 'project_path':
                 return json.dumps(config.be_root)
             else:
@@ -48,7 +46,7 @@ def request_handler(req):
         )
         return
 
-    mo = re.match(r'/bootload/(\w+.js)$', req.path)
+    mo = re.match(r'/bootload/([\w.]+.js)$', req.path)
     if mo is None:
         yield from Response(req, httpcli.BAD_REQUEST)
         return

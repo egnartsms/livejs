@@ -1,0 +1,27 @@
+(function () {
+   let $ = {
+      projectId: "a559f0f3ff8744bb944f1dda48650b4f",
+      bootstrapper: "acc0b54988854dd9b5e74d269ea731e1",
+      modules: [
+         {
+            id: "acc0b54988854dd9b5e74d269ea731e1",
+            name: "live",
+            volatiles: [
+               "port",
+               "socket",
+               "projects",
+               "modules",
+               "orderedKeysMap",
+               "inspectionSpaces"
+            ]
+         },
+         {
+            id: "1da68185780c463d82232874b271c1f7",
+            name: "fake",
+            volatiles: []
+         }
+      ]
+   }
+
+   return $
+})()

@@ -2,41 +2,26 @@
    'use strict';
 
    let $ = {
-      livejs: {
-         projectId: 'a559f0f3ff8744bb944f1dda48650b4f',
-         moduleId: 'acc0b54988854dd9b5e74d269ea731e1',
-         nontrackedKeys: [
-            "port",
-            "socket",
-            "projects",
-            "modules",
-            "orderedKeysMap",
-            "inspectionSpaces"
-         ],
-      },
-
       projects: null,
       
       modules: null,
 
-      port: "new Object()",
+      port: null,
 
-      socket: "new Object()",
+      socket: null,
 
-      bootload: function ({otherModules, projectPath, port}) {
-         // Initialize .projects and .modules structures
-         let modules = $.loadModulesSetProjectId(otherModules, $.livejs.projectId);
-         modules.unshift({
-            id: $.livejs.moduleId,
-            projectId: $.livejs.projectId,
-            name: 'live',
-            value: $
-         });
+      bootload: function ({myself, modules, projectId, projectPath, port}) {
+         // modules: [{id, name, source, volatiles}]
+         // myself: same except no "source" property        
+         $.loadModules(modules, projectId);
+         myself.value = $;
+         myself.projectId = projectId;
+         modules.unshift(myself);
       
          $.projects = {
-            [$.livejs.projectId]: {
-               id: $.livejs.projectId,
-               name: 'livejS',
+            [projectId]: {
+               id: projectId,
+               name: 'Live.JS',
                path: projectPath,
                modules: $.byId(modules)
             }
@@ -491,26 +476,19 @@
          return !!module.value['livejs']['projectId'];
       },
 
-      loadModules: function (modulesData) {
-         // modulesData: [{name, src}]
-         let modules = [];
-      
-         for (let {name, src} of modulesData) {
-            let value = window.eval(src);
+      loadModules: function (modules, projectId) {
+         // modules: [{..., source}]
+         for (let module of modules) {
+            let value = window.eval(module.source);
       
             if (value['init']) {
                value['init'].call(null);
             }
       
-            modules.push({
-               id: value['livejs']['moduleId'],
-               projectId: null,  // will be initialized later, we don't know project id here
-               name: name,
-               value: value
-            });
+            module.value = value;
+            delete module.source;
+            module.projectId = projectId;
          }
-      
-         return modules;
       },
 
       loadModulesDetermineProjectId: function (modulesData) {
@@ -570,44 +548,44 @@
                name: mainModule.name
             });
          },
-         loadProject: function ({name, path, modulesData}) {
-            let {projectId, modules} = $.loadModulesDetermineProjectId(modulesData);
+         // loadProject: function ({name, path, modulesData}) {
+         //    let {projectId, modules} = $.loadModulesDetermineProjectId(modulesData);
          
-            if (projectId in $.projects) {
-               throw new Error(`Attempted to load same project twice`);
-            }
-            if (modules.some(m => m.id in $.modules)) {
-               throw new Error(`Module id collided with another project's module`)
-            }
+         //    if (projectId in $.projects) {
+         //       throw new Error(`Attempted to load same project twice`);
+         //    }
+         //    if (modules.some(m => m.id in $.modules)) {
+         //       throw new Error(`Module id collided with another project's module`)
+         //    }
          
-            $.projects[projectId] = {
-               id: projectId,
-               name: name,
-               path: path,
-               modules: $.byId(modules)
-            };
+         //    $.projects[projectId] = {
+         //       id: projectId,
+         //       name: name,
+         //       path: path,
+         //       modules: $.byId(modules)
+         //    };
          
-            Object.assign($.modules, $.byId(modules));
+         //    Object.assign($.modules, $.byId(modules));
          
-            $.respondSuccess(projectId);
-         },
-         loadModule: function ({projectId, name, src}) {
-            let project = $.projects[projectId];
+         //    $.respondSuccess(projectId);
+         // },
+         // loadModule: function ({projectId, name, src}) {
+         //    let project = $.projects[projectId];
 
-            if (Object.values(project.modules).find(m => m.name == name)) {
-               throw new Error(`Cannot add module: duplicate name`);
-            }
+         //    if (Object.values(project.modules).find(m => m.name == name)) {
+         //       throw new Error(`Cannot add module: duplicate name`);
+         //    }
 
-            let module = $.loadModulesSetProjectId([{name, src}], projectId)[0];
-            if (module.id in $.modules) {
-               throw new Error(`Module ID duplicated`);
-            }
+         //    let module = $.loadModulesSetProjectId([{name, src}], projectId)[0];
+         //    if (module.id in $.modules) {
+         //       throw new Error(`Module ID duplicated`);
+         //    }
 
-            $.modules[module.id] = module;
-            project.modules[module.id] = module;
+         //    $.modules[module.id] = module;
+         //    project.modules[module.id] = module;
 
-            $.respondSuccess();
-         },
+         //    $.respondSuccess();
+         // },
          getKeyAt: function ({mid, path}) {
             $.respondSuccess($.keyAt($.moduleObject(mid), path));
          },
