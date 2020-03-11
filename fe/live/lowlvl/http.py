@@ -1,9 +1,7 @@
 import mmap
-import re
 import os
 import http.client
 
-from .eventloop import Fd
 from .sockutil import send_buffer
 
 

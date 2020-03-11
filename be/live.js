@@ -10,18 +10,27 @@
 
       socket: null,
 
-      bootload: function ({myself, modules, projectId, projectPath, port}) {
-         // modules: [{id, name, source, volatiles}]
-         // myself: same except no "source" property        
-         $.loadModules(modules, projectId);
-         myself.value = $;
-         myself.projectId = projectId;
-         modules.unshift(myself);
-      
+      bootload: function ({projectPath, port, project, sources}) {
+         let 
+            bootstrapper = project['modules'].find(
+               m => m['id'] === project['bootstrapper']
+            ),
+            modules = $.loadModules(
+               project['modules'].filter(m => m !== bootstrapper),
+               sources,
+               project['projectId']
+            );
+
+         // The bootstrapper needs to be added to this array manually
+         modules.push(Object.assign({}, bootstrapper, {
+            projectId: project['projectId'],
+            value: $,
+         }));
+
          $.projects = {
-            [projectId]: {
-               id: projectId,
-               name: 'Live.JS',
+            [project['projectId']]: {
+               id: project['projectId'],
+               name: project['projectName'],
                path: projectPath,
                modules: $.byId(modules)
             }
@@ -62,13 +71,13 @@
       },
 
       onSocketMessage: function (evt) {
-         let request = JSON.parse(evt.data);
-      
+         let msg = JSON.parse(evt.data);
+
          try {
-            $.requestHandlers[request['type']].call(null, request['args']);
+            $.opHandlers[msg['operation']].call(null, msg['args']);
          }
          catch (e) {
-            $.respondFailure('generic', {
+            $.opExc('generic', {
                message: e.stack
             });
          }
@@ -78,42 +87,42 @@
          $.socket.send(JSON.stringify(message));
       },
 
-      respondFailure: function (error, info) {
+      opExc: function (error, info) {
          $.send({
-            type: 'response',
+            type: 'result',
             success: false,
             error: error,
             info: info
          });
       },
 
-      respondSuccess: function (value=null) {
+      opReturn: function (value=null) {
          $.send({
-            type: 'response',
+            type: 'result',
             success: true,
             value: value
          });
       },
 
-      persist: function (requests) {
+      persist: function (descriptors) {
          $.send({
             type: 'persist',
-            requests: requests
+            descriptors: descriptors
          });
       },
 
-      persistInModule: function (module, requests) {
-         if (!(requests instanceof Array)) {
-            requests = [requests];
+      persistInModule: function (module, descriptors) {
+         if (!(descriptors instanceof Array)) {
+            descriptors = [descriptors];
          }
 
-         for (let req of requests) {
-            req['projectId'] = module.projectId;
-            req['moduleId'] = module.id;
-            req['moduleName'] = module.name;
+         for (let desc of descriptors) {
+            desc['projectId'] = module.projectId;
+            desc['moduleId'] = module.id;
+            desc['moduleName'] = module.name;
          }
 
-         $.persist(requests);
+         $.persist(descriptors);
       },
 
       evalFBody: function ($obj, code) {
@@ -468,69 +477,49 @@
          };
       },
 
-      isKeyNontracked: function (module, key) {
-         return module.livejs.nontrackedKeys.includes(key);
+      isKeyUntracked: function (module, key) {
+         return module.untracked.includes(key);
       },
 
-      isModuleMain: function (module) {
-         return !!module.value['livejs']['projectId'];
-      },
+      loadModules: function (modules, sources, projectId) {
+         // modules: [<same as in project file>]
+         let result = [];
 
-      loadModules: function (modules, projectId) {
-         // modules: [{..., source}]
          for (let module of modules) {
-            let value = window.eval(module.source);
+            let source = sources[module['id']];
+            if (!source) {
+               throw new Error(`Not provided source code for module ${module['name']}`);
+            }
+
+            let value = window.eval(source);
       
             if (value['init']) {
                value['init'].call(null);
             }
       
-            module.value = value;
-            delete module.source;
-            module.projectId = projectId;
+            result.push(Object.assign({}, module, {projectId, value}));
          }
+
+         return result;
       },
 
-      loadModulesDetermineProjectId: function (modulesData) {
-         let 
-            modules = $.loadModules(modulesData),
-            mainModule = modules.find($.isModuleMain);
-      
-         if (!mainModule) {
-            throw new Error(`No main module could be determined`);
-         }
-      
-         let projectId = mainModule.value['livejs']['projectId'];
-      
-         for (let module of modules) {
-            module.projectId = projectId;
-         }
-      
-         return {projectId, modules};  
-      },
-
-      loadModulesSetProjectId: function (modulesData, projectId) {
-         let modules = $.loadModules(modulesData);
-      
-         for (let module of modules) {
-            module.projectId = projectId;
-         }
-      
-         return modules;
-      },
-
-      requestHandlers: {
+      opHandlers: {
+         evalAsJson: function ({source}) {
+            $.opReturn(window.eval(source));
+         },
          getProjects: function () {
-            $.respondSuccess(Object.values($.projects).map(proj => ({
-               id: proj.id,
-               name: proj.name,
-               path: proj.path
-            })));
+            $.opReturn(
+                  Object.values($.projects).map(proj => ({
+                     id: proj.id,
+                     name: proj.name,
+                     path: proj.path
+                  }))
+            );
          },
          getProjectModules: function ({projectId}) {
             let project = $.projects[projectId];
 
-            $.respondSuccess(Object.values(project.modules).map(module => ({
+            $.opReturn(Object.values(project.modules).map(module => ({
                id: module.id,
                name: module.name
             })));
@@ -543,64 +532,76 @@
                throw new Error(`No main module found in project UID ${projectId}`);
             }
 
-            $.respondSuccess({
+            $.opReturn({
                id: mainModule.id,
                name: mainModule.name
             });
          },
-         // loadProject: function ({name, path, modulesData}) {
-         //    let {projectId, modules} = $.loadModulesDetermineProjectId(modulesData);
-         
-         //    if (projectId in $.projects) {
-         //       throw new Error(`Attempted to load same project twice`);
-         //    }
-         //    if (modules.some(m => m.id in $.modules)) {
-         //       throw new Error(`Module id collided with another project's module`)
-         //    }
-         
-         //    $.projects[projectId] = {
-         //       id: projectId,
-         //       name: name,
-         //       path: path,
-         //       modules: $.byId(modules)
-         //    };
-         
-         //    Object.assign($.modules, $.byId(modules));
-         
-         //    $.respondSuccess(projectId);
-         // },
-         // loadModule: function ({projectId, name, src}) {
-         //    let project = $.projects[projectId];
+         loadProject: function ({projectPath, project, sources}) {
+            if (project['projectId'] in $.projects) {
+               throw new Error(`Project is already loaded`);
+            }
+            if (project['modules'].some(m => m['id'] in $.modules)) {
+               throw new Error(`Duplicate module id`)
+            }
 
-         //    if (Object.values(project.modules).find(m => m.name == name)) {
-         //       throw new Error(`Cannot add module: duplicate name`);
-         //    }
+            let modules = $.loadModules(
+               project['modules'], sources, project['projectId']
+            );
+         
+            $.projects[project['projectId']] = {
+               id: project['projectId'],
+               name: project['projectName'],
+               path: projectPath,
+               modules: $.byId(modules)
+            };
+         
+            Object.assign($.modules, $.byId(modules));
+         
+            $.opReturn();
+         },
+         loadModule: function ({projectId, moduleId, name, source, untracked}) {
+            let project = $.projects[projectId];
 
-         //    let module = $.loadModulesSetProjectId([{name, src}], projectId)[0];
-         //    if (module.id in $.modules) {
-         //       throw new Error(`Module ID duplicated`);
-         //    }
+            if (!project) {
+               throw new Error(`Project with given ID is not loaded`);
+            }
 
-         //    $.modules[module.id] = module;
-         //    project.modules[module.id] = module;
+            if (moduleId in $.modules) {
+               throw new Error(`Module ID duplicated`);
+            }
 
-         //    $.respondSuccess();
-         // },
+            if (Object.values(project.modules).find(m => m.name === name)) {
+               throw new Error(`Cannot add module "${name}": duplicate name`);
+            }
+
+            let module = $.loadModules([{
+               id: moduleId,
+               name,
+               source,
+               untracked
+            }], projectId)[0];
+            
+            $.modules[module.id] = module;
+            project.modules[module.id] = module;
+
+            $.opReturn();
+         },
          getKeyAt: function ({mid, path}) {
-            $.respondSuccess($.keyAt($.moduleObject(mid), path));
+            $.opReturn($.keyAt($.moduleObject(mid), path));
          },
          getValueAt: function ({mid, path}) {
-            $.respondSuccess(
+            $.opReturn(
                $.serialize($.valueAt($.moduleObject(mid), path))
             );
          },
          sendAllEntries: function ({mid}) {
             let
                result = [],
-               moduleValue = $.modules[mid].value;
+               module = $.modules[mid];
          
-            for (let [key, value] of $.entries(moduleValue)) {
-               if ($.isKeyNontracked(moduleValue, key)) {
+            for (let [key, value] of $.entries(module.value)) {
+               if ($.isKeyUntracked(module, key)) {
                   result.push([key, $.serialize('new Object()')])
                }
                else {
@@ -608,7 +609,7 @@
                }
             }
          
-            $.respondSuccess(result);
+            $.opReturn(result);
          },
          replace: function ({mid, path, codeNewValue}) {
             let 
@@ -619,11 +620,11 @@
             parent[key] = newValue;
          
             $.persistInModule(module, {
-               type: 'replace',
+               operation: 'replace',
                path,
                newValue: $.serialize(newValue)
             });
-            $.respondSuccess();
+            $.opReturn();
          },
          renameKey: function ({mid, path, newName}) {
             let 
@@ -633,7 +634,7 @@
             $.checkObject(parent);
          
             if ($.hasOwnProperty(parent, newName)) {
-               $.respondFailure('duplicate_key', {
+               $.opExc('duplicate_key', {
                   objPath: path,
                   duplicatedKey: newName,
                   message: `Cannot rename to ${newName}: duplicate property name`
@@ -647,11 +648,11 @@
             delete parent[key];
          
             $.persistInModule(module, {
-               type: 'rename_key',
+               operation: 'rename_key',
                path,
                newName
             });
-            $.respondSuccess();
+            $.opReturn();
          },
          addArrayEntry: function ({mid, parentPath, pos, codeValue}) {
             let
@@ -664,12 +665,12 @@
             parent.splice(pos, 0, value);
          
             $.persistInModule(module, {
-               type: 'insert',
+               operation: 'insert',
                path: parentPath.concat(pos),
                key: null,
                value: $.serialize(value)
             });
-            $.respondSuccess();
+            $.opReturn();
          },
          addObjectEntry: function ({mid, parentPath, pos, key, codeValue}) {
             let 
@@ -685,12 +686,12 @@
             $.insertProp(parent, key, value, pos);   
          
             $.persistInModule(module, {
-               type: 'insert',
+               operation: 'insert',
                path: parentPath.concat(pos),
                key: key,
                value: $.serialize(value)
             });
-            $.respondSuccess();
+            $.opReturn();
          },
          move: function ({mid, path, fwd}) {
             let 
@@ -712,18 +713,18 @@
          
             $.persistInModule(module, [
                {
-                  type: 'delete',
+                  operation: 'delete',
                   path: path
                }, 
                {
-                  type: 'insert',
+                  operation: 'insert',
                   path: newPath,
                   key: parent instanceof Array ? null : key,
-                  value: $.isKeyNontracked(module.value, key) ?
+                  value: $.isKeyUntracked(module, key) ?
                      $.serialize('new Object()') : $.serialize(value)
                }
             ]);
-            $.respondSuccess(newPath);
+            $.opReturn(newPath);
          },
          deleteEntry: function ({mid, path}) {
             let 
@@ -738,14 +739,14 @@
             }
          
             $.persistInModule(module, {
-               type: 'delete',
+               operation: 'delete',
                path: path
             });
-            $.respondSuccess();
+            $.opReturn();
          },
          replEval: function ({mid, spaceId, code}) {
             let obj = $.evalExpr($.modules[mid].value, code);
-            $.respondSuccess($.inspect($.inspectionSpace(spaceId), obj, true));
+            $.opReturn($.inspect($.inspectionSpace(spaceId), obj, true));
          },
          inspectObjectById: function ({spaceId, id}) {
             let space = $.inspectionSpace(spaceId);
@@ -754,7 +755,7 @@
                throw new Error(`Unknown object id: ${id}`);
             }
          
-            $.respondSuccess($.inspectObjectDeeply(space, object));
+            $.opReturn($.inspectObjectDeeply(space, object));
          },
          inspectGetterValue: function ({spaceId, parentId, prop}) {
             let space = $.inspectionSpace(spaceId);
@@ -768,7 +769,7 @@
                result = parent[prop];
             }
             catch (e) {
-               $.respondFailure('getter_threw', {
+               $.opExc('getter_threw', {
                   excClassName: e.constructor.name,
                   excMessage: e.message,
                   message: `Getter threw an exception`
@@ -776,12 +777,12 @@
                return;
             }
          
-            $.respondSuccess($.inspect(space, result, true));
+            $.opReturn($.inspect(space, result, true));
          },
          deleteInspectionSpace: function ({spaceId}) {
             let space = $.inspectionSpaces[spaceId];
             if (!space) {
-               $.respondSuccess(false);
+               $.opReturn(false);
                return;
             }
          
@@ -789,7 +790,7 @@
             space.obj2id.clear();
             delete $.inspectionSpaces[spaceId];
          
-            $.respondSuccess(true);
+            $.opReturn(true);
          }
       }
    };

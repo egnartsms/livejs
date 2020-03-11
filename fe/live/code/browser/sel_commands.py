@@ -1,6 +1,6 @@
 import sublime
 
-from .command import ModuleBrowserTextCommand
+from live.shared.command import TextCommand
 from live.sublime_util.selection import set_selection
 
 
@@ -10,7 +10,7 @@ __all__ = [
 ]
 
 
-class LivejsCbSelect(ModuleBrowserTextCommand):
+class LivejsCbSelect(TextCommand):
     def run(self):
         if len(self.view.sel()) != 1:
             sublime.status_message("Could not determine the node to select: many cursors")
@@ -26,7 +26,7 @@ class LivejsCbSelect(ModuleBrowserTextCommand):
         set_selection(self.view, to=node.region)
 
 
-class LivejsCbMoveSelNext(ModuleBrowserTextCommand):
+class LivejsCbMoveSelNext(TextCommand):
     def run(self, by_same_kind):
         node = self.mbrowser.get_single_selected_node()
         if node is None:
@@ -40,7 +40,7 @@ class LivejsCbMoveSelNext(ModuleBrowserTextCommand):
         set_selection(self.view, to=right.region, show=True)
 
 
-class LivejsCbMoveSelPrev(ModuleBrowserTextCommand):
+class LivejsCbMoveSelPrev(TextCommand):
     def run(self, by_same_kind):
         node = self.mbrowser.get_single_selected_node()
         if node is None:
@@ -54,7 +54,7 @@ class LivejsCbMoveSelPrev(ModuleBrowserTextCommand):
         set_selection(self.view, to=left.region, show=True)
 
 
-class LivejsCbMoveSelOutside(ModuleBrowserTextCommand):
+class LivejsCbMoveSelOutside(TextCommand):
     def run(self):
         node = self.mbrowser.get_single_selected_node()
         if node is None:
@@ -67,7 +67,7 @@ class LivejsCbMoveSelOutside(ModuleBrowserTextCommand):
         set_selection(self.view, to=up.region, show=True)
 
 
-class LivejsCbMoveSelInside(ModuleBrowserTextCommand):
+class LivejsCbMoveSelInside(TextCommand):
     def run(self, into_key):
         node = self.mbrowser.get_single_selected_node()
         if node is None:

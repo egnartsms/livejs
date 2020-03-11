@@ -241,7 +241,7 @@ class EventLoop:
                 )
                 self._force_quit_coroutine(co)
                 return
-            if fd.fd in (self.r_fds if fd.is_read else self.w_fds):
+            if fd.fd in self.r_fds if fd.is_read else self.w_fds:
                 self._report_error("Coroutine {} returned a duplicate fd object to "
                                    "select from: {}".format(co.itr, fd.fd))
                 self._force_quit_coroutine(co)

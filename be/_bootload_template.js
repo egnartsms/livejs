@@ -1,11 +1,13 @@
 (function () {
+   'use strict';
+
    const 
       port = LIVEJS_PORT,
       projectModuleName = LIVEJS_PROJECT_MODULE_NAME,
       projectPath = LIVEJS_PROJECT_PATH;
 
    function urlOf(moduleName) {
-      return `http://localhost:LIVEJS_PORT/bootload/${moduleName}.js`;
+      return `http://localhost:${port}/bootload/${moduleName}.js`;
    }
 
    function sourceOf(moduleName) {
@@ -16,30 +18,26 @@
       console.error("LiveJS: bootloading process failed:", e);
    }
 
+   async function allKeyed(entries) {
+      let promises = entries.map(([, promise]) => promise);
+      let results = await Promise.all(promises);
+      
+      let resultObj = {};
+      for (let i = 0; i < entries.length; i += 1) {
+         resultObj[entries[i][0]] = results[i];
+      }
+      return resultObj;
+   }
+
    (async function () {
       let
          project = window.eval(await sourceOf(projectModuleName)),
-         projectModules = project['modules'],
-         sources = await Promise.all(projectModules.map(({name}) => sourceOf(name))),
-         idxBootstrapper = projectModules.findIndex(
-            ({id}) => id === project['bootstrapper']
+         sources = await allKeyed(
+            project['modules'].map(m => [m['id'], sourceOf(m['name'])])
          ),
-         [moduleBootstrapper] = projectModules.splice(idxBootstrapper, 1),
-         [sourceBootstrapper] = sources.splice(idxBootstrapper, 1);
+         bootstrapper$ = window.eval(sources[project['bootstrapper']]);
 
-      for (let i = 0; i < projectModules.length; i += 1) {
-         projectModules[i]['source'] = sources[i];
-      }
-
-      let bootstrapper$ = window.eval(sourceBootstrapper);
-
-      bootstrapper$['bootload'].call(null, {
-         myself: moduleBootstrapper,
-         modules: projectModules,
-         projectId: project['projectId'],
-         projectPath: projectPath,
-         port: port
-      });
+      bootstrapper$['bootload'].call(null, {projectPath, port, project, sources});
    })()
       .catch(onError);
 })();

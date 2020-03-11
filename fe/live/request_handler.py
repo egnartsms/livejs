@@ -4,7 +4,7 @@ import os
 import re
 
 from live.gstate import config
-from live.gstate import ws_handler
+from live.ws_handler import ws_handler
 from live.lowlvl.http import Response
 from live.lowlvl.websocket import WebSocket
 from live.util.misc import file_contents

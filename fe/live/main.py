@@ -7,7 +7,6 @@ import traceback
 
 from live.code import *  # noqa
 from live.gstate import config
-from live.gstate import ws_handler
 from live.gstate import fe_projects
 from live.lowlvl.eventloop import EventLoop
 from live.lowlvl.http_server import serve
@@ -15,9 +14,7 @@ from live.projects import *  # noqa
 from live.projects.datastructures import Project
 from live.repl import *  # noqa
 from live.request_handler import request_handler
-from live.settings import setting  # noqa
 from live.sublime_util import *  # noqa
-from live.util.misc import set_proxy_target
 
 
 g_el = EventLoop()
@@ -55,18 +52,15 @@ def plugin_loaded():
     )
     fe_projects[:] = [config.livejs_project]
     
-    from live.ws_handler import ws_handler as real_ws_handler
-    set_proxy_target(ws_handler, real_ws_handler)
-
     g_el.run_in_new_thread()
     start_server()
-    print("Loaded Live.JS")
+    print("Loaded LiveJS")
 
 
 def plugin_unloaded():
     stop_server()
     g_el.stop()
-    print("Unloaded Live.JS")
+    print("Unloaded LiveJS")
 
 
 class LivejsToggleServerCommand(sublime_plugin.TextCommand):

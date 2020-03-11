@@ -1,6 +1,3 @@
-from live.util.misc import Proxy
-
-
 class Config:
     port = 8088
     indent = 3
@@ -15,7 +12,5 @@ class Config:
 
 
 config = Config()
-
-ws_handler = Proxy()
 
 fe_projects = []  # LiveJS is appended on plugin start

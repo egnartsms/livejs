@@ -1,9 +1,8 @@
+import glob
 import os
 import re
 import sublime
 
-from .datastructures import Project
-from live.comm import interacts_with_be
 from live.gstate import config
 from live.gstate import fe_projects
 from live.settings import setting
@@ -33,6 +32,14 @@ def project_for_window(window):
     return project_by_id(project_id)
 
 
+def validate_window_project_loaded(window):
+    if not project_for_window(window):
+        sublime.status_message("This window is not associated with any LiveJS project")
+        return False
+
+    return True
+
+
 def project_by_id(project_id):
     return first_or_none(p for p in fe_projects if p.id == project_id)
 
@@ -55,51 +62,5 @@ def get_project_modules_contents(root):
     return res
 
 
-@interacts_with_be()
-def on_be_connected():
-    assign_window_for_livejs_project()
-
-    be_projects = yield 'getProjects', {}
-
-    if len(be_projects) == 1:
-        # BE has no loaded projects besides livejs itself
-        if len(fe_projects) == 1:
-            # FE has no projects either
-            pass
-        else:
-            # FE --> BE
-            yield from fe_to_be()
-    else:
-        # BE has loaded projects. In this case no matter what we have here on the FE side,
-        # we should substitute it with the BE data.
-        be_to_fe(be_projects)
-
-
-def fe_to_be():
-    for proj in fe_projects:
-        if proj.id == config.livejs_project_id:
-            continue
-
-        project_id = yield 'loadProject', {
-            'name': proj.name,
-            'path': proj.path,
-            'modulesData': get_project_modules_contents(proj.path)
-        }
-        if project_id != proj.id:
-            sublime.error_message(
-                "Failed to load project {}: ID mismatch".format(proj.name)
-            )
-            raise RuntimeError
-
-
-def be_to_fe(be_projects):
-    del fe_projects[:]
-
-    for proj_data in be_projects:
-        fe_projects.append(
-            Project(
-                id=proj_data['id'],
-                name=proj_data['name'],
-                path=proj_data['path']
-            )
-        )
+def get_project_file_path(folder):
+    return glob.glob(os.path.join(folder, '*.live.js'))

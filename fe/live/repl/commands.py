@@ -7,17 +7,16 @@ from .operations import new_repl_view
 from .operations import repl_for
 from live.code.common import make_js_value_inserter
 from live.code.cursor import Cursor
-from live.comm import BackendError
-from live.comm import interacts_with_be
-from live.gstate import ws_handler
 from live.projects.datastructures import Module
 from live.settings import setting
+from live.shared.backend import BackendInteractingTextCommand
+from live.shared.command import TextCommand
 from live.shared.input_handlers import ModuleInputHandler
-from live.sublime_util.edit import run_method_remembers_edit
 from live.sublime_util.misc import read_only_set_to
 from live.sublime_util.selection import set_selection
-from live.util.inheritable_decorators import ClassWithInheritableDecorators
-from live.util.inheritable_decorators import decorator_for
+from live.util.method import method
+from live.ws_handler import BackendError
+from live.ws_handler import ws_handler
 
 
 __all__ = [
@@ -26,24 +25,17 @@ __all__ = [
 ]
 
 
-class ReplTextCommand(sublime_plugin.TextCommand,
-                      metaclass=ClassWithInheritableDecorators):
-    _edit = decorator_for('run', run_method_remembers_edit)
-
+class ReplCommandMixin:
     @property
     def repl(self):
         return repl_for(self.view)
-
-
-class ReplBeInteractingTextCommand(ReplTextCommand):
-    _be = decorator_for('run', interacts_with_be(edits_view='self.view'))
 
 
 class LivejsOpenReplCommand(sublime_plugin.WindowCommand):
     def run(self):
         view = find_repl_view(self.window)
         if view is None:
-            module = ws_handler.sync_request('getProjectMainModule', {
+            module = ws_handler.run_sync_op('getProjectMainModule', {
                 'projectId': setting.project_id[self.window]
             })
             view = new_repl_view(self.window,
@@ -52,7 +44,8 @@ class LivejsOpenReplCommand(sublime_plugin.WindowCommand):
         self.window.focus_view(view)
 
 
-class LivejsReplSendCommand(ReplBeInteractingTextCommand):
+class LivejsReplSendCommand(BackendInteractingTextCommand, ReplCommandMixin):
+    @method.primary
     def run(self):
         text = self.view.substr(self.repl.edit_region)
         stripped_text = text.rstrip()
@@ -61,11 +54,12 @@ class LivejsReplSendCommand(ReplBeInteractingTextCommand):
             text = stripped_text
 
         try:
-            jsval = yield 'replEval', {
+            ws_handler.run_async_op('replEval', {
                 'spaceId': self.repl.inspection_space_id,
                 'mid': self.repl.cur_module_id,
                 'code': text
-            }
+            })
+            jsval = yield 
             error = None
         except BackendError as e:
             error = e
@@ -87,7 +81,7 @@ class LivejsReplSendCommand(ReplBeInteractingTextCommand):
         set_selection(self.view, to=cur.pos, show=True)
 
 
-class LivejsReplMoveUserInputCommand(ReplTextCommand):
+class LivejsReplMoveUserInputCommand(TextCommand, ReplCommandMixin):
     def run(self, forward):
         if forward:
             res = self.repl.to_next_prompt()
@@ -99,20 +93,20 @@ class LivejsReplMoveUserInputCommand(ReplTextCommand):
                 sublime.status_message("Already at oldest input")
 
 
-class LivejsReplSetCurrentModuleCommand(ReplTextCommand):
+class LivejsReplSetCurrentModuleCommand(TextCommand, ReplCommandMixin):
     def run(self, module):
         module = Module(id=module['id'], name=module['name'])
         self.repl.set_current_module(module)
         self.repl.reinsert_prompt()
 
     def input(self, args):
-        modules = ws_handler.sync_request('getProjectModules', {
+        modules = ws_handler.run_sync_op('getProjectModules', {
             'projectId': setting.project_id[self.view.window()]
         })
         return ModuleInputHandler(modules)
 
 
-class LivejsReplClearCommand(ReplTextCommand):
+class LivejsReplClearCommand(TextCommand, ReplCommandMixin):
     def run(self):
         self.repl.erase_all_insert_prompt()
         self.repl.delete_inspection_space()

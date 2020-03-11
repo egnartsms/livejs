@@ -5,14 +5,15 @@ from .repl import Repl
 from live.code.common import jsval_placeholder
 from live.code.common import make_js_value_inserter
 from live.code.cursor import Cursor
-from live.comm import GetterThrewError
-from live.comm import interacts_with_be
+from live.shared.backend import interacts_with_backend
 from live.settings import setting
 from live.sublime_util.edit import edit_for
 from live.sublime_util.edit import edits_self_view
 from live.sublime_util.view_info import view_info_getter
 from live.util.misc import first_or_none
 from live.util.misc import gen_uid
+from live.ws_handler import GetterThrewError
+from live.ws_handler import ws_handler
 
 
 def is_view_repl(view):
@@ -108,15 +109,16 @@ class Node:
         self.is_expanded = False
         self._add_phantom(cur.pop_reg_beg())
 
-    @interacts_with_be(edits_view='self.view')
+    @interacts_with_backend(edits_view=lambda self: self.view)
     def _expand(self):
         """Abandon this node and insert a new expanded one"""
         assert not self.is_expanded
 
-        jsval = yield 'inspectObjectById', {
+        ws_handler.run_async_op('inspectObjectById', {
             'spaceId': self.repl.inspection_space_id,
             'id': self.id
-        }
+        })
+        jsval = yield 
         
         [reg] = self.view.query_phantom(self.phid)
         self._erase_phantom()
@@ -152,17 +154,18 @@ class Unrevealed:
     def repl(self):
         return repl_for(self.view)
 
-    @interacts_with_be(edits_view='self.view')
+    @interacts_with_backend(edits_view=lambda self: self.view)
     def on_navigate(self, href):
         """Abandon this node and insert a new expanded one"""
         error = jsval = None
 
         try:
-            jsval = yield 'inspectGetterValue', {
+            ws_handler.run_async_op('inspectGetterValue', {
                 'spaceId': self.repl.inspection_space_id,
                 'parentId': self.parent_id,
                 'prop': self.prop
-            }
+            })
+            jsval = yield
         except GetterThrewError as e:
             error = e
 
