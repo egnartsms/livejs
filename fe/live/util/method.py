@@ -27,15 +27,16 @@ class PrimaryMethod:
 
 
 def wrap_primary_method(primary, instance, owner):
-    itr = reversed(owner.__mro__)
     arounds = []
 
-    while True:
-        meth = next(itr).__dict__.get(primary.name)
+    for cls in reversed(owner.__mro__):
+        meth = cls.__dict__.get(primary.name)
         if meth is primary:
             break
         if isinstance(meth, AroundMethod):
             arounds.append(meth.bind(instance, owner))
+    else:
+        raise RuntimeError("Method combination misuse")
 
     result = primary.bind(instance, owner)
     for around in reversed(arounds):

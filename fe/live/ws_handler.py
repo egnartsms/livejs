@@ -147,7 +147,7 @@ class WsHandler:
             'args': args
         }))
 
-    def run_sync_op(self, operation, args):
+    def run_sync_op(self, operation, args, report_be_error=True):
         assert co_driver.is_free(MAIN_CHANNEL),\
             "Cannot run synchronous operation: another BE interaction is in progress"
 
@@ -184,18 +184,12 @@ class WsHandler:
             if result['success']:
                 return result['value']
             else:
-                raise make_be_error(result['error'], result['info'])
+                be_error = make_be_error(result['error'], result['info'])
+                if report_be_error:
+                    sublime.error_message("LiveJS failure:\n{}".format(be_error.message))
+                raise be_error
         finally:
             self.is_directly_processing = False
 
 
 ws_handler = WsHandler()
-
-
-@contextlib.contextmanager
-def sublime_error_message_on_be_error():
-    try:
-        yield
-    except BackendError as be_error:
-        sublime.error_message("LiveJS failure:\n{}".format(be_error.message))
-        raise

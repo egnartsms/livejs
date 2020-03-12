@@ -16,7 +16,6 @@ from live.shared.input_handlers import ModuleInputHandler
 from live.sublime_util.edit import edit_for
 from live.sublime_util.selection import set_selection
 from live.util.method import method
-from live.ws_handler import sublime_error_message_on_be_error
 from live.ws_handler import ws_handler
 
 
@@ -55,10 +54,9 @@ class LivejsBrowseModule(BackendInteractingWindowCommand):
         if not is_interaction_possible() or not project_for_window(self.window):
             return None
 
-        with sublime_error_message_on_be_error():
-            modules = ws_handler.run_sync_op('getProjectModules', {
-                'projectId': setting.project_id[self.window]
-            })
+        modules = ws_handler.run_sync_op('getProjectModules', {
+            'projectId': setting.project_id[self.window]
+        })
 
         return ModuleInputHandler(modules)
 

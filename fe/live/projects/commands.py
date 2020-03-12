@@ -5,26 +5,30 @@ import sublime
 import sublime_plugin
 
 from .datastructures import Project
-from .operations import get_project_file_path
-from .operations import get_project_modules_contents
 from .operations import project_for_window
-from live.coroutine import co_driver
 from live.gstate import config
 from live.gstate import fe_projects
 from live.settings import setting
-from live.util.misc import file_contents
-from live.util.misc import gen_uid
-from live.ws_handler import ws_handler
-from live.ws_handler import sublime_error_message_on_be_error
 from live.shared.backend import BackendInteractingWindowCommand
 from live.shared.backend import is_interaction_possible
 from live.util.method import method
+from live.util.misc import file_contents
+from live.util.misc import gen_uid
+from live.ws_handler import ws_handler
 
 
 __all__ = ['LivejsLoadProject', 'LivejsAddModule']
 
 
 class LivejsLoadProject(BackendInteractingWindowCommand):
+    def validate(self):
+        proj = project_for_window(self.window)
+        if proj:
+            sublime.error_message("This window is already associated with project \"{}\""
+                                  .format(proj.name))
+            return False
+        return True
+
     @method.primary
     def run(self):
         folders = self.window.folders()
@@ -35,26 +39,16 @@ class LivejsLoadProject(BackendInteractingWindowCommand):
             return
 
         [root] = folders
-        project_file_path = get_project_file_path(root)
+        project_file_path = os.path.join(root, config.project_file_name)
 
-        if not project_file_path:
-            sublime.status_message("Project file not found (ending in .live.js)")
-            return
+        try:
+            with open(project_file_path, 'r') as fobj:
+                project_data = json.load(fobj)
+        except Exception as e:
+            sublime.error_message("Could not read project file: {}".format(e))
+            raise
 
-        if len(project_file_path) > 1:
-            sublime.status_message(
-                "Multiple project files (ending in .live.js) at root level"
-            )
-            return
-
-        [project_file_path] = project_file_path
-
-        ws_handler.run_async_op('evalAsJson', {
-            'source': file_contents(project_file_path)
-        })
-        project_data = yield
-
-        project = Project(
+        proj = Project(
             id=project_data['projectId'],
             name=project_data['projectName'],
             path=root
@@ -64,21 +58,23 @@ class LivejsLoadProject(BackendInteractingWindowCommand):
             'projectPath': root,
             'project': project_data,
             'sources': {
-                module['id']: file_contents(project.module_name_filepath(module['name']))
+                module['id']: proj.module_contents(module['name'])
                 for module in project_data['modules']
             }
         })
         yield
 
-        fe_projects.append(project)
-        setting.project_id[self.window] = project.id
+        fe_projects.append(proj)
+        setting.project_id[self.window] = proj.id
+
+        sublime.status_message("Project \"{}\" loaded!".format(proj.name))
 
 
 class LivejsAddModule(BackendInteractingWindowCommand):
     @method.primary
     def run(self, module_name):
-        project = project_for_window(self.window)
-        module_path = os.path.join(project.path, module_name + '.js')
+        proj = project_for_window(self.window)
+        module_path = proj.module_filepath(module_name)
 
         if os.path.exists(module_path):
             sublime.error_message("File \"{}\" already exists".format(module_path))
@@ -92,7 +88,7 @@ class LivejsAddModule(BackendInteractingWindowCommand):
             file.write(module_contents)
 
         ws_handler.run_async_op('loadModule', {
-            'projectId': project.id,
+            'projectId': proj.id,
             'moduleId': gen_uid(),
             'name': module_name,
             'source': module_contents,
@@ -101,18 +97,22 @@ class LivejsAddModule(BackendInteractingWindowCommand):
         yield       
 
     def input(self, args):
-        if not is_interaction_possible() or not project_for_window(self.window):
+        if not is_interaction_possible():
             return None
-        # return ModuleNameInputHandler(self.window)
-        return None
+
+        proj = project_for_window(self.window)
+        if not proj:
+            return None
+        
+        modules_data = ws_handler.run_sync_op('getProjectModules', {
+            'projectId': proj.id
+        })
+        return ModuleNameInputHandler([md['name'] for md in modules_data])
 
 
 class ModuleNameInputHandler(sublime_plugin.TextInputHandler):
-    def __init__(self, window):
-        modules_data = ws_handler.run_sync_op('getProjectModules', {
-            'projectId': setting.project_id[window]
-        })
-        self.existing_module_names = [md['name'] for md in modules_data]
+    def __init__(self, existing_module_names):
+        self.existing_module_names = existing_module_names
 
     def validate(self, text):
         if not re.match(r'^[a-zA-Z0-9-]+$', text):

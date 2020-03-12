@@ -481,6 +481,16 @@
          return module.untracked.includes(key);
       },
 
+      loadModule: function (module, source, projectId) {
+         let value = window.eval(source);
+   
+         if (value['init']) {
+            value['init'].call(null);
+         }
+   
+         return Object.assign({}, module, {projectId, value});
+      },
+
       loadModules: function (modules, sources, projectId) {
          // modules: [<same as in project file>]
          let result = [];
@@ -491,22 +501,13 @@
                throw new Error(`Not provided source code for module ${module['name']}`);
             }
 
-            let value = window.eval(source);
-      
-            if (value['init']) {
-               value['init'].call(null);
-            }
-      
-            result.push(Object.assign({}, module, {projectId, value}));
+            result.push($.loadModule(module, source, projectId));
          }
 
          return result;
       },
 
       opHandlers: {
-         evalAsJson: function ({source}) {
-            $.opReturn(window.eval(source));
-         },
          getProjects: function () {
             $.opReturn(
                   Object.values($.projects).map(proj => ({
@@ -575,12 +576,15 @@
                throw new Error(`Cannot add module "${name}": duplicate name`);
             }
 
-            let module = $.loadModules([{
-               id: moduleId,
-               name,
+            let module = $.loadModule(
+               {
+                  id: moduleId,
+                  name,
+                  untracked
+               },
                source,
-               untracked
-            }], projectId)[0];
+               projectId
+            );
             
             $.modules[module.id] = module;
             project.modules[module.id] = module;

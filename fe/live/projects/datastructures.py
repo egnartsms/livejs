@@ -1,6 +1,8 @@
 import os.path
+import re
 
 from collections import namedtuple
+from live.util.misc import file_contents
 
 
 Module = namedtuple('Module', 'id name')
@@ -12,5 +14,27 @@ class Project:
         self.name = name
         self.path = path
 
-    def module_name_filepath(self, module_name):
+    def module_filepath(self, module_name):
         return os.path.join(self.path, module_name + '.js')
+
+    def module_contents(self, module_name):
+        return file_contents(self.module_filepath(module_name))
+
+    def get_all_js_files(self, root):
+        """Return all .js files in the project root folder
+    
+        The project file is not included.
+
+        :return: [{'name', 'src'}]
+        """
+        res = []
+
+        for fname in os.listdir(root):
+            mo = re.match(r'(\w+)\.js$', fname)
+            if mo:
+                res.append({
+                    'name': mo.group(1),
+                    'src': file_contents(os.path.join(root, mo.group()))
+                })
+
+        return res

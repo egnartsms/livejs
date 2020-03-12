@@ -1,3 +1,4 @@
+import sublime
 from live.gstate import config
 from live.gstate import fe_projects
 from live.projects.datastructures import Project
@@ -8,7 +9,6 @@ from live.ws_handler import ws_handler
 
 @interacts_with_backend()
 def on_backend_connected():
-    print("on_backend_connected!")
     assign_window_for_livejs_project()
 
     ws_handler.run_async_op('getProjects', {})
@@ -36,7 +36,7 @@ def fe_to_be():
         ws_handler.run_async_op('loadProject', {
             'name': proj.name,
             'path': proj.path,
-            'modulesData': get_project_modules_contents(proj.path)
+            'modulesData': proj.get_all_js_files(proj.path)
         })
         project_id = yield
         if project_id != proj.id:

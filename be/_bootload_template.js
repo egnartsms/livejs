@@ -2,16 +2,24 @@
    'use strict';
 
    const 
-      port = LIVEJS_PORT,
-      projectModuleName = LIVEJS_PROJECT_MODULE_NAME,
-      projectPath = LIVEJS_PROJECT_PATH;
+      PORT = {{PORT}},
+      PROJECT_FILE_NAME = {{PROJECT_FILE_NAME}},
+      PROJECT_PATH = {{PROJECT_PATH}};
 
-   function urlOf(moduleName) {
-      return `http://localhost:${port}/bootload/${moduleName}.js`;
+   function fileUrl(filename) {
+      return `http://localhost:${PORT}/bootload/${filename}`;
+   }
+
+   function moduleUrl(moduleName) {
+      return fileUrl(moduleName + '.js');
    }
 
    function sourceOf(moduleName) {
-      return fetch(urlOf(moduleName)).then(r => r.text());
+      return fetch(moduleUrl(moduleName)).then(r => r.text());
+   }
+
+   function projectFileSource() {
+      return fetch(fileUrl(PROJECT_FILE_NAME)).then(r => r.text());
    }
 
    function onError(e) {
@@ -31,13 +39,18 @@
 
    (async function () {
       let
-         project = window.eval(await sourceOf(projectModuleName)),
+         project = JSON.parse(await projectFileSource()),
          sources = await allKeyed(
             project['modules'].map(m => [m['id'], sourceOf(m['name'])])
          ),
          bootstrapper$ = window.eval(sources[project['bootstrapper']]);
 
-      bootstrapper$['bootload'].call(null, {projectPath, port, project, sources});
+      bootstrapper$['bootload'].call(null, {
+         projectPath: PROJECT_PATH, 
+         port: PORT,
+         project,
+         sources
+      });
    })()
       .catch(onError);
 })();
