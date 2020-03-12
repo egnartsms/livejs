@@ -14,7 +14,7 @@ from live.projects import *  # noqa
 from live.projects.datastructures import Project
 from live.repl import *  # noqa
 from live.request_handler import request_handler
-from live.sublime_util import *  # noqa
+from live.sublime import *  # noqa
 
 
 g_el = EventLoop()

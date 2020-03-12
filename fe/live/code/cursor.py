@@ -3,7 +3,7 @@ import re
 import sublime
 
 from live.gstate import config
-from live.sublime_util.edit import edit_for
+from live.sublime.edit import edit_for
 
 
 class UnexpectedContents(Exception):

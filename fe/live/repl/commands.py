@@ -12,8 +12,8 @@ from live.settings import setting
 from live.shared.backend import BackendInteractingTextCommand
 from live.shared.command import TextCommand
 from live.shared.input_handlers import ModuleInputHandler
-from live.sublime_util.misc import read_only_set_to
-from live.sublime_util.selection import set_selection
+from live.sublime.misc import read_only_set_to
+from live.sublime.selection import set_selection
 from live.util.method import method
 from live.ws_handler import BackendError
 from live.ws_handler import ws_handler

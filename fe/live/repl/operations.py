@@ -7,9 +7,9 @@ from live.code.common import make_js_value_inserter
 from live.code.cursor import Cursor
 from live.shared.backend import interacts_with_backend
 from live.settings import setting
-from live.sublime_util.edit import edit_for
-from live.sublime_util.edit import edits_self_view
-from live.sublime_util.view_info import view_info_getter
+from live.sublime.edit import edit_for
+from live.sublime.edit import edits_self_view
+from live.sublime.view_info import view_info_getter
 from live.util.misc import first_or_none
 from live.util.misc import gen_uid
 from live.ws_handler import GetterThrewError

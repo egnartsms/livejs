@@ -6,15 +6,15 @@ from .nodes import JsLeaf
 from .nodes import JsObject
 from live.code.common import make_js_value_inserter
 from live.settings import setting
-from live.sublime_util.edit import edit_for
-from live.sublime_util.edit import edits_self_view
-from live.sublime_util.misc import is_subregion
-from live.sublime_util.misc import read_only_set_to
-from live.sublime_util.region_edit import RegionEditHelper
-from live.sublime_util.selection import selection_rowcol_preserved_on_replace
-from live.sublime_util.selection import set_selection
-from live.sublime_util.selection import viewport_and_selection_globally_preserved
-from live.sublime_util.selection import viewport_position_preserved
+from live.sublime.edit import edit_for
+from live.sublime.edit import edits_self_view
+from live.sublime.misc import is_subregion
+from live.sublime.misc import read_only_set_to
+from live.sublime.region_edit import RegionEditHelper
+from live.sublime.selection import selection_rowcol_preserved_on_replace
+from live.sublime.selection import set_selection
+from live.sublime.selection import viewport_and_selection_globally_preserved
+from live.sublime.selection import viewport_position_preserved
 from live.util.misc import tracking_last
 
 

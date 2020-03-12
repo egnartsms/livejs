@@ -2,7 +2,7 @@ import sublime
 
 from live.code.browser.command import ModuleBrowserCommandMixin
 from live.shared.command import TextCommand
-from live.sublime_util.selection import set_selection
+from live.sublime.selection import set_selection
 from live.util.method import method
 
 __all__ = [

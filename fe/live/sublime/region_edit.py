@@ -1,7 +1,7 @@
 import sublime
 
-from live.sublime_util.misc import is_subregion
-from live.sublime_util.misc import read_only_set_to
+from live.sublime.misc import is_subregion
+from live.sublime.misc import read_only_set_to
 
 
 CLOSING_AUTOINSERT_CHARS = ')]}"\'`'

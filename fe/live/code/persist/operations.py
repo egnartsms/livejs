@@ -4,7 +4,7 @@ from .cursor import Cursor
 from .cursor import ROOT_NESTING
 from .saver import Saver
 from live.code.common import make_js_value_inserter
-from live.sublime_util.edit import edits_view_arg
+from live.sublime.edit import edits_view_arg
 
 
 saver = Saver()

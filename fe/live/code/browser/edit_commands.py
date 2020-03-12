@@ -13,8 +13,8 @@ from live.shared.backend import BackendInteractingWindowCommand
 from live.shared.backend import is_interaction_possible
 from live.shared.command import TextCommand
 from live.shared.input_handlers import ModuleInputHandler
-from live.sublime_util.edit import edit_for
-from live.sublime_util.selection import set_selection
+from live.sublime.edit import edit_for
+from live.sublime.selection import set_selection
 from live.util.method import method
 from live.ws_handler import ws_handler
 

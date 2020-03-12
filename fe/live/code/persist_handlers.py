@@ -8,7 +8,7 @@ from .browser.operations import module_browser_view_for_module_id
 from .persist import operations as persist
 from live.projects.operations import project_by_id
 from live.projects.operations import window_for_project_id
-from live.sublime_util.on_view_loaded import on_load
+from live.sublime.on_view_loaded import on_load
 
 
 persist_handlers = {}

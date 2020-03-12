@@ -4,12 +4,12 @@ import sublime
 from live.code.cursor import Cursor
 from live.shared.backend import interacts_with_backend
 from live.settings import setting
-from live.sublime_util.edit import edit_for
-from live.sublime_util.edit import edits_self_view
-from live.sublime_util.misc import add_hidden_regions
-from live.sublime_util.misc import read_only_set_to
-from live.sublime_util.region_edit import RegionEditHelper
-from live.sublime_util.selection import set_selection
+from live.sublime.edit import edit_for
+from live.sublime.edit import edits_self_view
+from live.sublime.misc import add_hidden_regions
+from live.sublime.misc import read_only_set_to
+from live.sublime.region_edit import RegionEditHelper
+from live.sublime.selection import set_selection
 from live.ws_handler import ws_handler
 
 

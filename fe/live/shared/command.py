@@ -1,6 +1,6 @@
 import sublime_plugin
 
-from live.sublime_util.edit import edit_for
+from live.sublime.edit import edit_for
 from live.util.method import call_next
 from live.util.method import method
 from live.util.misc import mapping_key_set
