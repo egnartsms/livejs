@@ -2,6 +2,7 @@ import os.path
 import re
 
 from collections import namedtuple
+from live.projects.operations import read_project_file_at
 from live.util.misc import file_contents
 
 
@@ -38,3 +39,6 @@ class Project:
                 })
 
         return res
+
+    def read_project_data(self):
+        return read_project_file_at(self.path)

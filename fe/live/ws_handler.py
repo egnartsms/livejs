@@ -1,5 +1,4 @@
 import collections
-import contextlib
 import json
 import re
 import sublime

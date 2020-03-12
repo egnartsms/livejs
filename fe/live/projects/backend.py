@@ -1,4 +1,5 @@
 import sublime
+
 from live.gstate import config
 from live.gstate import fe_projects
 from live.projects.datastructures import Project
@@ -33,27 +34,24 @@ def fe_to_be():
         if proj.id == config.livejs_project_id:
             continue
 
+        proj_data = proj.read_project_data()
         ws_handler.run_async_op('loadProject', {
-            'name': proj.name,
-            'path': proj.path,
-            'modulesData': proj.get_all_js_files(proj.path)
+            'projectPath': proj.path,
+            'project': proj_data,
+            'sources': {
+                module['id']: proj.module_contents(module['name'])
+                for module in proj_data['modules']
+            }
         })
-        project_id = yield
-        if project_id != proj.id:
-            sublime.error_message(
-                "Failed to load project {}: ID mismatch".format(proj.name)
-            )
-            raise RuntimeError
+        yield
 
 
 def be_to_fe(be_projects):
-    del fe_projects[:]
-
-    for proj_data in be_projects:
-        fe_projects.append(
-            Project(
-                id=proj_data['id'],
-                name=proj_data['name'],
-                path=proj_data['path']
-            )
+    fe_projects[:] = [
+        Project(
+            id=proj_data['id'],
+            name=proj_data['name'],
+            path=proj_data['path']
         )
+        for proj_data in be_projects
+    ]

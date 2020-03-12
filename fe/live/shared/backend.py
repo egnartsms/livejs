@@ -4,7 +4,6 @@ import sublime
 import sublime_plugin
 
 from live.coroutine import co_driver
-from live.projects.operations import project_for_window
 from live.projects.operations import validate_window_project_loaded
 from live.shared.command import TextCommand
 from live.sublime_util.edit import call_ensuring_edit_for

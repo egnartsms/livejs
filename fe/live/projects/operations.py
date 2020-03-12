@@ -1,3 +1,5 @@
+import json
+import os.path
 import sublime
 
 from live.gstate import config
@@ -38,3 +40,8 @@ def validate_window_project_loaded(window):
 
 def project_by_id(project_id):
     return first_or_none(p for p in fe_projects if p.id == project_id)
+
+
+def read_project_file_at(root):
+    with open(os.path.join(root, config.project_file_name), 'r') as fobj:
+        return json.load(fobj)

@@ -1,4 +1,3 @@
-import json
 import os
 import re
 import sublime
@@ -8,6 +7,7 @@ from .datastructures import Project
 from .operations import project_for_window
 from live.gstate import config
 from live.gstate import fe_projects
+from live.projects.operations import read_project_file_at
 from live.settings import setting
 from live.shared.backend import BackendInteractingWindowCommand
 from live.shared.backend import is_interaction_possible
@@ -39,27 +39,25 @@ class LivejsLoadProject(BackendInteractingWindowCommand):
             return
 
         [root] = folders
-        project_file_path = os.path.join(root, config.project_file_name)
 
         try:
-            with open(project_file_path, 'r') as fobj:
-                project_data = json.load(fobj)
+            proj_data = read_project_file_at(root)
         except Exception as e:
             sublime.error_message("Could not read project file: {}".format(e))
             raise
 
         proj = Project(
-            id=project_data['projectId'],
-            name=project_data['projectName'],
+            id=proj_data['projectId'],
+            name=proj_data['projectName'],
             path=root
         )
 
         ws_handler.run_async_op('loadProject', {
             'projectPath': root,
-            'project': project_data,
+            'project': proj_data,
             'sources': {
                 module['id']: proj.module_contents(module['name'])
-                for module in project_data['modules']
+                for module in proj_data['modules']
             }
         })
         yield
