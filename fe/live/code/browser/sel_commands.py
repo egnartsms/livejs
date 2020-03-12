@@ -3,7 +3,7 @@ import sublime
 from live.code.browser.command import ModuleBrowserCommandMixin
 from live.shared.command import TextCommand
 from live.sublime.selection import set_selection
-from live.util.method import method
+from live.common.method import method
 
 __all__ = [
     'LivejsCbSelect', 'LivejsCbMoveSelNext', 'LivejsCbMoveSelPrev',

@@ -6,8 +6,8 @@ import threading
 
 from live.coroutine import co_driver
 from live.gstate import config
-from live.util.misc import index_where
-from live.util.misc import stopwatch
+from live.common.misc import index_where
+from live.common.misc import stopwatch
 
 
 MAIN_CHANNEL = 'main'

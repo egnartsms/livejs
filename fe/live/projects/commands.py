@@ -11,9 +11,9 @@ from live.projects.operations import read_project_file_at
 from live.settings import setting
 from live.shared.backend import BackendInteractingWindowCommand
 from live.shared.backend import is_interaction_possible
-from live.util.method import method
-from live.util.misc import file_contents
-from live.util.misc import gen_uid
+from live.common.method import method
+from live.common.misc import file_contents
+from live.common.misc import gen_uid
 from live.ws_handler import ws_handler
 
 

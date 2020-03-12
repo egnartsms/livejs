@@ -1,6 +1,6 @@
 import functools
 
-from live.util.misc import FreeObj
+from live.common.misc import FreeObj
 
 
 class AroundMethod:

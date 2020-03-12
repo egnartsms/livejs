@@ -7,7 +7,7 @@ from live.gstate import config
 from live.ws_handler import ws_handler
 from live.lowlvl.http import Response
 from live.lowlvl.websocket import WebSocket
-from live.util.misc import file_contents
+from live.common.misc import file_contents
 
 
 def request_handler(req):

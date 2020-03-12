@@ -15,7 +15,7 @@ from live.shared.command import TextCommand
 from live.shared.input_handlers import ModuleInputHandler
 from live.sublime.edit import edit_for
 from live.sublime.selection import set_selection
-from live.util.method import method
+from live.common.method import method
 from live.ws_handler import ws_handler
 
 

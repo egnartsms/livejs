@@ -7,8 +7,8 @@ from live.coroutine import co_driver
 from live.projects.operations import validate_window_project_loaded
 from live.shared.command import TextCommand
 from live.sublime.edit import call_ensuring_edit_for
-from live.util.method import method
-from live.util.misc import wrap_gtor
+from live.common.method import method
+from live.common.misc import wrap_gtor
 from live.ws_handler import MAIN_CHANNEL
 from live.ws_handler import ws_handler
 

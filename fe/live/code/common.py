@@ -1,7 +1,7 @@
 import re
 
-from live.util.misc import FreeObj
-from live.util.misc import tracking_last
+from live.common.misc import FreeObj
+from live.common.misc import tracking_last
 
 
 def make_js_value_inserter(cur, jsval, nesting):

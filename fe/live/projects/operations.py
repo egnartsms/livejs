@@ -5,7 +5,7 @@ import sublime
 from live.gstate import config
 from live.gstate import fe_projects
 from live.settings import setting
-from live.util.misc import first_or_none
+from live.common.misc import first_or_none
 
 
 def assign_window_for_livejs_project():

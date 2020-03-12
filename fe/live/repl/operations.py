@@ -10,8 +10,8 @@ from live.settings import setting
 from live.sublime.edit import edit_for
 from live.sublime.edit import edits_self_view
 from live.sublime.view_info import view_info_getter
-from live.util.misc import first_or_none
-from live.util.misc import gen_uid
+from live.common.misc import first_or_none
+from live.common.misc import gen_uid
 from live.ws_handler import GetterThrewError
 from live.ws_handler import ws_handler
 

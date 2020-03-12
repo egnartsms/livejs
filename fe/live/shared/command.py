@@ -1,9 +1,9 @@
 import sublime_plugin
 
 from live.sublime.edit import edit_for
-from live.util.method import call_next
-from live.util.method import method
-from live.util.misc import mapping_key_set
+from live.common.method import call_next
+from live.common.method import method
+from live.common.misc import mapping_key_set
 
 
 class TextCommand(sublime_plugin.TextCommand):

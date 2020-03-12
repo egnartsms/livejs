@@ -3,7 +3,7 @@ import re
 
 from collections import namedtuple
 from live.projects.operations import read_project_file_at
-from live.util.misc import file_contents
+from live.common.misc import file_contents
 
 
 Module = namedtuple('Module', 'id name')
