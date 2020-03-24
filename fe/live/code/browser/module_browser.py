@@ -1,11 +1,14 @@
+import contextlib
+import functools
 import sublime
 
-from .cursor import Cursor
 from .nodes import JsArray
 from .nodes import JsLeaf
 from .nodes import JsObject
-from live.code.common import make_js_value_inserter
+from live.common.misc import tracking_last
 from live.settings import setting
+from live.shared.cursor import Cursor
+from live.shared.js_cursor import StructuredCursor
 from live.sublime.edit import edit_for
 from live.sublime.edit import edits_self_view
 from live.sublime.misc import is_subregion
@@ -15,7 +18,6 @@ from live.sublime.selection import selection_rowcol_preserved_on_replace
 from live.sublime.selection import set_selection
 from live.sublime.selection import viewport_and_selection_globally_preserved
 from live.sublime.selection import viewport_position_preserved
-from live.common.misc import tracking_last
 
 
 class ModuleBrowser:
@@ -67,6 +69,10 @@ class ModuleBrowser:
     def discard_edit_region(self):
         self.view.erase_regions(self.EDIT_REGION_KEY)
 
+    def _make_cursor(self, pos, parent_node):
+        return StructuredCursor(pos, self.view, depth=parent_node.depth, 
+                                is_inside_object=parent_node.is_object)
+
     @edits_self_view
     def prepare_for_activation(self):
         """Invalidate the view before first activating it"""
@@ -92,44 +98,42 @@ class ModuleBrowser:
     @edits_self_view
     def edit_new_node(self, parent, pos):
         """Start editing the contents of the to-be-added node"""
-        nesting = parent.nesting + 1
-        
         self.view.set_read_only(False)
 
         if parent.is_object:
             def placeholder(cur):
                 cur.insert('newKey')
-                cur.sep_keyval(nesting)
+                cur.insert_keyval_sep()
                 cur.insert('newValue')
         else:
             def placeholder(cur):
                 cur.insert('newValue')
 
         if 0 == pos == parent.num_children:
-            cur = Cursor(parent.begin + 1, self.view)
+            cur = self._make_cursor(parent.begin + 1, parent)
             cur.push()
-            cur.sep_initial(nesting)
+            cur.insert_initial_sep()
             cur.push()
             placeholder(cur)
-            edit_reg = cur.pop_reg_beg()
-            cur.sep_terminal(nesting)
-            enclosing_reg = cur.pop_reg_beg()
+            edit_reg = cur.pop_region()
+            cur.insert_terminal_sep()
+            enclosing_reg = cur.pop_region()
         elif pos < parent.num_children:
-            cur = Cursor(parent.entries[pos].begin, self.view)
+            cur = self._make_cursor(parent.entries[pos].begin, parent)
             cur.push()
             cur.push()
             placeholder(cur)
-            edit_reg = cur.pop_reg_beg()
-            cur.sep_inter(nesting)
-            enclosing_reg = cur.pop_reg_beg()
+            edit_reg = cur.pop_region()
+            cur.insert_inter_sep()
+            enclosing_reg = cur.pop_region()
         else:
-            cur = Cursor(parent.entries[parent.num_children - 1].end, self.view)
+            cur = self._make_cursor(parent.entries[parent.num_children - 1].end, parent)
             cur.push()
-            cur.sep_inter(nesting)
+            cur.insert_inter_sep()
             cur.push()
             placeholder(cur)
-            edit_reg = cur.pop_reg_beg()
-            enclosing_reg = cur.pop_reg_beg()
+            edit_reg = cur.pop_region()
+            enclosing_reg = cur.pop_region()
 
         self.edit_region = edit_reg
         set_selection(self.view, to=edit_reg)
@@ -216,11 +220,9 @@ class ModuleBrowser:
         with read_only_set_to(self.view, False),\
                 selection_rowcol_preserved_on_replace(self.view, reg),\
                 viewport_position_preserved(self.view):
-            cur = Cursor(reg.a, self.view)
-            cur.erase(reg.b)
-
-            inserter = make_js_value_inserter(cur, new_value, node.nesting)
-            new_node, new_region = self.insert_js_value(inserter)
+            self.view.erase(edit_for[self.view], reg)
+            cur = self._make_cursor(reg.a, node.parent)
+            new_node, new_region = self._insert_js_value(cur, new_value)
 
         node.parent.replace_value_node_at(node.position, new_node, new_region)
 
@@ -240,7 +242,7 @@ class ModuleBrowser:
             cur.push()
             cur.insert(new_name)
 
-        node.parent.replace_key_node_region_at(node.position, cur.pop_reg_beg())
+        node.parent.replace_key_node_region_at(node.position, cur.pop_region())
 
     @edits_self_view
     def delete_node(self, path):
@@ -278,7 +280,6 @@ class ModuleBrowser:
     def insert_node(self, path, key, value):
         path, new_index = path[:-1], path[-1]
         parent = self.root.value_node_at(path)
-        nesting = parent.nesting + 1
 
         if (key is not None) != parent.is_object:
             raise RuntimeError("Object/array mismatch")
@@ -286,44 +287,35 @@ class ModuleBrowser:
         if self.is_editing_new_node and self.new_node_parent is parent and\
                 self.new_node_position == new_index:
             # In this Code Browser view we were editing the new node which is now being
-            # inserted. This is typical after the user commits.
+            # inserted. This is typical after the user commits. TODO: erase() below won't
+            # work if the cursor is outside editing region
             self.view.erase(edit_for[self.view], self.reh.enclosing_reg())
             self.done_editing()
 
-        def insert():
-            if parent.num_children == 0:
-                cur = Cursor(parent.begin + 1, self.view)
-                cur.sep_initial(nesting)
-                yield cur
-                cur.sep_terminal(nesting)
-            elif new_index >= parent.num_children:
-                cur = Cursor(parent.entries[-1].end, self.view)
-                cur.sep_inter(nesting)
-                yield cur
-            else:
-                cur = Cursor(parent.entries[new_index].begin, self.view)
-                yield cur
-                cur.sep_inter(nesting)
-
         with read_only_set_to(self.view, False):
-            gen = insert()
-            cur = next(gen)
+            if parent.num_children == 0:
+                cur = self._make_cursor(parent.begin + 1, parent)
+                cur.insert_initial_sep()
+                with cur.pos_preserved():
+                    cur.insert_terminal_sep()
+            elif new_index >= parent.num_children:
+                cur = self._make_cursor(parent.entries[-1].end, parent)
+                cur.insert_inter_sep()
+            else:
+                cur = self._make_cursor(parent.entries[new_index].begin, parent)
+                with cur.pos_preserved():
+                    cur.insert_inter_sep()
 
             if key is not None:
                 cur.push()
                 cur.insert(key)
-                key_region = cur.pop_reg_beg()
-                cur.sep_keyval(nesting)
-            
-            inserter = make_js_value_inserter(cur, value, nesting)
-            value_node, value_region = self.insert_js_value(inserter)
-
-            if key is not None:
+                key_region = cur.pop_region()
+                cur.insert_keyval_sep()
+                value_node, value_region = self._insert_js_value(cur, value)
                 parent.insert_at(new_index, key_region, value_node, value_region)
             else:
-                parent.insert_at(new_index, value_node, value_region)
-
-            next(gen, None)
+                node, region = self._insert_js_value(cur, value)
+                parent.insert_at(new_index, node, region)
 
     def focus_view(self):
         self.view.window().focus_view(self.view)
@@ -337,68 +329,74 @@ class ModuleBrowser:
         with read_only_set_to(self.view, False),\
                 viewport_and_selection_globally_preserved(self.view):
             self.view.erase(edit_for[self.view], sublime.Region(0, self.view.size()))
-            cur = Cursor(0, self.view)
 
-            root = JsObject()
+            cur = StructuredCursor(0, self.view, depth=-1)
 
-            cur.sep_initial(nesting=0)
-            for (key, value), islast in tracking_last(entries):
-                cur.push()
-                cur.insert(key)
-                key_region = cur.pop_reg_beg()
-
-                cur.sep_keyval(nesting=0)
-
-                inserter = make_js_value_inserter(cur, value, 0)
-                value_node, value_region = self.insert_js_value(inserter)
-
-                root.append(key_region, value_node, value_region)
-                
-                (cur.sep_terminal if islast else cur.sep_inter)(nesting=0)
+            # TODO: fix this hack by getting the whole object from BE, not entries
+            from collections import OrderedDict
+            root, _ = self._insert_js_value(cur, {
+                'type': 'object',
+                'value': OrderedDict(entries)
+            })
 
             self.root = root
             self.root.put_online(self.view)
 
             self.view.window().focus_view(self.view)
 
-    def insert_js_value(self, inserter):
-        """Return (node, region)"""
-        def insert_object():
+    def _insert_js_value(self, cur, jsval):
+        """Insert JS serialized value using the structured cursor cur.
+
+        :return: (node, region)
+        """
+
+        def insert_object(obj):
             node = JsObject()
+            
+            with cur.laying_out('object') as separate:
+                for key, value in obj.items():
+                    separate()
+                    cur.push()
+                    cur.insert(key)
+                    key_region = cur.pop_region()
 
-            while True:
-                cmd, args = next(inserter)
-                if cmd == 'pop':
-                    return node, args.region
+                    cur.insert_keyval_sep()
 
-                assert cmd == 'leaf'
-                key_region = args.region
+                    value_node, value_region = insert_any(value)
+                    node.append(key_region, value_node, value_region)
 
-                value_node, value_region = insert_any(*next(inserter))
-                node.append(key_region, value_node, value_region)
+            return node
 
-        def insert_array():
+        def insert_array(array):
             node = JsArray()
 
-            while True:
-                cmd, args = next(inserter)
-                if cmd == 'pop':
-                    return node, args.region
+            with cur.laying_out('array') as separate:
+                for value in array:
+                    separate()
+                    subnode, region = insert_any(value)
+                    node.append(subnode, region)
 
-                child_node, child_region = insert_any(cmd, args)
-                node.append(child_node, child_region)
+            return node
 
-        def insert_any(cmd, args):
-            if cmd == 'push_object':
-                return insert_object()
-            elif cmd == 'push_array':
-                return insert_array()
-            elif cmd == 'leaf':
-                return JsLeaf(), args.region
+        def insert_any(jsval):
+            cur.push()
+
+            if jsval['type'] == 'leaf':
+                cur.insert(jsval['value'])
+                node = JsLeaf()
+            elif jsval['type'] == 'function':
+                cur.insert_function(jsval['value'])
+                node = JsLeaf()
+            elif jsval['type'] == 'object':
+                node = insert_object(jsval['value'])
+            elif jsval['type'] == 'array':
+                node = insert_array(jsval['value'])
             else:
-                assert 0, "Inserter yielded unknown command: {}".format(cmd)
+                raise RuntimeError("Unexpected jsval: {}".format(jsval))
 
-        return insert_any(*next(inserter))
+            return node, cur.pop_region()
+
+        return insert_any(jsval)
 
     def set_status_be_pending(self):
         self.view.set_status('livejs_pending', "LiveJS: back-end is processing..")

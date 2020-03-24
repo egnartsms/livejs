@@ -1,9 +1,9 @@
 import contextlib
 import sublime
 
-from live.code.cursor import Cursor
-from live.shared.backend import interacts_with_backend
 from live.settings import setting
+from live.shared.backend import interacts_with_backend
+from live.shared.cursor import Cursor
 from live.sublime.edit import edit_for
 from live.sublime.edit import edits_self_view
 from live.sublime.misc import add_hidden_regions

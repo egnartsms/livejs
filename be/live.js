@@ -138,6 +138,9 @@
          return Object.prototype.hasOwnProperty.call(obj, prop);
       },
 
+      isArray: function (obj) {
+         return Array.isArray(obj) && obj !== Array.prototype;
+      },
       orderedKeysMap: "new Object()",
 
       ensureOrdkeys: function (obj) {
@@ -381,7 +384,7 @@
             };
       
             case 'function':
-            return $.inspectFunc(space, obj);
+            return $.inspectFunc(space, obj, deeply);
          }
       
          if (obj === null) {
@@ -398,61 +401,47 @@
             };
          }
       
-         if (deeply) {
-            return $.inspectObjectDeeply(space, obj);
-         }
-         else {
-            return $.inspectObjectShallowly(space, obj);
-         }
+         return $.inspectObject(space, obj, deeply);
       },
 
-      inspectFunc: function (space, func) {
-         return {
-            type: 'function',
-            id: $.inspecteeId(space, func),
-            value: func.toString()
+      inspectObject: function (space, object, deeply) {
+         if ($.isArray(object)) {
+            let res = {
+               type: 'array',
+               id: $.inspecteeId(space, object)
+            };
+      
+            if (deeply) {
+               res['value'] = Array.from(object, x => $.inspect(space, x, false));
+            }
+      
+            return res;
+         }
+      
+         let res = {
+            type: 'object',
+            id: $.inspecteeId(space, object)
          };
-      },
-
-      inspectObjectShallowly: function (space, object) {
-         if (object instanceof Array) {
-            return {
-               type: 'array',
-               id: $.inspecteeId(space, object)
-            };
-         }
-         else {
-            return {
-               type: 'object',
-               id: $.inspecteeId(space, object)
-            };
-         }
-      },
-
-      inspectObjectDeeply: function (space, object) {
-         if (object instanceof Array) {
-            return {
-               type: 'array',
-               id: $.inspecteeId(space, object),
-               value: Array.from(object, x => $.inspect(space, x, false))
-            };
+      
+         if (!deeply) {
+            return res;
          }
       
-         if (typeof object === 'function') {
-            return $.inspectFunc(space, object);
-         }
+         // if (typeof object === 'function') {
+         //    return $.inspectFunc(space, object);
+         // }
       
-         let result = {
+         let attrs = {
             __proto: $.inspect(space, Object.getPrototypeOf(object), false)
          };
          let nonvalues = {};
       
          for (let [prop, desc] of Object.entries(Object.getOwnPropertyDescriptors(object))) {
             if ($.hasOwnProperty(desc, 'value')) {
-               result[prop] = $.inspect(space, desc.value, false);
+               attrs[prop] = $.inspect(space, desc.value, false);
             }
             else {
-               result[prop] = {
+               attrs[prop] = {
                   type: 'unrevealed',
                   parentId: $.inspecteeId(space, object),
                   prop: prop
@@ -463,18 +452,28 @@
       
          for (let [prop, desc] of Object.entries(nonvalues)) {
             if (desc.get) {
-               result['get ' + prop] = $.inspectFunc(space, desc.get);
+               attrs['get ' + prop] = $.inspectFunc(space, desc.get);
             }
             if (desc.set) {
-               result['set ' + prop] = $.inspectFunc(space, desc.set);
+               attrs['set ' + prop] = $.inspectFunc(space, desc.set);
             }
          }
       
-         return {
-            type: 'object',
-            id: $.inspecteeId(space, object),
-            value: result
+         res['value'] = attrs;
+      
+         return res;
+      },
+      inspectFunc: function (space, func, deeply) {
+         let res = {
+            type: 'function',
+            id: $.inspecteeId(space, func)
          };
+      
+         if (deeply) {
+            res['value'] = func.toString();
+         }
+      
+         return res;
       },
 
       isKeyUntracked: function (module, key) {
@@ -525,17 +524,13 @@
                name: module.name
             })));
          },
-         getProjectMainModule: function ({projectId}) {
+         getProjectArbitraryModule: function ({projectId}) {
             let project = $.projects[projectId];
-            let mainModule = Object.values(project.modules).find($.isModuleMain);
-
-            if (!mainModule) {
-               throw new Error(`No main module found in project UID ${projectId}`);
-            }
+            let module = Object.values(project.modules)[0];
 
             $.opReturn({
-               id: mainModule.id,
-               name: mainModule.name
+               id: module.id,
+               name: module.name
             });
          },
          loadProject: function ({projectPath, project, sources}) {
@@ -759,7 +754,7 @@
                throw new Error(`Unknown object id: ${id}`);
             }
          
-            $.opReturn($.inspectObjectDeeply(space, object));
+            $.opReturn($.inspect(space, object, true));
          },
          inspectGetterValue: function ({spaceId, parentId, prop}) {
             let space = $.inspectionSpace(spaceId);

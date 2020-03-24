@@ -4,10 +4,10 @@ import re
 import sublime
 import threading
 
-from live.coroutine import co_driver
-from live.gstate import config
 from live.common.misc import index_where
 from live.common.misc import stopwatch
+from live.coroutine import co_driver
+from live.gstate import config
 
 
 MAIN_CHANNEL = 'main'
@@ -52,18 +52,35 @@ class WsHandler:
         self.is_directly_processing = False
         self.cond_processing = threading.Condition()
         self.websocket = None
+        self.cb_on_connected = None
+        self.persist_handlers = None
 
     @property
     def is_connected(self):
         return self.websocket is not None
 
+    def on_connected(self):
+        def wrapper(fn):
+            assert self.cb_on_connected is None
+            self.cb_on_connected = fn
+            # This is only needed for re-loading the project in development.  The code
+            # may register for on_connected callback after the browser has already re-
+            # established connection.
+            if self.is_connected:
+                self._fire_connected()
+            return fn
+        return wrapper
+
+    def _fire_connected(self):
+        if not self.cb_on_connected:
+            return
+        sublime.set_timeout(self.cb_on_connected, 0)
+
     def connect(self, websocket):
         assert not self.is_connected
         
-        from live.projects.backend import on_backend_connected
-       
         self.websocket = websocket
-        sublime.set_timeout(on_backend_connected, 0)
+        self._fire_connected()
         print("LiveJS: BE websocket connected")
 
     def disconnect(self):
@@ -118,9 +135,7 @@ class WsHandler:
             self._process_persist_descriptor(desc)
 
     def _process_persist_descriptor(self, desc):
-        from live.code.persist_handlers import persist_handlers
-
-        handler = persist_handlers[desc['operation']]
+        handler = self.persist_handlers[desc['operation']]
         handler(desc)
 
     def _process_op_result(self, msg):

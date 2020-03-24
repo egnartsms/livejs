@@ -30,21 +30,21 @@ def make_js_value_inserter(cur, jsval, nesting):
 
         if jsval['type'] == 'leaf':
             cur.insert(jsval['value'])
-            yield 'leaf', FreeObj(region=cur.pop_reg_beg(), jsval=jsval, nesting=nesting)
+            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
         elif jsval['type'] == 'unrevealed':
             cur.insert(jsval_placeholder('unrevealed'))
-            yield 'leaf', FreeObj(region=cur.pop_reg_beg(), jsval=jsval, nesting=nesting)
+            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
         elif jsval['type'] == 'function':
             insert_function(jsval['value'], nesting)
-            yield 'leaf', FreeObj(region=cur.pop_reg_beg(), jsval=jsval, nesting=nesting)
+            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
         elif jsval['type'] == 'object':
             yield from insert_object(jsval, nesting)
-            yield 'pop', FreeObj(region=cur.pop_reg_beg(), jsval=jsval, nesting=nesting)
+            yield 'pop', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
         elif jsval['type'] == 'array':
             yield from insert_array(jsval, nesting)
-            yield 'pop', FreeObj(region=cur.pop_reg_beg(), jsval=jsval, nesting=nesting)
+            yield 'pop', FreeObj(region=cur.pop_region(), jsval=jsval, nesting=nesting)
         else:
-            cur.pop_reg_beg()
+            cur.pop_region()
             assert 0, "Unknown type: {}".format(jsval['type'])
 
     def insert_array(arr, nesting):
@@ -60,10 +60,10 @@ def make_js_value_inserter(cur, jsval, nesting):
             return
 
         cur.insert("[")
-        cur.sep_initial(nesting + 1)
+        temp_init_sep(cur, nesting + 1)
         for item, islast in tracking_last(arr['value']):
             yield from insert_any(item, nesting + 1)
-            (cur.sep_terminal if islast else cur.sep_inter)(nesting + 1)
+            (temp_term_sep if islast else temp_inter_sep)(cur, nesting + 1)
         cur.insert("]")
 
     def insert_object(obj, nesting):
@@ -79,17 +79,17 @@ def make_js_value_inserter(cur, jsval, nesting):
             return
 
         cur.insert("{")
-        cur.sep_initial(nesting + 1)
+        temp_init_sep(cur, nesting + 1)
         for (k, v), islast in tracking_last(obj['value'].items()):
             cur.push()
             cur.insert(k)
-            yield 'leaf', FreeObj(region=cur.pop_reg_beg(), jsval=k)
+            yield 'leaf', FreeObj(region=cur.pop_region(), jsval=k)
 
-            cur.sep_keyval(nesting + 1)
+            temp_keyval_sep(cur)
 
             yield from insert_any(v, nesting + 1)
 
-            (cur.sep_terminal if islast else cur.sep_inter)(nesting + 1)
+            (temp_term_sep if islast else temp_inter_sep)(cur, nesting + 1)
         cur.insert("}")
 
     def insert_function(source, nesting):
@@ -115,6 +115,25 @@ def make_js_value_inserter(cur, jsval, nesting):
                 cur.insert('\n')
 
     yield from insert_any(jsval, nesting)
+
+
+def temp_init_sep(cur, nesting):
+    cur.insert('\n')
+    cur.indent(nesting + 1)
+
+
+def temp_inter_sep(cur, nesting):
+    cur.insert(',\n')
+    cur.indent(nesting + 1)
+
+
+def temp_term_sep(cur, nesting):
+    cur.insert('\n')
+    cur.indent(nesting)
+
+
+def temp_keyval_sep(cur):
+    cur.insert(': ')
 
 
 def jsval_placeholder(jsval_type):

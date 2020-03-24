@@ -85,7 +85,9 @@ def interacts_with_backend(edits_view=None):
             gtor = fn(*args, **kwargs)
             if edits_view:
                 ba = fn_sig.bind(*args, **kwargs)
-                view_getter_args = {param: ba[param] for param in view_getter_params}
+                view_getter_args = {
+                    param: ba.arguments[param] for param in view_getter_params
+                }
                 view_getter = lambda: edits_view(**view_getter_args)
                 gtor = wrap_in_edit_view(gtor, view_getter)
             co_driver.add_coroutine(gtor, MAIN_CHANNEL)

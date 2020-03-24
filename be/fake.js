@@ -7,13 +7,26 @@
          nontrackedKeys: [
          ]
       },
-
       init: function () {
          
       },
-
       inspectThing: function (thing) {
          console.log(thing, "was just inspected");
+      },
+      vasya: 210,
+      protractor: {
+         a: [
+            1
+         ],
+         b: [
+            3,
+            2
+         ],
+         c: {
+            name: [
+               /Jo[e]/
+            ]
+         }
       }
    };
 

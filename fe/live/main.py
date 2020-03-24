@@ -6,6 +6,7 @@ import os
 import traceback
 
 from live.code import *  # noqa
+from live.code.persist_handlers import persist_handlers
 from live.gstate import config
 from live.gstate import fe_projects
 from live.lowlvl.eventloop import EventLoop
@@ -15,6 +16,7 @@ from live.projects.datastructures import Project
 from live.repl import *  # noqa
 from live.request_handler import request_handler
 from live.sublime import *  # noqa
+from live.ws_handler import ws_handler
 
 
 g_el = EventLoop()
@@ -51,6 +53,7 @@ def plugin_loaded():
         path=config.be_root
     )
     fe_projects[:] = [config.livejs_project]
+    ws_handler.persist_handlers = persist_handlers
     
     g_el.run_in_new_thread()
     start_server()

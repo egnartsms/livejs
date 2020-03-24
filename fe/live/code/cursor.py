@@ -39,7 +39,7 @@ class Cursor:
         return state
 
     @contextlib.contextmanager
-    def curpos_preserved(self):
+    def pos_preserved(self):
         pos = self.pos
         yield pos
         self.pos = pos
@@ -72,7 +72,7 @@ class Cursor:
     def push(self):
         self.retain_stack.append(self.pos)
 
-    def pop_reg_beg(self):
+    def pop_region(self):
         beg = self.retain_stack.pop()
         end = self.pos
         return sublime.Region(beg, end)
@@ -214,7 +214,7 @@ class Cursor:
         self.pos = reg.b
 
     def _is_start_of_regex(self):
-        with self.curpos_preserved():
+        with self.pos_preserved():
             self.pos -= 1
             self.skip_ws_bwd()
             return self.prec_char in ",([{!~+-/*&|=:"

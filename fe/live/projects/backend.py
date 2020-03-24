@@ -8,6 +8,7 @@ from live.shared.backend import interacts_with_backend
 from live.ws_handler import ws_handler
 
 
+@ws_handler.on_connected()
 @interacts_with_backend()
 def on_backend_connected():
     assign_window_for_livejs_project()

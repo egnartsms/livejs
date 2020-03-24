@@ -92,9 +92,7 @@ class LivejsCbCommit(BackendInteractingTextCommand, ModuleBrowserCommandMixin):
     def _commit_new_node_edit(self):
         js_entered = self.mbrowser.edit_region_contents()
         if self.mbrowser.new_node_parent.is_object:
-            keyval_sep = r'=' if self.mbrowser.new_node_parent.is_root else r':'
-            mo = re.match(r'([a-zA-Z0-9_$]+)\s*{}\s*(.+)$'.format(keyval_sep),
-                          js_entered, re.DOTALL)
+            mo = re.match(r'([a-zA-Z0-9_$]+)\s*:\s*(.+)$', js_entered, re.DOTALL)
             if mo is None:
                 sublime.status_message("Invalid object entry")
                 return
