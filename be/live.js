@@ -3,11 +3,8 @@
 
    let $ = {
       projects: null,
-      
       modules: null,
-
       port: null,
-
       socket: null,
 
       bootload: function ({projectPath, port, project, sources}) {
@@ -427,10 +424,6 @@
             return res;
          }
       
-         // if (typeof object === 'function') {
-         //    return $.inspectFunc(space, object);
-         // }
-      
          let attrs = {
             __proto: $.inspect(space, Object.getPrototypeOf(object), false)
          };
@@ -594,21 +587,24 @@
                $.serialize($.valueAt($.moduleObject(mid), path))
             );
          },
-         sendAllEntries: function ({mid}) {
+         getModuleObject: function ({mid}) {
             let
-               result = [],
+               result = {},
                module = $.modules[mid];
          
             for (let [key, value] of $.entries(module.value)) {
                if ($.isKeyUntracked(module, key)) {
-                  result.push([key, $.serialize('new Object()')])
+                  result[key] = $.serialize('new Object()');
                }
                else {
-                  result.push([key, $.serialize(value)]);   
+                  result[key] = $.serialize(value);
                }
             }
          
-            $.opReturn(result);
+            $.opReturn({
+               'type': 'object',
+               'value': result
+            });
          },
          replace: function ({mid, path, codeNewValue}) {
             let 

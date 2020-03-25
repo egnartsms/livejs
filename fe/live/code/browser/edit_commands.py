@@ -30,11 +30,11 @@ class LivejsCbRefresh(BackendInteractingTextCommand, ModuleBrowserCommandMixin):
     @method.primary
     def run(self):
         self.mbrowser.done_editing()
-        ws_handler.run_async_op('sendAllEntries', {
+        ws_handler.run_async_op('getModuleObject', {
             'mid': self.mbrowser.module_id
         })
-        entries = yield
-        self.mbrowser.refresh(entries)
+        root_object = yield
+        self.mbrowser.refresh(root_object)
 
 
 class LivejsBrowseModule(BackendInteractingWindowCommand):
@@ -44,9 +44,9 @@ class LivejsBrowseModule(BackendInteractingWindowCommand):
         view = module_browser_view_for_module_id(self.window, module.id)
         if view is None:
             view = new_module_browser_view(self.window, module)
-            ws_handler.run_async_op('sendAllEntries', {'mid': module.id})
-            entries = yield
-            module_browser_for(view).refresh(entries)
+            ws_handler.run_async_op('getModuleObject', {'mid': module.id})
+            root_object = yield
+            module_browser_for(view).refresh(root_object)
         else:
             module_browser_for(view).focus_view()
 

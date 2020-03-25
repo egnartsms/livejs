@@ -321,7 +321,7 @@ class ModuleBrowser:
         self.view.window().focus_view(self.view)
 
     @edits_self_view
-    def refresh(self, entries):
+    def refresh(self, root_object):
         if self.is_online:
             self.root.put_offline()
             self.root = None
@@ -331,15 +331,9 @@ class ModuleBrowser:
             self.view.erase(edit_for[self.view], sublime.Region(0, self.view.size()))
 
             cur = StructuredCursor(0, self.view, depth=-1)
+            cur.insert('$ = ')
 
-            # TODO: fix this hack by getting the whole object from BE, not entries
-            from collections import OrderedDict
-            root, _ = self._insert_js_value(cur, {
-                'type': 'object',
-                'value': OrderedDict(entries)
-            })
-
-            self.root = root
+            self.root, _ = self._insert_js_value(cur, root_object)
             self.root.put_online(self.view)
 
             self.view.window().focus_view(self.view)
