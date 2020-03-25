@@ -2,41 +2,32 @@
    'use strict';
 
    let $ = {
-      livejs: {
-         projectId: 'a559f0f3ff8744bb944f1dda48650b4f',
-         moduleId: 'acc0b54988854dd9b5e74d269ea731e1',
-         nontrackedKeys: [
-            "port",
-            "socket",
-            "projects",
-            "modules",
-            "orderedKeysMap",
-            "inspectionSpaces"
-         ],
-      },
-
       projects: null,
-      
       modules: null,
+      port: null,
+      socket: null,
 
-      port: "new Object()",
+      bootload: function ({projectPath, port, project, sources}) {
+         let 
+            bootstrapper = project['modules'].find(
+               m => m['id'] === project['bootstrapper']
+            ),
+            modules = $.loadModules(
+               project['modules'].filter(m => m !== bootstrapper),
+               sources,
+               project['projectId']
+            );
 
-      socket: "new Object()",
+         // The bootstrapper needs to be added to this array manually
+         modules.push(Object.assign({}, bootstrapper, {
+            projectId: project['projectId'],
+            value: $,
+         }));
 
-      bootload: function ({otherModules, projectPath, port}) {
-         // Initialize .projects and .modules structures
-         let modules = $.loadModulesSetProjectId(otherModules, $.livejs.projectId);
-         modules.unshift({
-            id: $.livejs.moduleId,
-            projectId: $.livejs.projectId,
-            name: 'live',
-            value: $
-         });
-      
          $.projects = {
-            [$.livejs.projectId]: {
-               id: $.livejs.projectId,
-               name: 'livejS',
+            [project['projectId']]: {
+               id: project['projectId'],
+               name: project['projectName'],
                path: projectPath,
                modules: $.byId(modules)
             }
@@ -77,13 +68,13 @@
       },
 
       onSocketMessage: function (evt) {
-         let request = JSON.parse(evt.data);
-      
+         let msg = JSON.parse(evt.data);
+
          try {
-            $.requestHandlers[request['type']].call(null, request['args']);
+            $.opHandlers[msg['operation']].call(null, msg['args']);
          }
          catch (e) {
-            $.respondFailure('generic', {
+            $.opExc('generic', {
                message: e.stack
             });
          }
@@ -93,42 +84,42 @@
          $.socket.send(JSON.stringify(message));
       },
 
-      respondFailure: function (error, info) {
+      opExc: function (error, info) {
          $.send({
-            type: 'response',
+            type: 'result',
             success: false,
             error: error,
             info: info
          });
       },
 
-      respondSuccess: function (value=null) {
+      opReturn: function (value=null) {
          $.send({
-            type: 'response',
+            type: 'result',
             success: true,
             value: value
          });
       },
 
-      persist: function (requests) {
+      persist: function (descriptors) {
          $.send({
             type: 'persist',
-            requests: requests
+            descriptors: descriptors
          });
       },
 
-      persistInModule: function (module, requests) {
-         if (!(requests instanceof Array)) {
-            requests = [requests];
+      persistInModule: function (module, descriptors) {
+         if (!(descriptors instanceof Array)) {
+            descriptors = [descriptors];
          }
 
-         for (let req of requests) {
-            req['projectId'] = module.projectId;
-            req['moduleId'] = module.id;
-            req['moduleName'] = module.name;
+         for (let desc of descriptors) {
+            desc['projectId'] = module.projectId;
+            desc['moduleId'] = module.id;
+            desc['moduleName'] = module.name;
          }
 
-         $.persist(requests);
+         $.persist(descriptors);
       },
 
       evalFBody: function ($obj, code) {
@@ -144,6 +135,9 @@
          return Object.prototype.hasOwnProperty.call(obj, prop);
       },
 
+      isArray: function (obj) {
+         return Array.isArray(obj) && obj !== Array.prototype;
+      },
       orderedKeysMap: "new Object()",
 
       ensureOrdkeys: function (obj) {
@@ -387,7 +381,7 @@
             };
       
             case 'function':
-            return $.inspectFunc(space, obj);
+            return $.inspectFunc(space, obj, deeply);
          }
       
          if (obj === null) {
@@ -404,61 +398,43 @@
             };
          }
       
-         if (deeply) {
-            return $.inspectObjectDeeply(space, obj);
-         }
-         else {
-            return $.inspectObjectShallowly(space, obj);
-         }
+         return $.inspectObject(space, obj, deeply);
       },
 
-      inspectFunc: function (space, func) {
-         return {
-            type: 'function',
-            id: $.inspecteeId(space, func),
-            value: func.toString()
+      inspectObject: function (space, object, deeply) {
+         if ($.isArray(object)) {
+            let res = {
+               type: 'array',
+               id: $.inspecteeId(space, object)
+            };
+      
+            if (deeply) {
+               res['value'] = Array.from(object, x => $.inspect(space, x, false));
+            }
+      
+            return res;
+         }
+      
+         let res = {
+            type: 'object',
+            id: $.inspecteeId(space, object)
          };
-      },
-
-      inspectObjectShallowly: function (space, object) {
-         if (object instanceof Array) {
-            return {
-               type: 'array',
-               id: $.inspecteeId(space, object)
-            };
-         }
-         else {
-            return {
-               type: 'object',
-               id: $.inspecteeId(space, object)
-            };
-         }
-      },
-
-      inspectObjectDeeply: function (space, object) {
-         if (object instanceof Array) {
-            return {
-               type: 'array',
-               id: $.inspecteeId(space, object),
-               value: Array.from(object, x => $.inspect(space, x, false))
-            };
+      
+         if (!deeply) {
+            return res;
          }
       
-         if (typeof object === 'function') {
-            return $.inspectFunc(space, object);
-         }
-      
-         let result = {
+         let attrs = {
             __proto: $.inspect(space, Object.getPrototypeOf(object), false)
          };
          let nonvalues = {};
       
          for (let [prop, desc] of Object.entries(Object.getOwnPropertyDescriptors(object))) {
             if ($.hasOwnProperty(desc, 'value')) {
-               result[prop] = $.inspect(space, desc.value, false);
+               attrs[prop] = $.inspect(space, desc.value, false);
             }
             else {
-               result[prop] = {
+               attrs[prop] = {
                   type: 'unrevealed',
                   parentId: $.inspecteeId(space, object),
                   prop: prop
@@ -469,168 +445,166 @@
       
          for (let [prop, desc] of Object.entries(nonvalues)) {
             if (desc.get) {
-               result['get ' + prop] = $.inspectFunc(space, desc.get);
+               attrs['get ' + prop] = $.inspectFunc(space, desc.get);
             }
             if (desc.set) {
-               result['set ' + prop] = $.inspectFunc(space, desc.set);
+               attrs['set ' + prop] = $.inspectFunc(space, desc.set);
             }
          }
       
-         return {
-            type: 'object',
-            id: $.inspecteeId(space, object),
-            value: result
+         res['value'] = attrs;
+      
+         return res;
+      },
+      inspectFunc: function (space, func, deeply) {
+         let res = {
+            type: 'function',
+            id: $.inspecteeId(space, func)
          };
-      },
-
-      isKeyNontracked: function (module, key) {
-         return module.livejs.nontrackedKeys.includes(key);
-      },
-
-      isModuleMain: function (module) {
-         return !!module.value['livejs']['projectId'];
-      },
-
-      loadModules: function (modulesData) {
-         // modulesData: [{name, src}]
-         let modules = [];
       
-         for (let {name, src} of modulesData) {
-            let value = window.eval(src);
+         if (deeply) {
+            res['value'] = func.toString();
+         }
       
-            if (value['init']) {
-               value['init'].call(null);
+         return res;
+      },
+
+      isKeyUntracked: function (module, key) {
+         return module.untracked.includes(key);
+      },
+
+      loadModule: function (module, source, projectId) {
+         let value = window.eval(source);
+   
+         if (value['init']) {
+            value['init'].call(null);
+         }
+   
+         return Object.assign({}, module, {projectId, value});
+      },
+
+      loadModules: function (modules, sources, projectId) {
+         // modules: [<same as in project file>]
+         let result = [];
+
+         for (let module of modules) {
+            let source = sources[module['id']];
+            if (!source) {
+               throw new Error(`Not provided source code for module ${module['name']}`);
             }
-      
-            modules.push({
-               id: value['livejs']['moduleId'],
-               projectId: null,  // will be initialized later, we don't know project id here
-               name: name,
-               value: value
-            });
+
+            result.push($.loadModule(module, source, projectId));
          }
-      
-         return modules;
+
+         return result;
       },
 
-      loadModulesDetermineProjectId: function (modulesData) {
-         let 
-            modules = $.loadModules(modulesData),
-            mainModule = modules.find($.isModuleMain);
-      
-         if (!mainModule) {
-            throw new Error(`No main module could be determined`);
-         }
-      
-         let projectId = mainModule.value['livejs']['projectId'];
-      
-         for (let module of modules) {
-            module.projectId = projectId;
-         }
-      
-         return {projectId, modules};  
-      },
-
-      loadModulesSetProjectId: function (modulesData, projectId) {
-         let modules = $.loadModules(modulesData);
-      
-         for (let module of modules) {
-            module.projectId = projectId;
-         }
-      
-         return modules;
-      },
-
-      requestHandlers: {
+      opHandlers: {
          getProjects: function () {
-            $.respondSuccess(Object.values($.projects).map(proj => ({
-               id: proj.id,
-               name: proj.name,
-               path: proj.path
-            })));
+            $.opReturn(
+                  Object.values($.projects).map(proj => ({
+                     id: proj.id,
+                     name: proj.name,
+                     path: proj.path
+                  }))
+            );
          },
          getProjectModules: function ({projectId}) {
             let project = $.projects[projectId];
 
-            $.respondSuccess(Object.values(project.modules).map(module => ({
+            $.opReturn(Object.values(project.modules).map(module => ({
                id: module.id,
                name: module.name
             })));
          },
-         getProjectMainModule: function ({projectId}) {
+         getProjectArbitraryModule: function ({projectId}) {
             let project = $.projects[projectId];
-            let mainModule = Object.values(project.modules).find($.isModuleMain);
+            let module = Object.values(project.modules)[0];
 
-            if (!mainModule) {
-               throw new Error(`No main module found in project UID ${projectId}`);
-            }
-
-            $.respondSuccess({
-               id: mainModule.id,
-               name: mainModule.name
+            $.opReturn({
+               id: module.id,
+               name: module.name
             });
          },
-         loadProject: function ({name, path, modulesData}) {
-            let {projectId, modules} = $.loadModulesDetermineProjectId(modulesData);
-         
-            if (projectId in $.projects) {
-               throw new Error(`Attempted to load same project twice`);
+         loadProject: function ({projectPath, project, sources}) {
+            if (project['projectId'] in $.projects) {
+               throw new Error(`Project is already loaded`);
             }
-            if (modules.some(m => m.id in $.modules)) {
-               throw new Error(`Module id collided with another project's module`)
+            if (project['modules'].some(m => m['id'] in $.modules)) {
+               throw new Error(`Duplicate module id`)
             }
+
+            let modules = $.loadModules(
+               project['modules'], sources, project['projectId']
+            );
          
-            $.projects[projectId] = {
-               id: projectId,
-               name: name,
-               path: path,
+            $.projects[project['projectId']] = {
+               id: project['projectId'],
+               name: project['projectName'],
+               path: projectPath,
                modules: $.byId(modules)
             };
          
             Object.assign($.modules, $.byId(modules));
          
-            $.respondSuccess(projectId);
+            $.opReturn();
          },
-         loadModule: function ({projectId, name, src}) {
+         loadModule: function ({projectId, moduleId, name, source, untracked}) {
             let project = $.projects[projectId];
 
-            if (Object.values(project.modules).find(m => m.name == name)) {
-               throw new Error(`Cannot add module: duplicate name`);
+            if (!project) {
+               throw new Error(`Project with given ID is not loaded`);
             }
 
-            let module = $.loadModulesSetProjectId([{name, src}], projectId)[0];
-            if (module.id in $.modules) {
+            if (moduleId in $.modules) {
                throw new Error(`Module ID duplicated`);
             }
 
+            if (Object.values(project.modules).find(m => m.name === name)) {
+               throw new Error(`Cannot add module "${name}": duplicate name`);
+            }
+
+            let module = $.loadModule(
+               {
+                  id: moduleId,
+                  name,
+                  untracked
+               },
+               source,
+               projectId
+            );
+            
             $.modules[module.id] = module;
             project.modules[module.id] = module;
 
-            $.respondSuccess();
+            $.opReturn();
          },
          getKeyAt: function ({mid, path}) {
-            $.respondSuccess($.keyAt($.moduleObject(mid), path));
+            $.opReturn($.keyAt($.moduleObject(mid), path));
          },
          getValueAt: function ({mid, path}) {
-            $.respondSuccess(
+            $.opReturn(
                $.serialize($.valueAt($.moduleObject(mid), path))
             );
          },
-         sendAllEntries: function ({mid}) {
+         getModuleObject: function ({mid}) {
             let
-               result = [],
-               moduleValue = $.modules[mid].value;
+               result = {},
+               module = $.modules[mid];
          
-            for (let [key, value] of $.entries(moduleValue)) {
-               if ($.isKeyNontracked(moduleValue, key)) {
-                  result.push([key, $.serialize('new Object()')])
+            for (let [key, value] of $.entries(module.value)) {
+               if ($.isKeyUntracked(module, key)) {
+                  result[key] = $.serialize('new Object()');
                }
                else {
-                  result.push([key, $.serialize(value)]);   
+                  result[key] = $.serialize(value);
                }
             }
          
-            $.respondSuccess(result);
+            $.opReturn({
+               'type': 'object',
+               'value': result
+            });
          },
          replace: function ({mid, path, codeNewValue}) {
             let 
@@ -641,11 +615,11 @@
             parent[key] = newValue;
          
             $.persistInModule(module, {
-               type: 'replace',
+               operation: 'replace',
                path,
                newValue: $.serialize(newValue)
             });
-            $.respondSuccess();
+            $.opReturn();
          },
          renameKey: function ({mid, path, newName}) {
             let 
@@ -655,7 +629,7 @@
             $.checkObject(parent);
          
             if ($.hasOwnProperty(parent, newName)) {
-               $.respondFailure('duplicate_key', {
+               $.opExc('duplicate_key', {
                   objPath: path,
                   duplicatedKey: newName,
                   message: `Cannot rename to ${newName}: duplicate property name`
@@ -669,11 +643,11 @@
             delete parent[key];
          
             $.persistInModule(module, {
-               type: 'rename_key',
+               operation: 'rename_key',
                path,
                newName
             });
-            $.respondSuccess();
+            $.opReturn();
          },
          addArrayEntry: function ({mid, parentPath, pos, codeValue}) {
             let
@@ -686,12 +660,12 @@
             parent.splice(pos, 0, value);
          
             $.persistInModule(module, {
-               type: 'insert',
+               operation: 'insert',
                path: parentPath.concat(pos),
                key: null,
                value: $.serialize(value)
             });
-            $.respondSuccess();
+            $.opReturn();
          },
          addObjectEntry: function ({mid, parentPath, pos, key, codeValue}) {
             let 
@@ -707,12 +681,12 @@
             $.insertProp(parent, key, value, pos);   
          
             $.persistInModule(module, {
-               type: 'insert',
+               operation: 'insert',
                path: parentPath.concat(pos),
                key: key,
                value: $.serialize(value)
             });
-            $.respondSuccess();
+            $.opReturn();
          },
          move: function ({mid, path, fwd}) {
             let 
@@ -734,18 +708,18 @@
          
             $.persistInModule(module, [
                {
-                  type: 'delete',
+                  operation: 'delete',
                   path: path
                }, 
                {
-                  type: 'insert',
+                  operation: 'insert',
                   path: newPath,
                   key: parent instanceof Array ? null : key,
-                  value: $.isKeyNontracked(module.value, key) ?
+                  value: $.isKeyUntracked(module, key) ?
                      $.serialize('new Object()') : $.serialize(value)
                }
             ]);
-            $.respondSuccess(newPath);
+            $.opReturn(newPath);
          },
          deleteEntry: function ({mid, path}) {
             let 
@@ -760,14 +734,14 @@
             }
          
             $.persistInModule(module, {
-               type: 'delete',
+               operation: 'delete',
                path: path
             });
-            $.respondSuccess();
+            $.opReturn();
          },
          replEval: function ({mid, spaceId, code}) {
             let obj = $.evalExpr($.modules[mid].value, code);
-            $.respondSuccess($.inspect($.inspectionSpace(spaceId), obj, true));
+            $.opReturn($.inspect($.inspectionSpace(spaceId), obj, true));
          },
          inspectObjectById: function ({spaceId, id}) {
             let space = $.inspectionSpace(spaceId);
@@ -776,7 +750,7 @@
                throw new Error(`Unknown object id: ${id}`);
             }
          
-            $.respondSuccess($.inspectObjectDeeply(space, object));
+            $.opReturn($.inspect(space, object, true));
          },
          inspectGetterValue: function ({spaceId, parentId, prop}) {
             let space = $.inspectionSpace(spaceId);
@@ -790,7 +764,7 @@
                result = parent[prop];
             }
             catch (e) {
-               $.respondFailure('getter_threw', {
+               $.opExc('getter_threw', {
                   excClassName: e.constructor.name,
                   excMessage: e.message,
                   message: `Getter threw an exception`
@@ -798,12 +772,12 @@
                return;
             }
          
-            $.respondSuccess($.inspect(space, result, true));
+            $.opReturn($.inspect(space, result, true));
          },
          deleteInspectionSpace: function ({spaceId}) {
             let space = $.inspectionSpaces[spaceId];
             if (!space) {
-               $.respondSuccess(false);
+               $.opReturn(false);
                return;
             }
          
@@ -811,7 +785,7 @@
             space.obj2id.clear();
             delete $.inspectionSpaces[spaceId];
          
-            $.respondSuccess(true);
+            $.opReturn(true);
          }
       }
    };

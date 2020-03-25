@@ -6,7 +6,7 @@ import hashlib
 import base64
 import traceback
 
-from live.util.misc import take_over_list_items
+from live.common.misc import take_over_list_items
 from .sockutil import recv_next, recv_next_as_buf, send_buffer
 from .http import Response
 from .eventloop import Fd

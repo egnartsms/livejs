@@ -4,10 +4,10 @@ import os
 import re
 
 from live.gstate import config
-from live.gstate import ws_handler
+from live.ws_handler import ws_handler
 from live.lowlvl.http import Response
 from live.lowlvl.websocket import WebSocket
-from live.util.misc import file_contents
+from live.common.misc import file_contents
 
 
 def request_handler(req):
@@ -32,32 +32,29 @@ def request_handler(req):
             thing = mo.group(1).lower()
             if thing == 'port':
                 return str(config.port)
-            elif thing == 'main_module_name':
-                return json.dumps('live')
-            elif thing == 'other_module_names':
-                return json.dumps(['fake'])
+            elif thing == 'project_file_name':
+                return json.dumps('project.live.json')
             elif thing == 'project_path':
                 return json.dumps(config.be_root)
             else:
                 assert False
 
-        bootload_code = re.sub(r'LIVEJS_(\w+)', replacer, bootload_code)
+        bootload_code = re.sub(r'\{\{(\w+)\}\}', replacer, bootload_code)
 
         yield from Response(req, httpcli.OK).send_string(
             bootload_code, mimetype='application/javascript'
         )
         return
 
-    mo = re.match(r'/bootload/(\w+.js)$', req.path)
+    mo = re.match(r'/bootload/([\w.]+)$', req.path)
     if mo is None:
         yield from Response(req, httpcli.BAD_REQUEST)
         return
 
-    module_name = mo.group(1)
-    module_path = os.path.join(config.be_root, module_name)
+    file_path = os.path.join(config.be_root, mo.group(1))
 
-    if not os.path.exists(module_path):
+    if not os.path.exists(file_path):
         yield from Response(req, httpcli.NOT_FOUND)
         return
 
-    yield from Response(req, httpcli.OK).send_file(module_path)
+    yield from Response(req, httpcli.OK).send_file(file_path)

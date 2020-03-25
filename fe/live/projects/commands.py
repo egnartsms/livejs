@@ -1,89 +1,137 @@
-import json
 import os
 import re
 import sublime
 import sublime_plugin
 
+from collections import OrderedDict
+
 from .datastructures import Project
-from .operations import get_project_modules_contents
 from .operations import project_for_window
-from live.comm import interacts_with_be
+from live.common.method import method
+from live.common.misc import file_contents
+from live.common.misc import gen_uid
 from live.gstate import config
 from live.gstate import fe_projects
-from live.gstate import ws_handler
+from live.projects.operations import read_project_file_at
 from live.settings import setting
-from live.util.misc import file_contents
-from live.util.misc import gen_uid
+from live.shared.backend import BackendInteractingWindowCommand
+from live.shared.backend import is_interaction_possible
+from live.shared.json_edit import json_root_in
+from live.sublime.edit import edits_view
+from live.sublime.misc import open_filepath
+from live.sublime.on_view_loaded import on_load
+from live.sublime.view_saver import saver
+from live.ws_handler import ws_handler
 
 
 __all__ = ['LivejsLoadProject', 'LivejsAddModule']
 
 
-class LivejsLoadProject(sublime_plugin.WindowCommand):
+class LivejsLoadProject(BackendInteractingWindowCommand):
+    def validate(self):
+        proj = project_for_window(self.window)
+        if proj:
+            sublime.error_message("This window is already associated with project \"{}\""
+                                  .format(proj.name))
+            return False
+        return True
+
+    @method.primary
     def run(self):
         folders = self.window.folders()
         if len(folders) != 1:
             sublime.status_message(
                 "Must have exactly 1 folder open to determine project root"
             )
-            raise RuntimeError
-
-        if project_for_window(self.window):
-            sublime.status_message("Already loaded LiveJS project in this window")
-            raise RuntimeError
-
-        [root] = folders
-        
-        @interacts_with_be()
-        def on_project_name_entered(project_name):
-            project_id = yield 'loadProject', {
-                'name': project_name,
-                'path': root,
-                'modulesData': get_project_modules_contents(root)
-            }
-
-            fe_projects.append(Project(id=project_id, name='hockey', path=root))
-            setting.project_id[self.window] = project_id
-        
-        intuitive_project_name = os.path.basename(root)
-        self.window.show_input_panel('Project name:', intuitive_project_name,
-                                     on_project_name_entered, None, None)
-
-
-class LivejsAddModule(sublime_plugin.WindowCommand):
-    def run_(self, *args, **kwargs):
-        if not project_for_window(self.window):
-            sublime.error_message("This window is not associated with any LiveJS project")
             return
 
-        return super().run_(*args, **kwargs)
+        [root] = folders
 
-    @interacts_with_be()
-    def run(self, module_name):
-        project = project_for_window(self.window)
-        module_contents = (
-            file_contents(os.path.join(config.be_root, '_new_module_template.js'))
-            .replace('LIVEJS_MODULE_ID', json.dumps(gen_uid()))
+        try:
+            proj_data = read_project_file_at(root)
+        except Exception as e:
+            sublime.error_message("Could not read project file: {}".format(e))
+            raise
+
+        proj = Project(
+            id=proj_data['projectId'],
+            name=proj_data['projectName'],
+            path=root
         )
-        yield 'loadModule', {
-            'projectId': project.id,
-            'name': module_name,
-            'src': module_contents
-        }
 
-        with open(os.path.join(project.path, module_name + '.js'), 'w') as file:
+        ws_handler.run_async_op('loadProject', {
+            'projectPath': root,
+            'project': proj_data,
+            'sources': {
+                module['id']: proj.module_contents(module['name'])
+                for module in proj_data['modules']
+            }
+        })
+        yield
+
+        fe_projects.append(proj)
+        setting.project_id[self.window] = proj.id
+
+        sublime.status_message("Project \"{}\" loaded!".format(proj.name))
+
+
+class LivejsAddModule(BackendInteractingWindowCommand):
+    @method.primary
+    def run(self, module_name):
+        proj = project_for_window(self.window)
+        module_path = proj.module_filepath(module_name)
+
+        if os.path.exists(module_path):
+            sublime.error_message("File \"{}\" already exists".format(module_path))
+            return
+
+        module_contents = file_contents(
+            os.path.join(config.be_root, config.new_module_template)
+        )
+        
+        module_id = gen_uid()
+        ws_handler.run_async_op('loadModule', {
+            'projectId': proj.id,
+            'moduleId': module_id,
+            'name': module_name,
+            'source': module_contents,
+            'untracked': []
+        })
+        yield       
+
+        proj_file_view = open_filepath(self.window, proj.project_file_path)
+
+        @on_load(proj_file_view)
+        @edits_view(proj_file_view)
+        def modify_project_file():
+            R = json_root_in(proj_file_view)
+            R['modules'].append(OrderedDict([
+                ('id', module_id),
+                ('name', module_name),
+                ('untracked', [])
+            ]))
+            saver.request_save(proj_file_view)
+
+        with open(module_path, 'w') as file:
             file.write(module_contents)
 
     def input(self, args):
-        return ModuleNameInputHandler(self.window)
+        if not is_interaction_possible():
+            return None
+
+        proj = project_for_window(self.window)
+        if not proj:
+            return None
+        
+        modules_data = ws_handler.run_sync_op('getProjectModules', {
+            'projectId': proj.id
+        })
+        return ModuleNameInputHandler([md['name'] for md in modules_data])
 
 
 class ModuleNameInputHandler(sublime_plugin.TextInputHandler):
-    def __init__(self, window):
-        modules_data = ws_handler.sync_request('getProjectModules', {
-            'projectId': setting.project_id[window]
-        })
-        self.existing_module_names = [md['name'] for md in modules_data]
+    def __init__(self, existing_module_names):
+        self.existing_module_names = existing_module_names
 
     def validate(self, text):
         if not re.match(r'^[a-zA-Z0-9-]+$', text):

@@ -1,5 +1,5 @@
-import time
 import contextlib
+import time
 import uuid
 
 
@@ -134,3 +134,23 @@ def mapping_key_set(mapping, key, value):
 class FreeObj:
     def __init__(self, **attrs):
         self.__dict__.update(attrs)
+
+
+def wrap_gtor(gtor, wrapper):
+    resp = resp_exc = None
+
+    def thunk():
+        if resp_exc is None:
+            return gtor.send(resp)
+        else:
+            return gtor.throw(resp_exc)
+
+    while True:
+        x = wrapper(thunk)
+
+        try:
+            resp = yield x
+            resp_exc = None
+        except Exception as e:
+            resp = None
+            resp_exc = e

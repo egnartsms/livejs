@@ -7,8 +7,6 @@ import sublime
 import sublime_api
 import sublime_plugin
 
-from live.util.misc import mapping_key_set
-
 
 __all__ = ['LivejsCallWithEditTokenCommand']
 
@@ -121,10 +119,12 @@ def edits_view_arg(fn):
     return decorated
 
 
-def run_method_remembers_edit(run):
-    @functools.wraps(run)
-    def decorated(self, edit, **kwargs):
-        with mapping_key_set(edit_for, self.view, edit):
-            return run(self, **kwargs)
+def edits_view(view):
+    def wrapper(fn):
+        @functools.wraps(fn)
+        def wrapped(*args, **kwargs):
+            return call_ensuring_edit_for(view, lambda: fn(*args, **kwargs))
 
-    return decorated
+        return wrapped
+
+    return wrapper

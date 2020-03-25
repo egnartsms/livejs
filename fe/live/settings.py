@@ -1,4 +1,4 @@
-from live.sublime_util.misc import Setting
+from live.sublime.misc import Setting
 
 
 class setting:

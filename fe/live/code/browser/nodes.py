@@ -1,8 +1,8 @@
 import sublime
 
-from live.sublime_util.misc import add_hidden_regions
-from live.sublime_util.misc import hidden_region_list
-from live.util.misc import serially
+from live.sublime.misc import add_hidden_regions
+from live.sublime.misc import hidden_region_list
+from live.common.misc import serially
 
 
 class JsNode:

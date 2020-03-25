@@ -1,53 +1,83 @@
-Tracked objects are persisted in disk files.  Inspected objects are objects that are
-inspected on the FE side via REPL or code browser.  A tracked object can also be inspected
-(in a REPL).
+Tracked objects are persisted in disk files.  The opposite is called "untracked": they are
+volatile, runtime-only objects not supposed to be persisted.
 
-Tracked objects and inspected objects are represented using the same protocol, with
-various fields/values admissible for only one kind or the other.
-
-
-{
-    type: "object",
-    // only for inspected objects
-    id: 234,
-    // only for deep serialization of inspected objects
-    value: {
-       ...
-    }
-}
+Inspected objects are objects that are inspected on the FE side via REPL or code browser.
+For REPL it makes no difference what object to inspect, whether tracked or untracked. For
+the code browser, tracked objects are laid out in a normal way, and untracked objects are
+supposed to get inspected (same as in REPL).  Presently we just display "new Object()" to
+indicate an untracked value.
 
 
-{
-    type: "array",
-    // only for inspected objects
-    id: 234,
-    // only for deep serialization of inspected objects
-    value: [
-       ...
-    ]
-}
-
+Serialization protocol for tracked objects, for persisting and code browsing:
 
 {
     type: 'function',
-    // only for inspected functions
-    id: 234,
     value: func.toString()
 }
 
-
 {
-    type: "leaf",
+    type: 'leaf',
     // a string that is to be literally inserted in a REPL or module browser view.
     // So this may be "null", "true", "undefined" or "\"JS string\"".
     value: "/abc/"
 }
 
-
-// This is used for getters as lazily evaluated placeholders for real values of properties
-// Only for inspected objects; makes no sense when serializing tracked objects.
 {
-    type: "unrevealed",
+    type: 'object',
+    value: {
+        prop-0: val-0,
+        ...
+    }
+}
+
+{
+    type: 'array',
+    value: [
+       val-0,
+       ...
+    ]
+}
+
+
+
+Serialization protocol for object inspection:
+
+{
+    type: 'function',
+    id: 234,
+    value: func.toString()
+}
+
+{
+    type: 'leaf',
+    // A string that is to be literally inserted. So this may be "null", "true",
+    // "undefined" or "\"JS string\"".
+    value: "/abc/"
+}
+
+// For getters as lazily evaluated placeholders for real values of properties
+{
+    type: 'unrevealed',
     parentId: 234,
     prop: "size"
+}
+
+{
+    type: 'object',
+    id: 234,
+    // only if serialization is deep
+    value: {
+       prop-0: val-0,
+       ...
+    }
+}
+
+{
+    type: 'array',
+    id: 234,
+    // only if serialization is deep
+    value: [
+       val-0,
+       ...
+    ]
 }

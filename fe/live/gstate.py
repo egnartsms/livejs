@@ -1,6 +1,3 @@
-from live.util.misc import Proxy
-
-
 class Config:
     port = 8088
     indent = 3
@@ -8,6 +5,9 @@ class Config:
     max_gui_freeze = 50e-3
 
     livejs_project_id = 'a559f0f3ff8744bb944f1dda48650b4f'
+    project_file_name = 'project.live.json'
+
+    new_module_template = '_new_module_template.js'
 
     # set at plugin load time
     be_root = None
@@ -15,7 +15,5 @@ class Config:
 
 
 config = Config()
-
-ws_handler = Proxy()
 
 fe_projects = []  # LiveJS is appended on plugin start

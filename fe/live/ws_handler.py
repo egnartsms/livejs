@@ -1,43 +1,92 @@
-import sublime
-
 import collections
 import json
+import re
+import sublime
 import threading
 
-from live.code.persist_handlers import persist_handlers
-from live.comm import BackendError
-from live.comm import make_be_error
+from live.common.misc import index_where
+from live.common.misc import stopwatch
+from live.coroutine import co_driver
 from live.gstate import config
-from live.projects.operations import on_be_connected
-from live.util.misc import index_where
-from live.util.misc import stopwatch
+
+
+MAIN_CHANNEL = 'main'
+
+
+class BackendError(Exception):
+    def __init__(self, message, **attrs):
+        self.message = message
+        self.__dict__.update(attrs)
+
+    @classmethod
+    def make(cls, info):
+        def camel_to_underscore(s):
+            return re.sub(r'(?<![A-Z])[A-Z]', lambda m: '_' + m.group().lower(), s)
+
+        return cls(**{camel_to_underscore(k): v for k, v in info.items()})
+
+
+class GenericError(BackendError):
+    name = 'generic'
+
+
+class DuplicateKeyError(BackendError):
+    name = 'duplicate_key'
+
+
+class GetterThrewError(BackendError):
+    name = 'getter_threw'
+
+
+be_errors = {sub.name: sub for sub in BackendError.__subclasses__()}
+
+
+def make_be_error(name, info):
+    return be_errors[name].make(info)
 
 
 class WsHandler:
     def __init__(self):
         self.messages = []
-        # a generator yielding at points where it expects for BE to respond.
-        self.cont = None
         self.is_requested_processing = False
         self.is_directly_processing = False
         self.cond_processing = threading.Condition()
         self.websocket = None
+        self.cb_on_connected = None
+        self.persist_handlers = None
 
     @property
     def is_connected(self):
         return self.websocket is not None
 
+    # def on_connected(self):
+    #     def wrapper(fn):
+    #         assert self.cb_on_connected is None
+    #         self.cb_on_connected = fn
+    #         # This is only needed for re-loading the project in development.  The code
+    #         # may register for on_connected callback after the browser has already re-
+    #         # established connection.
+    #         if self.is_connected:
+    #             self._fire_connected()
+    #         return fn
+    #     return wrapper
+
+    def _fire_connected(self):
+        if not self.cb_on_connected:
+            return
+        sublime.set_timeout(self.cb_on_connected, 0)
+
     def connect(self, websocket):
         assert not self.is_connected
         
         self.websocket = websocket
-        sublime.set_timeout(on_be_connected, 0)
+        self._fire_connected()
         print("LiveJS: BE websocket connected")
 
     def disconnect(self):
         assert self.is_connected
         self.websocket = None
-        self.cont = None
+
         print("LiveJS: BE websocket disconnected")
 
     def __call__(self, data):
@@ -68,89 +117,64 @@ class WsHandler:
             del self.messages[:]
             self.is_requested_processing = False
 
-        for message in messages:
-            if message['type'] == 'response':
-                self._process_response(message)
-            elif message['type'] == 'persist':
-                for req in message['requests']:
-                    self._process_persist_request(req)
-            else:
-                assert 0, "Got a message of unknown type: {}".format(message)
+        for msg in messages:
+            self._process_message(msg)
 
-    def _process_response(self, response):
-        if self.cont is None:
+    def _process_message(self, msg):
+        if msg['type'] == 'result':
+            self._process_op_result(msg)
+        elif msg['type'] == 'persist':
+            self._process_persist(msg)
+        else:
+            raise RuntimeError("Got a message of unknown type: {}".format(msg))
+
+    def _process_persist(self, msg):
+        assert msg['type'] == 'persist'
+
+        for desc in msg['descriptors']:
+            self._process_persist_descriptor(desc)
+
+    def _process_persist_descriptor(self, desc):
+        handler = self.persist_handlers[desc['operation']]
+        handler(desc)
+
+    def _process_op_result(self, msg):
+        assert msg['type'] == 'result'
+
+        if co_driver.is_free(MAIN_CHANNEL):
             sublime.error_message("LiveJS: received unexpected BE response: {}"
-                                  .format(response))
+                                  .format(msg))
             raise RuntimeError
 
-        feed = response_to_continuation_feed(response)
-        self._cont_feed(feed)
-
-    def _process_persist_request(self, req):
-        stopwatch.start('action_{}'.format(req['type']))
-        handler = persist_handlers[req['type']]
-        handler(req)
-
-    def _cont_feed(self, value):
-        if isinstance(value, BackendError):
-            self._cont_throw(value)
+        if msg['success']:
+            co_driver.send_to(MAIN_CHANNEL, msg['value'])
         else:
-            self._cont_send(value)
+            be_error = make_be_error(msg['error'], msg['info'])
+            try:
+                co_driver.throw_in(MAIN_CHANNEL, be_error)
+            except BackendError:
+                sublime.error_message("LiveJS failure:\n{}".format(be_error.message))
 
-    def _cont_send(self, value):
-        try:
-            reqtype, reqargs = self.cont.send(value)
-        except StopIteration:
-            self.cont = None
-        except Exception:
-            self.cont = None
-            raise
-        else:
-            self._request(reqtype, reqargs)
-
-    def _cont_throw(self, be_error):
-        try:
-            reqtype, reqargs = self.cont.throw(be_error)
-        except StopIteration:
-            self.cont = None
-        except BackendError:
-            self.cont = None
-            sublime.error_message("LiveJS failure:\n{}".format(be_error.message))
-        except Exception:
-            self.cont = None
-            raise
-        else:
-            self._request(reqtype, reqargs)
-
-    def _request(self, reqtype, reqargs):
+    def run_async_op(self, operation, args):
         self.websocket.enqueue_message(json.dumps({
-            'type': reqtype,
-            'args': reqargs
+            'operation': operation,
+            'args': args
         }))
 
-    def install_cont(self, cont):
-        """Install the new continuation generator"""
-        assert self.cont is None, "Cannot install a continuation (already installed)"
+    def run_sync_op(self, operation, args, report_be_error=True):
+        assert co_driver.is_free(MAIN_CHANNEL),\
+            "Cannot run synchronous operation: another BE interaction is in progress"
 
-        self.cont = cont
-        self._cont_send(None)
-
-    def sync_request(self, reqtype, reqargs):
-        assert self.cont is None,\
-            "Cannot send blocking request: another BE interaction is in progress"
-
-        def response_arrived():
-            return index_where(self.messages, lambda msg: msg['type'] == 'response')
+        def result_arrived():
+            return index_where(self.messages, lambda msg: msg['type'] == 'result')
 
         stopwatch.start('sync_request')
-        
-        self._request(reqtype, reqargs)
-
+        self.run_async_op(operation, args)
         self.is_directly_processing = True
 
         try:
             with self.cond_processing:
-                idx = self.cond_processing.wait_for(response_arrived,
+                idx = self.cond_processing.wait_for(result_arrived,
                                                     timeout=config.max_gui_freeze)
                 if idx is None:
                     sublime.status_message(
@@ -159,36 +183,27 @@ class WsHandler:
                     raise RuntimeError("BE synchronous communication timeout")
 
                 head_messages = self.messages[:idx]
-                response = self.messages[idx]
+                result = self.messages[idx]
                 del self.messages[:(idx + 1)]
 
                 # If there are more, schedule a callback
                 if self.messages:
                     self._schedule_message_processing()
 
-            # First process head_messages which do not contain any responses
-            for message in head_messages:
-                assert message['type'] == 'persist'
-                for req in message['requests']:
-                    self._process_persist_request(req)
+            # First process head_messages which consists of persists only
+            for msg in head_messages:
+                self._process_persist(msg)
             
-            # Done, return the response
-            feed = response_to_continuation_feed(response)
-            if isinstance(feed, BackendError):
-                sublime.error_message("LiveJS failure:\n{}".format(feed.message))
-                raise feed
+            # Done, return the result
+            if result['success']:
+                return result['value']
             else:
-                return feed
+                be_error = make_be_error(result['error'], result['info'])
+                if report_be_error:
+                    sublime.error_message("LiveJS failure:\n{}".format(be_error.message))
+                raise be_error
         finally:
             self.is_directly_processing = False
-
-
-def response_to_continuation_feed(response):
-    """Return either response value or an instance of BackendError (on failure)"""
-    if response['success']:
-        return response['value']
-    else:
-        return make_be_error(response['error'], response['info'])
 
 
 ws_handler = WsHandler()

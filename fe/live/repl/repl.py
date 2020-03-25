@@ -1,15 +1,16 @@
 import contextlib
 import sublime
 
-from live.code.cursor import Cursor
-from live.comm import interacts_with_be
 from live.settings import setting
-from live.sublime_util.edit import edit_for
-from live.sublime_util.edit import edits_self_view
-from live.sublime_util.misc import add_hidden_regions
-from live.sublime_util.misc import read_only_set_to
-from live.sublime_util.region_edit import RegionEditHelper
-from live.sublime_util.selection import set_selection
+from live.shared.backend import interacts_with_backend
+from live.shared.cursor import Cursor
+from live.sublime.edit import edit_for
+from live.sublime.edit import edits_self_view
+from live.sublime.misc import add_hidden_regions
+from live.sublime.misc import read_only_set_to
+from live.sublime.region_edit import RegionEditHelper
+from live.sublime.selection import set_selection
+from live.ws_handler import ws_handler
 
 
 class Repl:
@@ -45,7 +46,7 @@ class Repl:
     @property
     def is_ready(self):
         return self.reh is not None
-    
+
     @property
     def cur_prompt(self):
         return self.cur_module_name + '> '
@@ -160,11 +161,12 @@ class Repl:
 
         return True
 
-    @interacts_with_be()
+    @interacts_with_backend()
     def delete_inspection_space(self):
-        yield 'deleteInspectionSpace', {
+        ws_handler.run_async_op('deleteInspectionSpace', {
             'spaceId': self.inspection_space_id
-        }
+        })
+        yield
 
 
 class UserInputOutputInfo:

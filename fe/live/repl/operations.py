@@ -2,17 +2,17 @@ import json
 import sublime
 
 from .repl import Repl
-from live.code.common import jsval_placeholder
-from live.code.common import make_js_value_inserter
-from live.code.cursor import Cursor
-from live.comm import GetterThrewError
-from live.comm import interacts_with_be
+from live.common.misc import first_or_none
+from live.common.misc import gen_uid
 from live.settings import setting
-from live.sublime_util.edit import edit_for
-from live.sublime_util.edit import edits_self_view
-from live.sublime_util.view_info import view_info_getter
-from live.util.misc import first_or_none
-from live.util.misc import gen_uid
+from live.shared.backend import interacts_with_backend
+from live.shared.cursor import Cursor
+from live.shared.js_cursor import StructuredCursor
+from live.sublime.edit import edit_for
+from live.sublime.edit import edits_self_view
+from live.sublime.view_info import view_info_getter
+from live.ws_handler import GetterThrewError
+from live.ws_handler import ws_handler
 
 
 def is_view_repl(view):
@@ -28,7 +28,7 @@ def new_repl_view(window, module):
     setting.view[view] = 'REPL'
     view.set_name('LiveJS: REPL')
     view.set_scratch(True)
-    view.assign_syntax('Packages/LiveJS/LiveJS REPL.sublime-syntax')
+    view.assign_syntax('Packages/LiveJS/syntax/repl/JavaScript.sublime-syntax')
 
     repl = repl_for(view)
     repl.set_current_module(module)
@@ -69,9 +69,9 @@ def add_phantom(view, region, on_navigate, is_expanded):
 
 
 class Node:
-    def __init__(self, view, jsval, nesting, region):
+    def __init__(self, view, jsval, depth, region):
         self.view = view
-        self.nesting = nesting
+        self.depth = depth
         self.type = jsval['type']
         self.id = jsval['id']
         self.is_expanded = 'value' in jsval
@@ -100,32 +100,32 @@ class Node:
         self._erase_phantom()
 
         with self.repl.region_editing_off_then_reestablished():
-            cur = Cursor(reg.a, self.view, inter_sep_newlines=1)
+            cur = Cursor(reg.a, self.view)
             cur.erase(reg.b)
             cur.push()
             cur.insert(jsval_placeholder(self.type))
 
         self.is_expanded = False
-        self._add_phantom(cur.pop_reg_beg())
+        self._add_phantom(cur.pop_region())
 
-    @interacts_with_be(edits_view='self.view')
+    @interacts_with_backend(edits_view=lambda self: self.view)
     def _expand(self):
         """Abandon this node and insert a new expanded one"""
         assert not self.is_expanded
 
-        jsval = yield 'inspectObjectById', {
+        ws_handler.run_async_op('inspectObjectById', {
             'spaceId': self.repl.inspection_space_id,
             'id': self.id
-        }
+        })
+        jsval = yield 
         
         [reg] = self.view.query_phantom(self.phid)
         self._erase_phantom()
 
         with self.repl.region_editing_off_then_reestablished():
             self.view.erase(edit_for[self.view], reg)
-            cur = Cursor(reg.a, self.view, inter_sep_newlines=1)
-            inserter = make_js_value_inserter(cur, jsval, self.nesting)
-            insert_js_value(self.view, inserter)
+            cur = StructuredCursor(reg.a, self.view, depth=self.depth)
+            insert_js_value(cur, jsval)
 
     def on_navigate(self, href):
         if self.is_expanded:
@@ -141,28 +141,29 @@ class Unrevealed:
     else, and the Unrevealed instance is gone forever.
     """
 
-    def __init__(self, view, parent_id, prop, nesting, region):
+    def __init__(self, view, parent_id, prop, depth, region):
         self.view = view
         self.parent_id = parent_id
         self.prop = prop
-        self.nesting = nesting
+        self.depth = depth
         self.phid = add_phantom(self.view, region, self.on_navigate, False)
 
     @property
     def repl(self):
         return repl_for(self.view)
 
-    @interacts_with_be(edits_view='self.view')
+    @interacts_with_backend(edits_view=lambda self: self.view)
     def on_navigate(self, href):
         """Abandon this node and insert a new expanded one"""
         error = jsval = None
 
         try:
-            jsval = yield 'inspectGetterValue', {
+            ws_handler.run_async_op('inspectGetterValue', {
                 'spaceId': self.repl.inspection_space_id,
                 'parentId': self.parent_id,
                 'prop': self.prop
-            }
+            })
+            jsval = yield
         except GetterThrewError as e:
             error = e
 
@@ -172,10 +173,9 @@ class Unrevealed:
         
         with self.repl.region_editing_off_then_reestablished():
             self.view.erase(edit_for[self.view], reg)
-            cur = Cursor(reg.a, self.view, inter_sep_newlines=1)
+            cur = StructuredCursor(reg.a, self.view, depth=self.depth)
             if jsval is not None:
-                inserter = make_js_value_inserter(cur, jsval, self.nesting)
-                insert_js_value(self.view, inserter)
+                insert_js_value(cur, jsval)
             else:
                 cur.insert("throw new {}({})".format(
                     error.exc_class_name,
@@ -183,45 +183,80 @@ class Unrevealed:
                 ))
 
 
-def insert_js_value(view, inserter):
+def insert_js_value(cur, jsval):
     """Create Node instances which are inaccessible as of now.
 
-    They exist only for the sake of phantoms, and get GCed when we deleted phantoms.
+    They exist only for the sake of phantoms, and get GCed when we delete phantoms.
     """
-    def insert_object():
-        while True:
-            cmd, args = next(inserter)
-            if cmd == 'pop':
-                Node(view, args.jsval, args.nesting, args.region)
-                return
+    def insert_object(obj):
+        with cur.laying_out('object') as separate:
+            for key, value in obj.items():
+                separate()
+                cur.insert(key)
+                cur.insert_keyval_sep()
+                insert_any(value)
 
-            insert_any(*next(inserter))
+    def insert_array(arr):
+        with cur.laying_out('array') as separate:
+            for value in arr:
+                separate()
+                insert_any(value)
 
-    def insert_array():
-        while True:
-            cmd, args = next(inserter)
-            if cmd == 'pop':
-                Node(view, args.jsval, args.nesting, args.region)
-                return
+    def insert_any(jsval):
+        if jsval['type'] == 'object':
+            cur.push()
+            if 'value' in jsval:
+                insert_object(jsval['value'])
+            else:
+                cur.insert(jsval_placeholder('object'))
+            Node(cur.view, jsval, cur.depth, cur.pop_region())
+        elif jsval['type'] == 'array':
+            cur.push()
+            if 'value' in jsval:
+                insert_array(jsval['value'])
+            else:
+                cur.insert(jsval_placeholder('array'))
+            Node(cur.view, jsval, cur.depth, cur.pop_region())
+        elif jsval['type'] == 'function':
+            need_node = False
 
-            insert_any(cmd, args)
+            cur.push()
+            if 'value' in jsval:
+                cur.insert_function(jsval['value'])
+            else:
+                cur.insert(jsval_placeholder('function'))
+                need_node = True
+            reg = cur.pop_region()
 
-    def insert_any(cmd, args):
-        if cmd == 'push_object':
-            insert_object()
-        elif cmd == 'push_array':
-            insert_array()
-        elif cmd == 'leaf':
-            if args.jsval['type'] == 'function':
+            if not need_node:
                 # 1-line functions don't need to be collapsed
-                nline_beg, _ = view.rowcol(args.region.a)
-                nline_end, _ = view.rowcol(args.region.b)
-                if nline_end > nline_beg:
-                    Node(view, args.jsval, args.nesting, args.region)
-            elif args.jsval['type'] == 'unrevealed':
-                Unrevealed(view, args.jsval['parentId'], args.jsval['prop'],
-                           args.nesting, args.region)
+                nline_beg, _ = cur.view.rowcol(reg.a)
+                nline_end, _ = cur.view.rowcol(reg.b)
+                need_node = nline_end > nline_beg
+            
+            if need_node:
+                Node(cur.view, jsval, cur.depth, reg)
+        elif jsval['type'] == 'unrevealed':
+            cur.push()
+            cur.insert(jsval_placeholder('unrevealed'))
+            reg = cur.pop_region()
+            Unrevealed(cur.view, jsval['parentId'], jsval['prop'], cur.depth, reg)
+        elif jsval['type'] == 'leaf':
+            cur.insert(jsval['value'])
         else:
-            assert 0, "Inserter yielded unexpected command: {}".format(cmd)
+            raise RuntimeError("Unexpected jsval: {}".format(jsval))
 
-    insert_any(*next(inserter))
+    insert_any(jsval)
+
+
+def jsval_placeholder(jsval_type):
+    if jsval_type == 'object':
+        return "{...}"
+    elif jsval_type == 'array':
+        return "[...]"
+    elif jsval_type == 'function':
+        return "func {...}"
+    elif jsval_type == 'unrevealed':
+        return "(...)"
+    else:
+        raise RuntimeError

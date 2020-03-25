@@ -49,3 +49,12 @@ def hidden_region_list(view, key):
     region_list = view.get_regions(key)
     yield region_list
     add_hidden_regions(view, key, region_list)
+
+
+def open_filepath(window, filepath):
+    view = window.find_open_file(filepath)
+    if view is None:
+        focused_view = window.active_view()
+        view = window.open_file(filepath)
+        window.focus_view(focused_view)
+    return view
