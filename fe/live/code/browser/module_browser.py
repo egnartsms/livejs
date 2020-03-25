@@ -70,8 +70,10 @@ class ModuleBrowser:
         self.view.erase_regions(self.EDIT_REGION_KEY)
 
     def _make_cursor(self, pos, parent_node):
-        return StructuredCursor(pos, self.view, depth=parent_node.depth, 
-                                is_inside_object=parent_node.is_object)
+        return StructuredCursor(
+            pos, self.view, depth=parent_node.depth,
+            inside_what='object' if parent_node.is_object else 'array'
+        )
 
     @edits_self_view
     def prepare_for_activation(self):
@@ -330,7 +332,7 @@ class ModuleBrowser:
                 viewport_and_selection_globally_preserved(self.view):
             self.view.erase(edit_for[self.view], sublime.Region(0, self.view.size()))
 
-            cur = StructuredCursor(0, self.view, depth=-1)
+            cur = StructuredCursor(0, self.view)
             cur.insert('$ = ')
 
             self.root, _ = self._insert_js_value(cur, root_object)

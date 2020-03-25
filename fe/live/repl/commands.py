@@ -63,7 +63,7 @@ class LivejsReplSendCommand(BackendInteractingTextCommand, ReplCommandMixin):
         except BackendError as e:
             error = e
 
-        cur = StructuredCursor(self.repl.edit_region.b, self.view, depth=-1)
+        cur = StructuredCursor(self.repl.edit_region.b, self.view)
         with read_only_set_to(self.view, False):
             if error:
                 cur.insert('\n! ')

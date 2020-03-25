@@ -2,8 +2,6 @@ import json
 import sublime
 
 from .repl import Repl
-from live.code.common import jsval_placeholder
-from live.code.common import make_js_value_inserter
 from live.common.misc import first_or_none
 from live.common.misc import gen_uid
 from live.settings import setting

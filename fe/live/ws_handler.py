@@ -59,17 +59,17 @@ class WsHandler:
     def is_connected(self):
         return self.websocket is not None
 
-    def on_connected(self):
-        def wrapper(fn):
-            assert self.cb_on_connected is None
-            self.cb_on_connected = fn
-            # This is only needed for re-loading the project in development.  The code
-            # may register for on_connected callback after the browser has already re-
-            # established connection.
-            if self.is_connected:
-                self._fire_connected()
-            return fn
-        return wrapper
+    # def on_connected(self):
+    #     def wrapper(fn):
+    #         assert self.cb_on_connected is None
+    #         self.cb_on_connected = fn
+    #         # This is only needed for re-loading the project in development.  The code
+    #         # may register for on_connected callback after the browser has already re-
+    #         # established connection.
+    #         if self.is_connected:
+    #             self._fire_connected()
+    #         return fn
+    #     return wrapper
 
     def _fire_connected(self):
         if not self.cb_on_connected:

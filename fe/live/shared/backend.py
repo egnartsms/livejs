@@ -90,6 +90,7 @@ def interacts_with_backend(edits_view=None):
                 }
                 view_getter = lambda: edits_view(**view_getter_args)
                 gtor = wrap_in_edit_view(gtor, view_getter)
+
             co_driver.add_coroutine(gtor, MAIN_CHANNEL)
 
 

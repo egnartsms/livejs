@@ -17,6 +17,7 @@ from live.repl import *  # noqa
 from live.request_handler import request_handler
 from live.sublime import *  # noqa
 from live.ws_handler import ws_handler
+from live.projects.backend import on_backend_connected
 
 
 g_el = EventLoop()
@@ -54,6 +55,7 @@ def plugin_loaded():
     )
     fe_projects[:] = [config.livejs_project]
     ws_handler.persist_handlers = persist_handlers
+    ws_handler.cb_on_connected = on_backend_connected
     
     g_el.run_in_new_thread()
     start_server()

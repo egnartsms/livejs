@@ -117,3 +117,14 @@ def edits_view_arg(fn):
         return call_ensuring_edit_for(view, lambda: fn(*args, **kwargs))
 
     return decorated
+
+
+def edits_view(view):
+    def wrapper(fn):
+        @functools.wraps(fn)
+        def wrapped(*args, **kwargs):
+            return call_ensuring_edit_for(view, lambda: fn(*args, **kwargs))
+
+        return wrapped
+
+    return wrapper

@@ -3,17 +3,24 @@ import re
 import sublime
 import sublime_plugin
 
+from collections import OrderedDict
+
 from .datastructures import Project
 from .operations import project_for_window
+from live.common.method import method
+from live.common.misc import file_contents
+from live.common.misc import gen_uid
 from live.gstate import config
 from live.gstate import fe_projects
 from live.projects.operations import read_project_file_at
 from live.settings import setting
 from live.shared.backend import BackendInteractingWindowCommand
 from live.shared.backend import is_interaction_possible
-from live.common.method import method
-from live.common.misc import file_contents
-from live.common.misc import gen_uid
+from live.shared.json_edit import json_root_in
+from live.sublime.edit import edits_view
+from live.sublime.misc import open_filepath
+from live.sublime.on_view_loaded import on_load
+from live.sublime.view_saver import saver
 from live.ws_handler import ws_handler
 
 
@@ -79,20 +86,34 @@ class LivejsAddModule(BackendInteractingWindowCommand):
             return
 
         module_contents = file_contents(
-            os.path.join(config.be_root, '_new_module_template.js')
+            os.path.join(config.be_root, config.new_module_template)
         )
         
-        with open(module_path, 'w') as file:
-            file.write(module_contents)
-
+        module_id = gen_uid()
         ws_handler.run_async_op('loadModule', {
             'projectId': proj.id,
-            'moduleId': gen_uid(),
+            'moduleId': module_id,
             'name': module_name,
             'source': module_contents,
             'untracked': []
         })
         yield       
+
+        proj_file_view = open_filepath(self.window, proj.project_file_path)
+
+        @on_load(proj_file_view)
+        @edits_view(proj_file_view)
+        def modify_project_file():
+            R = json_root_in(proj_file_view)
+            R['modules'].append(OrderedDict([
+                ('id', module_id),
+                ('name', module_name),
+                ('untracked', [])
+            ]))
+            saver.request_save(proj_file_view)
+
+        with open(module_path, 'w') as file:
+            file.write(module_contents)
 
     def input(self, args):
         if not is_interaction_possible():

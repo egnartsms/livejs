@@ -4,6 +4,7 @@ import re
 from collections import namedtuple
 from live.projects.operations import read_project_file_at
 from live.common.misc import file_contents
+from live.gstate import config
 
 
 Module = namedtuple('Module', 'id name')
@@ -42,3 +43,7 @@ class Project:
 
     def read_project_data(self):
         return read_project_file_at(self.path)
+
+    @property
+    def project_file_path(self):
+        return os.path.join(self.path, config.project_file_name)

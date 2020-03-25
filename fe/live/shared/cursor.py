@@ -105,3 +105,7 @@ class Cursor:
         """Skip whitespace backwards"""
         while self.pos > limit and self.prec_char.isspace():
             self.pos -= 1
+
+    def is_looking_at(self, s):
+        sx = self.view.substr(sublime.Region(self.pos, self.pos + len(s)))
+        return sx == s

@@ -1,11 +1,32 @@
 from copy import copy
 
-from live.code.persist.saver import Saver
 from live.shared.js_cursor import StructuredCursor
 from live.sublime.edit import edits_view_arg
+from live.sublime.view_saver import saver
 
 
-saver = Saver()
+class PersistCursor(StructuredCursor):
+    root_nesting = 1
+
+    @classmethod
+    def at_module_root(cls, view):
+        """Initialized to point at the root object"""
+        cur = cls(0, view, inside_what='array')
+        found = cur.go_past(r'let \$ = (?=\{)')
+        if not found:
+            raise RuntimeError
+
+        return cur
+
+    @classmethod
+    def at_module_path(cls, view, path):
+        cur = cls.at_module_root(view)
+
+        for n in path:
+            cur.enter()
+            cur.goto_nth_entry(n)
+
+        return cur
 
 
 def insert_js_value(cur, jsval):
@@ -40,7 +61,7 @@ def insert_js_value(cur, jsval):
 
 @edits_view_arg
 def replace_value(view, path, new_value):
-    cur = StructuredCursor.at_module_path(view, path)
+    cur = PersistCursor.at_module_path(view, path)
     cur.erase_value()
     insert_js_value(cur, new_value)
 
@@ -49,7 +70,7 @@ def replace_value(view, path, new_value):
 
 @edits_view_arg
 def rename_key(view, path, new_name):
-    cur = StructuredCursor.at_module_path(view, path)
+    cur = PersistCursor.at_module_path(view, path)
     cur.erase_object_key()
     cur.insert(new_name)
 
@@ -58,7 +79,7 @@ def rename_key(view, path, new_name):
 
 @edits_view_arg
 def delete(view, path):
-    cur = StructuredCursor.at_module_path(view, path)
+    cur = PersistCursor.at_module_path(view, path)
     cur.delete_entry()
 
     saver.request_save(view)
@@ -68,7 +89,7 @@ def delete(view, path):
 def insert(view, path, key, value):
     parent_path, n = path[:-1], path[-1]
 
-    cur = StructuredCursor.at_module_path(view, parent_path)
+    cur = PersistCursor.at_module_path(view, parent_path)
     cur.prepare_for_insertion_at(n)
 
     if key is not None:

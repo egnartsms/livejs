@@ -138,49 +138,36 @@ class StructuredCursor(JsAwareCursor):
 
     root_nesting = 0
 
-    def __init__(self, pos, view, depth=0, is_inside_object=None, root_nesting=None):
+    def __init__(self, pos, view, depth=-1, inside_what=None, root_nesting=None):
         super().__init__(pos, view)
         self.depth = depth
-        if is_inside_object is not None:
-            self.is_inside_object = is_inside_object
+        if inside_what is not None:
+            self.inside_what = inside_what
         if root_nesting is not None:
             self.root_nesting = root_nesting
-
-    @classmethod
-    def at_module_root(cls, view):
-        """Initialized to point at the root object"""
-        cur = cls(0, view, depth=-1, is_inside_object=False, root_nesting=1)
-        found = cur.go_past(r'let \$ = (?=\{)')
-        if not found:
-            raise RuntimeError
-
-        return cur
-
-    @classmethod
-    def at_module_path(cls, view, path):
-        cur = cls.at_module_root(view)
-
-        for n in path:
-            cur.enter()
-            cur.goto_nth_entry(n)
-
-        return cur
 
     @property
     def nesting(self):
         return self.root_nesting + self.depth
     
-    @property
-    def is_looking_at_container(self):
-        return self.char in '[{'
+    # @property
+    # def is_looking_at(self, what):
+    #     if what == 'object':
+    #         return self.char == '{'
+    #     elif what == 'array':
+    #         return self.char == '['
+    #     else:
+    #         raise RuntimeError
 
     @property
-    def is_looking_at_object(self):
-        return self.char == '{'
-
-    @property
-    def is_looking_at_array(self):
-        return self.char == '['
+    def looking_at_container(self):
+        c = self.char
+        if c == '{':
+            return 'object'
+        elif c == '[':
+            return 'array'
+        else:
+            return None
 
     @property
     def is_at_container_begin(self):
@@ -192,12 +179,12 @@ class StructuredCursor(JsAwareCursor):
 
     def enter(self):
         # Enter the current entry (which must be a container)
-        if self.is_inside_object:
+        if self.inside_what == 'object':
             self.goto_object_value()
-        if not self.is_looking_at_container:
+        if self.looking_at_container is None:
             raise UnexpectedContents(self, "non-container follows")
 
-        self.is_inside_object = self.is_looking_at_object
+        self.inside_what = self.looking_at_container
         self.pos += 1
         self.depth += 1
 
@@ -247,14 +234,24 @@ class StructuredCursor(JsAwareCursor):
         if not found:
             raise UnexpectedContents(self, "malformed \"key: value\" entry")
 
+    def goto_entry_keyed_by(self, key):
+        self.skip_ws()
+        while True:
+            if self.is_looking_at(key):
+                break
+            self.goto_next_entry()
+
+    def goto_end(self):
+        found = self.js_go_upto(r'\(', move_if_not_found=True)
+        assert not found
+
     def erase_object_key(self):
-        assert self.is_inside_object
         self.push()
         self.skip_object_key()
         self.pop_erase()
 
     def erase_value(self):
-        if self.is_inside_object:
+        if self.inside_what == 'object':
             self.goto_object_value()
         self.push()
         self.goto_entry_end()
@@ -317,6 +314,20 @@ class StructuredCursor(JsAwareCursor):
             with self.pos_preserved():
                 self.insert_inter_sep()
 
+    def prepare_for_insertion_at_end(self):
+        self.enter()
+        self.goto_end()
+        self.skip_sep_bwd()
+
+        if self.is_at_container_begin:
+            # The only node
+            self.insert_initial_sep()
+            with self.pos_preserved():
+                self.insert_terminal_sep()
+        else:
+            # At least one is already in
+            self.insert_inter_sep()
+
     def insert_function(self, source):
         # The last line of a function contains a single closing brace and is indented at
         # the same level as the whole function.  This of course depends on the formatting
@@ -340,44 +351,30 @@ class StructuredCursor(JsAwareCursor):
                 self.insert('\n')
 
     def _forget_where_we_are(self):
-        if hasattr(self, 'is_inside_object'):
-            del self.is_inside_object
-
-    def open_object(self):
-        self.insert('{')
-        self.depth += 1
-        self.is_inside_object = True
-
-    def close_object(self):
-        self.insert('}')
-        self.depth -= 1
-        self._forget_where_we_are()
-
-    def open_array(self):
-        self.insert('[')
-        self.depth += 1
-        self.is_inside_object = False
-
-    def close_array(self):
-        self.insert(']')
-        self.depth -= 1
-        self._forget_where_we_are()
+        if hasattr(self, 'inside_what'):
+            del self.inside_what
 
     def open(self, typ):
         if typ == 'object':
-            self.open_object()
+            self.insert('{')
         elif typ == 'array':
-            self.open_array()
+            self.insert('[')
         else:
             raise RuntimeError
 
+        self.depth += 1
+        self.inside_what = typ
+
     def close(self, typ):
         if typ == 'object':
-            self.close_object()
+            self.insert('}')
         elif typ == 'array':
-            self.close_array()
+            self.insert(']')
         else:
             raise RuntimeError
+
+        self.depth -= 1
+        self._forget_where_we_are()
 
     @contextlib.contextmanager
     def laying_out(self, typ):
