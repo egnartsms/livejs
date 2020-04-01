@@ -1,7 +1,6 @@
 """Home-made eventloop (Python 3.3 does not yet have asyncio)"""
 import select
 import threading
-import weakref
 
 from live.lowlvl.eventfd import EventFd
 
@@ -54,14 +53,13 @@ def check_not_running_event_loop():
 
 
 class Coroutine:
-    __slots__ = ('__weakref__', 'itr', 'result', 'r_fds', 'w_fds', 'send_fd')
-
-    def __init__(self, itr):
+    def __init__(self, itr, parent=None):
         self.itr = itr
         self.result = None
         self.r_fds = []
         self.w_fds = []
         self.send_fd = None
+        self.parent = parent
 
     def finished(self, value_or_exc):
         self.itr = None
@@ -100,7 +98,6 @@ class EventLoop:
     def __init__(self):
         self.evt_interrupt = EventFd()
         self.live = set()  # {co}
-        self.co_parent = weakref.WeakKeyDictionary()  # {co: co-parent}
         self.co_running = None
         self.ready = set()  # {co}
         self.r_fds = {}  # {fd: co}
@@ -293,10 +290,9 @@ class EventLoop:
 
     def add_coroutine(self, itr, name=None):
         with self.cv_state:
-            co = Coroutine(itr)
+            co = Coroutine(itr, self.co_running)
             self.live.add(co)
             self.ready.add(co)
-            self.co_parent[co] = self.co_running
             if name is not None:
                 assert self.run_by_thread != threading.current_thread(),\
                     "Temp restriction: cannot create nested named coroutines"
@@ -314,7 +310,7 @@ class EventLoop:
             if not self.is_running:
                 raise RuntimeError("Event loop is not running")
 
-            closure = self._descendants_closure(co)
+            closure = self._live_descendants_of(co)
             self.to_quit = closure.copy()
             self.evt_interrupt.set()
             self.cv_state.wait_for(
@@ -326,14 +322,13 @@ class EventLoop:
 
             del self.co_named[name]
 
-    def _descendants_closure(self, co):
-        coroutines = list(self.co_parent)
-        res = []
-        gen = {co}
-        while gen:
-            res += gen
-            gen = {co for co in coroutines if self.co_parent[co] in gen}
-        return res
+    def _live_descendants_of(self, root):
+        def is_descendant(co):
+            while co is not None and co is not root:
+                co = co.parent
+            return co is root
+
+        return [co for co in self.live if is_descendant(co)]
 
     def stop(self, force_quit_coroutines=True):
         self._stop_with_cmd('stop-coroutines-&-quit' if force_quit_coroutines else 'quit')

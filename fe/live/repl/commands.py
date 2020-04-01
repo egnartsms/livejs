@@ -4,13 +4,14 @@ import sublime_plugin
 from live.common.method import method
 from live.projects.datastructures import Module
 from live.repl.operations import find_repl_view
-from live.repl.operations import insert_js_value
 from live.repl.operations import new_repl_view
 from live.repl.operations import repl_for
+from live.repl.repl import ReplInspectionHost
 from live.settings import setting
 from live.shared.backend import BackendInteractingTextCommand
 from live.shared.command import TextCommand
 from live.shared.input_handlers import ModuleInputHandler
+from live.shared.inspector import insert_js_value
 from live.shared.js_cursor import StructuredCursor
 from live.sublime.misc import read_only_set_to
 from live.sublime.selection import set_selection
@@ -24,7 +25,7 @@ __all__ = [
 ]
 
 
-class ReplCommandMixin:
+class ReplCommandMixin(sublime_plugin.TextCommand):
     @property
     def repl(self):
         return repl_for(self.view)
@@ -58,7 +59,7 @@ class LivejsReplSendCommand(BackendInteractingTextCommand, ReplCommandMixin):
                 'mid': self.repl.cur_module_id,
                 'code': text
             })
-            jsval = yield 
+            jsval = yield
             error = None
         except BackendError as e:
             error = e
@@ -70,7 +71,7 @@ class LivejsReplSendCommand(BackendInteractingTextCommand, ReplCommandMixin):
                 cur.insert(error.message)
             else:
                 cur.insert('\n< ')
-                insert_js_value(cur, jsval)
+                insert_js_value(ReplInspectionHost(self.repl), cur, jsval)
             cur.insert('\n\n')
             self.repl.insert_prompt(cur)
 
@@ -108,4 +109,4 @@ class LivejsReplClearCommand(TextCommand, ReplCommandMixin):
     @method.primary
     def run(self):
         self.repl.erase_all_insert_prompt()
-        self.repl.delete_inspection_space()
+        self.repl.release_inspection_space()

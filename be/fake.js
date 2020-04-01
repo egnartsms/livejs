@@ -13,7 +13,6 @@
       inspectThing: function (thing) {
          console.log(thing, "was just inspected");
       },
-      vasya: 210,
       protractor: {
          a: [
             1

@@ -102,7 +102,7 @@ class LivejsAddModule(BackendInteractingWindowCommand):
         proj_file_view = open_filepath(self.window, proj.project_file_path)
 
         @on_load(proj_file_view)
-        @edits_view(proj_file_view)
+        @edits_view(lambda: proj_file_view)
         def modify_project_file():
             R = json_root_in(proj_file_view)
             R['modules'].append(OrderedDict([

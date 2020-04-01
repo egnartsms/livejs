@@ -7,6 +7,8 @@ import sublime
 import sublime_api
 import sublime_plugin
 
+from live.common.misc import args_extractor
+
 
 __all__ = ['LivejsCallWithEditTokenCommand']
 
@@ -87,44 +89,33 @@ edit_for = ViewKeyedDict()
 def call_ensuring_edit_for(view, thunk):
     if view in edit_for:
         return thunk()
-    
+
     def callback(edit):
         edit_for[view] = edit
         try:
             return thunk()
         finally:
             del edit_for[view]
-    
+
     return call_with_edit(view, callback)
 
 
-def edits_self_view(meth):
-    @functools.wraps(meth)
-    def decorated_meth(self, *args, **kwargs):
-        return call_ensuring_edit_for(self.view, lambda: meth(self, *args, **kwargs))
+def edits_view(view_getter):
+    view_getter = args_extractor(view_getter)
 
-    return decorated_meth
-
-
-def edits_view_arg(fn):
-    sig = inspect.signature(fn)
-    assert 'view' in sig.parameters
-
-    @functools.wraps(fn)
-    def decorated(*args, **kwargs):
-        ba = sig.bind(*args, **kwargs)
-        view = ba.arguments['view']
-        return call_ensuring_edit_for(view, lambda: fn(*args, **kwargs))
-
-    return decorated
-
-
-def edits_view(view):
     def wrapper(fn):
         @functools.wraps(fn)
         def wrapped(*args, **kwargs):
-            return call_ensuring_edit_for(view, lambda: fn(*args, **kwargs))
+            return call_ensuring_edit_for(
+                view_getter(fn, args, kwargs), lambda: fn(*args, **kwargs)
+            )
 
         return wrapped
 
     return wrapper
+
+
+edits_self_view = edits_view(lambda self: self.view)
+
+
+edits_view_arg = edits_view(lambda view: view)

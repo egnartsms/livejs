@@ -47,4 +47,4 @@ class ReplEventListener(sublime_plugin.ViewEventListener):
         self.repl.set_view_read_only()
 
     def on_close(self):
-        self.repl.delete_inspection_space()
+        self.repl.release_inspection_space()

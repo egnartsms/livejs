@@ -3,12 +3,13 @@ import inspect
 import sublime
 import sublime_plugin
 
+from live.common.method import method
+from live.common.misc import args_extractor
+from live.common.misc import wrap_gtor
 from live.coroutine import co_driver
 from live.projects.operations import validate_window_project_loaded
 from live.shared.command import TextCommand
 from live.sublime.edit import call_ensuring_edit_for
-from live.common.method import method
-from live.common.misc import wrap_gtor
 from live.ws_handler import MAIN_CHANNEL
 from live.ws_handler import ws_handler
 
@@ -68,15 +69,9 @@ class BackendInteractingWindowCommand(sublime_plugin.WindowCommand):
 
 def interacts_with_backend(edits_view=None):
     if edits_view:
-        sig = inspect.signature(edits_view)
-        assert all(p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
-                   for p in sig.parameters.values())
-        view_getter_params = list(sig.parameters)
+        edits_view = args_extractor(edits_view)
 
     def wrapper(fn):
-        if edits_view:
-            fn_sig = inspect.signature(fn)
-
         @functools.wraps(fn)
         def wrapped(*args, **kwargs):
             if not validate_be_interaction(fn):
@@ -84,15 +79,9 @@ def interacts_with_backend(edits_view=None):
 
             gtor = fn(*args, **kwargs)
             if edits_view:
-                ba = fn_sig.bind(*args, **kwargs)
-                view_getter_args = {
-                    param: ba.arguments[param] for param in view_getter_params
-                }
-                view_getter = lambda: edits_view(**view_getter_args)
-                gtor = wrap_in_edit_view(gtor, view_getter)
+                gtor = wrap_in_edit_view(gtor, edits_view.bind(fn, args, kwargs))
 
             co_driver.add_coroutine(gtor, MAIN_CHANNEL)
-
 
         return wrapped
 

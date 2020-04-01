@@ -1,4 +1,6 @@
 import contextlib
+import functools
+import inspect
 import time
 import uuid
 
@@ -154,3 +156,25 @@ def wrap_gtor(gtor, wrapper):
         except Exception as e:
             resp = None
             resp_exc = e
+
+
+class args_extractor:
+    def __init__(self, fn):    
+        sig = inspect.signature(fn)
+        assert all(
+            p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
+            for p in sig.parameters.values()
+        )
+
+        self.params = list(sig.parameters)
+        self.fn = fn
+
+    def __call__(self, fn, args, kwargs):
+        return self.fn(*self._compute_args(fn, args, kwargs))
+
+    def _compute_args(self, fn, args, kwargs):
+        ba = inspect.signature(fn).bind(*args, **kwargs)
+        return [ba.arguments[param] for param in self.params]
+
+    def bind(self, fn, args, kwargs):
+        return functools.partial(self.fn, *self._compute_args(fn, args, kwargs))

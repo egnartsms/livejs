@@ -9,8 +9,15 @@ def is_point_inside(point, reg, strict=False):
         return point >= reg.begin() and point <= reg.end()
 
 
-def is_subregion(sub, sup, strict=False):
-    return is_point_inside(sub.a, sup, strict) and is_point_inside(sub.b, sup, strict)
+def is_subregion(sub, of, strict=False):
+    return is_point_inside(sub.a, of, strict) and is_point_inside(sub.b, of, strict)
+
+
+def is_multiline_region(reg, view):
+    nline_a, _ = view.rowcol(reg.a)
+    nline_b, _ = view.rowcol(reg.b)
+
+    return nline_a != nline_b
 
 
 def _get_settings(vs):

@@ -3,6 +3,7 @@ import sublime
 
 from live.settings import setting
 from live.shared.backend import interacts_with_backend
+from live.shared.inspector import InspectionHostBase
 from live.shared.cursor import Cursor
 from live.sublime.edit import edit_for
 from live.sublime.edit import edits_self_view
@@ -162,11 +163,28 @@ class Repl:
         return True
 
     @interacts_with_backend()
-    def delete_inspection_space(self):
-        ws_handler.run_async_op('deleteInspectionSpace', {
+    def release_inspection_space(self):
+        ws_handler.run_async_op('releaseInspectionSpace', {
             'spaceId': self.inspection_space_id
         })
         yield
+
+
+class ReplInspectionHost(InspectionHostBase):
+    def __init__(self, repl):
+        self.repl = repl
+
+    @property
+    def inspection_space_id(self):
+        return self.repl.inspection_space_id
+
+    @property
+    def view(self):
+        return self.repl.view
+
+    def replace_inspectee(self, old_node, do):
+        with self.repl.region_editing_off_then_reestablished():
+            new_node, new_region = do()
 
 
 class UserInputOutputInfo:

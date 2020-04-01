@@ -334,6 +334,9 @@
             $.inspectionSpaces[spaceId] = {
                obj2id: new Map,
                id2obj: new Map,
+               id2nrefs: new Map,
+               // ID of an inspectee that should miss 1 addref operation
+               idDontRef: null,
                nextId: 1
             };
          }
@@ -341,21 +344,55 @@
          return $.inspectionSpaces[spaceId];
       },
 
-      inspecteeId: function (space, object) {
-         if (!((typeof object === 'object' && object !== null) || 
-               (typeof object === 'function'))) {
-            throw new Error(`Invalid inspected object: ${object}`);
+      isObjectOrFunction: function (object) {
+         return (
+            (typeof object === 'object' && object !== null) ||
+            (typeof object === 'function')
+         );
+      },
+
+      refInspectee: function (space, object) {
+         if (!$.isObjectOrFunction(object)) {
+            throw new Error(`Invalid inspectee: ${object}`);
          }
       
-         if (space.obj2id.has(object)) {
-            return space.obj2id.get(object);
+         if (!space.obj2id.has(object)) {
+            let id = space.nextId++;
+            space.obj2id.set(object, id);
+            space.id2obj.set(id, object);
+            space.id2nrefs.set(id, 1);
+            return id;
          }
+         else {
+            let id = space.obj2id.get(object);
       
-         let id = space.nextId++;
-         space.obj2id.set(object, id);
-         space.id2obj.set(id, object);
+            if (id === space.idDontRef) {
+               space.idDontRef = null;
+               return id;
+            }
       
-         return id;
+            let nrefs = space.id2nrefs.get(id);
+            space.id2nrefs.set(id, nrefs + 1);
+            return id;
+         }
+      },
+
+      releaseInspecteeId: function (space, id) {
+         let nrefs = space.id2nrefs.get(id);
+
+         if (nrefs === undefined) {
+            throw new Error(`Unknown inspectee ID: ${id}`);
+         }
+
+         if (nrefs === 1) {
+            let object = space.id2obj.get(id);
+            space.id2obj.delete(id);
+            space.obj2id.delete(object);
+            space.id2nrefs.delete(id);
+         }
+         else {
+            space.id2nrefs.set(id, nrefs - 1);
+         }
       },
 
       inspect: function (space, obj, deeply) {
@@ -381,7 +418,7 @@
             };
       
             case 'function':
-            return $.inspectFunc(space, obj, deeply);
+            return $.inspectFunc(space, obj);
          }
       
          if (obj === null) {
@@ -405,7 +442,7 @@
          if ($.isArray(object)) {
             let res = {
                type: 'array',
-               id: $.inspecteeId(space, object)
+               id: $.refInspectee(space, object)
             };
       
             if (deeply) {
@@ -415,9 +452,10 @@
             return res;
          }
       
+         let objectId = $.refInspectee(space, object);
          let res = {
             type: 'object',
-            id: $.inspecteeId(space, object)
+            id: objectId
          };
       
          if (!deeply) {
@@ -436,7 +474,7 @@
             else {
                attrs[prop] = {
                   type: 'unrevealed',
-                  parentId: $.inspecteeId(space, object),
+                  parentId: objectId,
                   prop: prop
                };
                nonvalues[prop] = desc;
@@ -456,17 +494,13 @@
       
          return res;
       },
-      inspectFunc: function (space, func, deeply) {
-         let res = {
+
+      inspectFunc: function (space, func) {
+         return {
             type: 'function',
-            id: $.inspecteeId(space, func)
+            id: $.refInspectee(space, func),
+            value: func.toString()
          };
-      
-         if (deeply) {
-            res['value'] = func.toString();
-         }
-      
-         return res;
       },
 
       isKeyUntracked: function (module, key) {
@@ -743,14 +777,22 @@
             let obj = $.evalExpr($.modules[mid].value, code);
             $.opReturn($.inspect($.inspectionSpace(spaceId), obj, true));
          },
-         inspectObjectById: function ({spaceId, id}) {
+         reinspectObject: function ({spaceId, inspecteeId}) {
             let space = $.inspectionSpace(spaceId);
-            let object = space.id2obj.get(id);
+            let object = space.id2obj.get(inspecteeId);
             if (!object) {
-               throw new Error(`Unknown object id: ${id}`);
+               throw new Error(`Unknown inspectee id: ${inspecteeId}`);
             }
-         
+
+            space.idDontRef = inspecteeId;
             $.opReturn($.inspect(space, object, true));
+         },
+         releaseInspecteeIds: function ({spaceId, inspecteeIds}) {
+            let space = $.inspectionSpace(spaceId);
+            for (let inspecteeId of inspecteeIds) {
+               $.releaseInspecteeId(space, inspecteeId);
+            }
+            $.opReturn();
          },
          inspectGetterValue: function ({spaceId, parentId, prop}) {
             let space = $.inspectionSpace(spaceId);
@@ -774,7 +816,7 @@
          
             $.opReturn($.inspect(space, result, true));
          },
-         deleteInspectionSpace: function ({spaceId}) {
+         releaseInspectionSpace: function ({spaceId}) {
             let space = $.inspectionSpaces[spaceId];
             if (!space) {
                $.opReturn(false);
@@ -783,6 +825,7 @@
          
             space.id2obj.clear();
             space.obj2id.clear();
+            space.id2nrefs.clear();
             delete $.inspectionSpaces[spaceId];
          
             $.opReturn(true);

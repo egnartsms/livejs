@@ -1,8 +1,8 @@
 import sublime
 
+from live.common.misc import serially
 from live.sublime.misc import add_hidden_regions
 from live.sublime.misc import hidden_region_list
-from live.common.misc import serially
 
 
 class JsNode:
@@ -12,7 +12,6 @@ class JsNode:
     is_array = False
 
     def __init__(self):
-        super().__init__()
         self.parent = None
 
     @property
@@ -70,6 +69,7 @@ class JsNode:
     @property
     def nesting(self):
         """Indentation level of the context where this node appears"""
+        # TODO: remove this
         return self.depth - 1
 
     @property
