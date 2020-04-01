@@ -184,7 +184,7 @@ class ReplInspectionHost(InspectionHostBase):
 
     def replace_inspectee(self, old_node, do):
         with self.repl.region_editing_off_then_reestablished():
-            new_node, new_region = do()
+            super().replace_inspectee(old_node, do)
 
 
 class UserInputOutputInfo:

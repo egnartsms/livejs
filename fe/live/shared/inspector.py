@@ -1,4 +1,5 @@
 import sublime
+import json
 
 from live.shared.backend import interacts_with_backend
 from live.shared.cursor import Cursor
@@ -6,6 +7,7 @@ from live.shared.js_cursor import StructuredCursor
 from live.sublime.edit import edit_for
 from live.sublime.edit import edits_view
 from live.sublime.misc import is_multiline_region
+from live.ws_handler import GetterThrewError
 from live.ws_handler import ws_handler
 
 
@@ -30,18 +32,18 @@ def add_inspectee_phantom(view, region, contents, on_navigate):
 
 
 def _release_subtree(ihost, inspectee):
-    desc = []
-    inspectee.collect_descendant_ids(desc)
-    ws_handler.run_async_op('releaseInspecteeIds', {
-        'spaceId': ihost.inspection_space_id,
-        'inspecteeIds': desc
-    })
+    desc_ids = list(inspectee.descendant_ids(include_self=False))
+    if desc_ids:
+        ws_handler.run_async_op('releaseInspecteeIds', {
+            'spaceId': ihost.inspection_space_id,
+            'inspecteeIds': desc_ids
+        })
+        yield
 
 
 @interacts_with_backend(edits_view=lambda ihost: ihost.view)
 def collapse_inspectee(ihost, inspectee):
-    _release_subtree(ihost, inspectee)
-    yield
+    yield from _release_subtree(ihost, inspectee)
 
     ihost.replace_inspectee(inspectee, lambda: _collapse_inspectee(ihost, inspectee))
 
@@ -131,6 +133,45 @@ def _expand_function_inspectee(ihost, fn_inspectee):
     return new_inspectee, region
 
 
+@interacts_with_backend(edits_view=lambda ihost: ihost.view)
+def expand_unrevealed_inspectee(ihost, unrevealed):
+    error = jsval = None
+
+    try:
+        ws_handler.run_async_op('inspectGetterValue', {
+            'spaceId': ihost.inspection_space_id,
+            'parentId': unrevealed.parent_id,
+            'prop': unrevealed.prop
+        })
+        jsval = yield
+    except GetterThrewError as e:
+        error = e
+
+    ihost.replace_inspectee(
+        unrevealed,
+        lambda: _expand_unrevealed_inspectee(ihost, unrevealed, jsval, error)
+    )
+
+
+def _expand_unrevealed_inspectee(ihost, unrevealed, jsval, error):
+    [region] = ihost.view.query_phantom(unrevealed.phantom_id)
+    ihost.view.erase(edit_for[ihost.view], region)
+
+    cur = StructuredCursor(region.a, ihost.view, depth=unrevealed.depth)
+    cur.push()
+
+    if jsval is not None:
+        new_node = insert_js_value(ihost, cur, jsval)
+    else:
+        cur.insert("throw new {}({})".format(
+            error.exc_class_name,
+            json.dumps(error.exc_message)
+        ))
+        new_node = None
+
+    return new_node, cur.pop_region()
+
+
 def insert_js_value(ihost, cur, jsval):
     def insert_object(jsval):
         cur.push()
@@ -205,6 +246,15 @@ def insert_js_value(ihost, cur, jsval):
             region=cur.pop_region()
         )
 
+    def insert_unrevealed(jsval):
+        cur.push()
+        cur.insert(jsval_placeholder('unrevealed'))
+        return ihost.make_unrevealed_inspectee(
+            prop=jsval['prop'],
+            depth=cur.depth,
+            region=cur.pop_region()
+        )
+
     def insert_any(jsval):
         if jsval['type'] == 'object':
             return insert_object(jsval)
@@ -213,12 +263,7 @@ def insert_js_value(ihost, cur, jsval):
         elif jsval['type'] == 'function':
             return insert_function(jsval)
         elif jsval['type'] == 'unrevealed':
-            # TODO: integrate Unrevealed into the picture
-            # cur.push()
-            # cur.insert(jsval_placeholder('unrevealed'))
-            # reg = cur.pop_region()
-            # Unrevealed(cur.view, jsval['parentId'], jsval['prop'], cur.depth, reg)
-            raise NotImplementedError
+            return insert_unrevealed(jsval)
         elif jsval['type'] == 'leaf':
             cur.insert(jsval['value'])
             return None
@@ -251,7 +296,15 @@ class InspectionHostBase:
         raise NotImplementedError
 
     def replace_inspectee(self, old_node, do):
-        do()
+        new_node, new_region = do()
+
+        parent = old_node.parent_node
+        if parent is None:
+            return
+
+        parent.child_nodes.remove(old_node)
+        if new_node is not None:
+            parent.child_nodes.add(new_node)
 
     def make_collapsed_inspectee(self, js_id, depth, region):
         return CollapsedInspectee(self, js_id, depth, region)
@@ -271,35 +324,54 @@ class InspectionHostBase:
         else:
             return PhantomlessInspectee(self, [], js_id)
 
+    def make_unrevealed_inspectee(self, prop, depth, region):
+        return UnrevealedInspectee(self, prop, depth, region)
 
-class ChildfulInspecteeMixin:
-    def collect_descendant_ids(self, desc):
-        """Common for several inspectee implementation classes"""
+
+class Inspectee:
+    def __init__(self, ihost):
+        self.ihost = ihost
+        self.parent_node = None
+
+
+class ChildfulInspectee(Inspectee):
+    def __init__(self, ihost, child_nodes):
+        super().__init__(ihost)
+        self.child_nodes = set(child_nodes)
         for child in self.child_nodes:
-            desc.append(child.id)
-            child.collect_descendant_ids(desc)
+            child.parent_node = self
+
+    def descendant_ids(self, include_self):
+        """Generate all the self.child_nodes' IDs and IDs of their descendants.
+
+        Common for several inspectee implementation classes.
+        """
+        if include_self:
+            yield self.id
+
+        for child in self.child_nodes:
+            yield from child.descendant_ids(include_self=True)
 
 
-class ChildlessInspecteeMixin:
-    def collect_descendant_ids(self, desc):
-        pass
+class ChildlessInspectee(Inspectee):
+    def descendant_ids(self, include_self):
+        if include_self:
+            yield self.id
 
 
 EXPANDED_PHANTOM_CONTENTS = '<a href="collapse/expand">\u2014</a>'
 COLLAPSED_PHANTOM_CONTENTS = '<a href="collapse/expand">+</a>'
 
 
-class PhantomlessInspectee(ChildfulInspecteeMixin):
+class PhantomlessInspectee(ChildfulInspectee):
     def __init__(self, ihost, child_nodes, js_id):
-        self.ihost = ihost
-        self.child_nodes = child_nodes
+        super().__init__(ihost, child_nodes)
         self.id = js_id
 
 
-class ExpandedInspectee(ChildfulInspecteeMixin):
+class ExpandedInspectee(ChildfulInspectee):
     def __init__(self, ihost, child_nodes, js_id, js_type, depth, region):
-        self.ihost = ihost
-        self.child_nodes = child_nodes
+        super().__init__(ihost, child_nodes)
         self.id = js_id
         self.type = js_type
         self.depth = depth
@@ -312,9 +384,9 @@ class ExpandedInspectee(ChildfulInspecteeMixin):
             collapse_inspectee(self.ihost, self)
 
 
-class CollapsedInspectee(ChildlessInspecteeMixin):
+class CollapsedInspectee(ChildlessInspectee):
     def __init__(self, ihost, js_id, depth, region):
-        self.ihost = ihost
+        super().__init__(ihost)
         self.id = js_id
         self.depth = depth
         self.phantom_id = add_inspectee_phantom(
@@ -326,13 +398,12 @@ class CollapsedInspectee(ChildlessInspecteeMixin):
             expand_inspectee(self.ihost, self)
 
 
-class FuncExpandedInspectee(ChildlessInspecteeMixin):
+class FuncExpandedInspectee(ChildlessInspectee):
     def __init__(self, ihost, js_id, source, depth, region):
-        self.ihost = ihost
+        super().__init__(ihost)
         self.id = js_id
         self.source = source
         self.depth = depth
-
         self.phantom_id = add_inspectee_phantom(
             ihost.view, region, EXPANDED_PHANTOM_CONTENTS, self.on_navigate
         )
@@ -342,13 +413,12 @@ class FuncExpandedInspectee(ChildlessInspecteeMixin):
             collapse_function_inspectee(self.ihost, self)
 
 
-class FuncCollapsedInspectee(ChildlessInspecteeMixin):
+class FuncCollapsedInspectee(ChildlessInspectee):
     def __init__(self, ihost, js_id, source, depth, region):
-        self.ihost = ihost
+        super().__init__(ihost)
         self.id = js_id
         self.source = source
         self.depth = depth
-
         self.phantom_id = add_inspectee_phantom(
             ihost.view, region, COLLAPSED_PHANTOM_CONTENTS, self.on_navigate
         )
@@ -356,3 +426,25 @@ class FuncCollapsedInspectee(ChildlessInspecteeMixin):
     def on_navigate(self, href):
         if href == 'collapse/expand':
             expand_function_inspectee(self.ihost, self)
+
+
+class UnrevealedInspectee(ChildlessInspectee):
+    def __init__(self, ihost, prop, depth, region):
+        super().__init__(ihost)
+        self.prop = prop
+        self.depth = depth
+        self.region = region
+        self.phantom_id = add_inspectee_phantom(
+            ihost.view, region, COLLAPSED_PHANTOM_CONTENTS, self.on_navigate
+        )
+
+    @property
+    def parent_id(self):
+        return self.parent_node.id
+
+    def on_navigate(self, href):
+        if href == 'collapse/expand':
+            expand_unrevealed_inspectee(self.ihost, self)
+
+    def descendant_ids(self, include_self):
+        return ()
