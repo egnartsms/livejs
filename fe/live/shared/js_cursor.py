@@ -1,13 +1,9 @@
 import contextlib
 import re
-import sublime
 
 from copy import copy
-
 from live.common.misc import tracking_last
-from live.gstate import config
 from live.shared.cursor import Cursor
-from live.sublime.edit import edit_for
 
 
 class UnexpectedContents(Exception):

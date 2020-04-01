@@ -1,11 +1,8 @@
-import contextlib
-import functools
 import sublime
 
 from .nodes import JsArray
 from .nodes import JsLeaf
 from .nodes import JsObject
-from live.common.misc import tracking_last
 from live.settings import setting
 from live.shared.cursor import Cursor
 from live.shared.js_cursor import StructuredCursor

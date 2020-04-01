@@ -1,5 +1,5 @@
-import sublime
 import json
+import sublime
 
 from live.shared.backend import interacts_with_backend
 from live.shared.cursor import Cursor
