@@ -109,6 +109,7 @@ class JsNode:
 
     @property
     def region(self):
+        # TODO: fix that
         if self.is_root:
             return sublime.Region(-1, self.view.size() + 1)
         else:
@@ -182,9 +183,9 @@ class JsKey(JsNode):
     is_leaf = True
     is_key = True
 
-    def __init__(self, parent):
+    def __init__(self, key):
         super().__init__()
-        self.parent = parent
+        self.key = key
 
     def __repr__(self):
         return '#<jspropname>'
@@ -285,6 +286,9 @@ class JsComposite(JsNode):
         with hidden_region_list(self.view, self.regkey_values) as regions:
             regions[pos] = new_reg
 
+    def replace_value_node(self, old_node, new_node, new_reg):
+        self.replace_value_node_at(old_node.position, new_node, new_reg)
+
     def value_node_at(self, path):
         node = self
         for n in path:
@@ -381,22 +385,27 @@ class JsObject(JsComposite):
         self.view.erase_regions(self.regkey_keys)
         self.view.erase_regions(self.regkey_values)
 
-    def append(self, key_region, value_node, value_region):
+    def append(self, key_node, key_region, value_node, value_region):
         assert self.is_offline
+        assert key_node.is_key
         assert not value_node.is_key
 
-        self.key_nodes.append(JsKey(self))
+        self.key_nodes.append(key_node)
         self.key_regions.append(key_region)
 
         self.value_nodes.append(value_node)
-        value_node.attach_to(self)
         self.value_regions.append(value_region)
+        
+        key_node.attach_to(self)
+        value_node.attach_to(self)
 
-    def insert_at(self, pos, key_region, value_node, value_region):
+    def insert_at(self, pos, key_node, key_region, value_node, value_region):
         assert self.is_online, "Why do we need to insert into an unattached node?"
 
-        self.key_nodes.insert(pos, JsKey(self))
+        self.key_nodes.insert(pos, key_node)
         self.value_nodes.insert(pos, value_node)
+        
+        key_node.attach_to(self)
         value_node.attach_to(self)
 
         with hidden_region_list(self.view, self.regkey_keys) as regions:
@@ -418,6 +427,7 @@ class JsObject(JsComposite):
         self.value_nodes.pop(pos).detach()
 
     def replace_key_node_region_at(self, pos, region):
+        # TODO: this is not correct since JsKey has now .key. This attr is not updated
         with hidden_region_list(self.view, self.regkey_keys) as regions:
             regions[pos] = region
 

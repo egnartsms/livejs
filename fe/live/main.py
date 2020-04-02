@@ -1,23 +1,30 @@
-import sublime
-import sublime_plugin
-
 import operator as pyop
 import os
+import sublime
+import sublime_plugin
 import traceback
 
-from live.code import *  # noqa
+# Import all commands, listeners and other things that need to be visible at module level
+# by Sublime
+from live.code.browser.edit_commands import *  # noqa
+from live.code.browser.listener import *  # noqa
+from live.code.browser.sel_commands import *  # noqa
+from live.projects.commands import *  # noqa
+from live.repl.commands import *  # noqa
+from live.repl.listener import *  # noqa
+from live.sublime.edit import *  # noqa
+from live.sublime.on_view_loaded import *  # noqa
+from live.sublime.view_info import *  # noqa
+
 from live.code.persist_handlers import persist_handlers
 from live.gstate import config
 from live.gstate import fe_projects
 from live.lowlvl.eventloop import EventLoop
 from live.lowlvl.http_server import serve
-from live.projects import *  # noqa
-from live.projects.datastructures import Project
-from live.repl import *  # noqa
-from live.request_handler import request_handler
-from live.sublime import *  # noqa
-from live.ws_handler import ws_handler
 from live.projects.backend import on_backend_connected
+from live.projects.datastructures import Project
+from live.request_handler import request_handler
+from live.ws_handler import ws_handler
 
 
 g_el = EventLoop()

@@ -533,6 +533,20 @@
          return result;
       },
 
+      browseModuleMember: function (module, key, value) {
+         if ($.isKeyUntracked(module, key)) {
+            return {
+               isTracked: false,
+               value: $.inspect($.inspectionSpace(module.id), value, false)
+            };
+         }
+         else {
+            return {
+               isTracked: true,
+               value: $.serialize(value)
+            };
+         }
+      },
       opHandlers: {
          getProjects: function () {
             $.opReturn(
@@ -621,24 +635,48 @@
                $.serialize($.valueAt($.moduleObject(mid), path))
             );
          },
-         getModuleObject: function ({mid}) {
+         browseModuleMember: function ({mid, key}) {
+            let module = $.modules[mid];
+         
+            return $.opReturn($.browseModuleMember(module, key, module.value[key]));
+         },
+         browseModule: function ({mid}) {
             let
-               result = {},
+               result = [],
                module = $.modules[mid];
          
             for (let [key, value] of $.entries(module.value)) {
-               if ($.isKeyUntracked(module, key)) {
-                  result[key] = $.serialize('new Object()');
-               }
-               else {
-                  result[key] = $.serialize(value);
-               }
+               result.push([key, $.browseModuleMember(module, key, value)]);
             }
          
-            $.opReturn({
-               'type': 'object',
-               'value': result
-            });
+            $.opReturn(result);
+         },
+         getModuleEntries: function ({mid}) {
+            let
+               result = [],
+               module = $.modules[mid],
+               space = $.inspectionSpace(mid);
+         
+            for (let [key, value] of $.entries(module.value)) {
+               let data;
+         
+               if ($.isKeyUntracked(module, key)) {
+                  data = {
+                     isTracked: false,
+                     value: $.inspect(space, value, false)
+                  };
+               }
+               else {
+                  data = {
+                     isTracked: true,
+                     value: $.serialize(value)
+                  };
+               }
+         
+               result.push([key, data]);
+            }
+         
+            $.opReturn(result);
          },
          replace: function ({mid, path, codeNewValue}) {
             let 

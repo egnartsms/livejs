@@ -1,13 +1,24 @@
 import sublime
 
-from .nodes import JsArray
-from .nodes import JsLeaf
-from .nodes import JsObject
+from live.code.browser.nodes import JsArray
+from live.code.browser.nodes import JsKey
+from live.code.browser.nodes import JsLeaf
+from live.code.browser.nodes import JsObject
 from live.settings import setting
+from live.shared import inspector
+from live.shared.backend import interacts_with_backend
 from live.shared.cursor import Cursor
+from live.shared.inspector import CollapsedInspectee
+from live.shared.inspector import ExpandedInspectee
+from live.shared.inspector import FuncCollapsedInspectee
+from live.shared.inspector import FuncExpandedInspectee
+from live.shared.inspector import LeafInspectee
+from live.shared.inspector import UnrevealedInspectee
+from live.shared.inspector import release_subtree
 from live.shared.js_cursor import StructuredCursor
 from live.sublime.edit import edit_for
 from live.sublime.edit import edits_self_view
+from live.sublime.misc import hidden_region_list
 from live.sublime.misc import is_subregion
 from live.sublime.misc import read_only_set_to
 from live.sublime.region_edit import RegionEditHelper
@@ -15,6 +26,7 @@ from live.sublime.selection import selection_rowcol_preserved_on_replace
 from live.sublime.selection import set_selection
 from live.sublime.selection import viewport_and_selection_globally_preserved
 from live.sublime.selection import viewport_position_preserved
+from live.ws_handler import ws_handler
 
 
 class ModuleBrowser:
@@ -202,7 +214,7 @@ class ModuleBrowser:
         """
         if len(self.view.sel()) != 1:
             return None
-        
+
         return self.find_node_by_exact_region(self.view.sel()[0])
 
     @edits_self_view
@@ -261,7 +273,7 @@ class ModuleBrowser:
             self.done_editing()
         else:
             reg = parent.entries[pos].region
-        
+
         if node.is_first and node.is_last:
             # TODO: deletion of all nodes from the root is not supported
             diereg = sublime.Region(parent.begin + 1, parent.end - 1)
@@ -311,7 +323,9 @@ class ModuleBrowser:
                 key_region = cur.pop_region()
                 cur.insert_keyval_sep()
                 value_node, value_region = self._insert_js_value(cur, value)
-                parent.insert_at(new_index, key_region, value_node, value_region)
+                parent.insert_at(
+                    new_index, JsKey(key), key_region, value_node, value_region
+                )
             else:
                 node, region = self._insert_js_value(cur, value)
                 parent.insert_at(new_index, node, region)
@@ -320,7 +334,7 @@ class ModuleBrowser:
         self.view.window().focus_view(self.view)
 
     @edits_self_view
-    def refresh(self, root_object):
+    def refresh(self, entries):
         if self.is_online:
             self.root.put_offline()
             self.root = None
@@ -329,23 +343,61 @@ class ModuleBrowser:
                 viewport_and_selection_globally_preserved(self.view):
             self.view.erase(edit_for[self.view], sublime.Region(0, self.view.size()))
 
-            cur = StructuredCursor(0, self.view)
-            cur.insert('$ = ')
-
-            self.root, _ = self._insert_js_value(cur, root_object)
+            self.root = self._insert_module_entries(entries)
             self.root.put_online(self.view)
 
             self.view.window().focus_view(self.view)
+
+    def _insert_module_entries(self, entries):
+        cur = StructuredCursor(0, self.view)
+        cur.insert('$ = ')
+
+        root = JsObject()
+
+        with cur.laying_out('object') as separate:
+            for key, value in entries:
+                separate()
+                key_node, key_region, value_node, value_region = \
+                    self._insert_module_entry(cur, key, value)
+                root.append(key_node, key_region, value_node, value_region)
+
+        return root
+
+    def _insert_module_entry(self, cur, key, mem):
+        cur.push()
+        cur.insert(key)
+        key_region = cur.pop_region()
+        cur.insert_keyval_sep()
+
+        value_node, value_region = self._insert_module_member(cur, mem)
+
+        return JsKey(key), key_region, value_node, value_region
+
+    def _insert_module_member(self, cur, mem):
+        if mem['isTracked']:
+            value_node, value_region = self._insert_js_value(cur, mem['value'])
+        else:
+            inspectee, value_region = self._insert_toplevel_inspectee(cur, mem['value'])
+            value_node = inspectee.module_browser_node
+
+        return value_node, value_region
+
+    def _insert_toplevel_inspectee(self, cur, jsval):
+        """Insert toplevel inspectee and return (inspectee, region)"""
+        cur.push()
+        inspectee = inspector.insert_js_value(self, cur, jsval)
+        assert isinstance(inspectee, ToplevelInspectee)
+        inspectee.module_browser_node = JsLeaf()
+        return inspectee, cur.pop_region()
 
     def _insert_js_value(self, cur, jsval):
         """Insert JS serialized value using the structured cursor cur.
 
         :return: (node, region)
         """
-
         def insert_object(obj):
             node = JsObject()
-            
+
             with cur.laying_out('object') as separate:
                 for key, value in obj.items():
                     separate()
@@ -356,7 +408,7 @@ class ModuleBrowser:
                     cur.insert_keyval_sep()
 
                     value_node, value_region = insert_any(value)
-                    node.append(key_region, value_node, value_region)
+                    node.append(JsKey(key), key_region, value_node, value_region)
 
             return node
 
@@ -366,8 +418,8 @@ class ModuleBrowser:
             with cur.laying_out('array') as separate:
                 for value in array:
                     separate()
-                    subnode, region = insert_any(value)
-                    node.append(subnode, region)
+                    subnode, subregion = insert_any(value)
+                    node.append(subnode, subregion)
 
             return node
 
@@ -415,6 +467,114 @@ class ModuleBrowser:
             return
 
         self.reh.set_read_only()
+
+    @property
+    def inspection_space_id(self):
+        return self.module_id
+
+    def make_leaf_inspectee(self, depth, region):
+        cls = ToplevelLeafInspectee if depth == 0 else LeafInspectee
+        return cls(self, depth, region)
+
+    def make_collapsed_inspectee(self, js_id, depth, region):
+        cls = ToplevelCollapsedInspectee if depth == 0 else CollapsedInspectee
+        return cls(self, js_id, depth, region)
+
+    def make_expanded_inspectee(self, js_id, js_type, child_nodes, depth, region):
+        cls = ToplevelExpandedInspectee if depth == 0 else ExpandedInspectee
+        return cls(self, js_id, js_type, child_nodes, depth, region)
+
+    def make_collapsed_function_inspectee(self, js_id, source, depth, region):
+        cls = ToplevelFuncCollapsedInspectee if depth == 0 else FuncCollapsedInspectee
+        return cls(self, js_id, source, depth, region)
+
+    def make_expanded_function_inspectee(self, js_id, source, depth, region):
+        cls = ToplevelFuncExpandedInspectee if depth == 0 else FuncExpandedInspectee
+        return cls(self, js_id, source, depth, region)
+
+    def make_unrevealed_inspectee(self, prop, depth, region):
+        cls = ToplevelUnrevealedInspectee if depth == 0 else UnrevealedInspectee
+        return cls(self, prop, depth, region)
+
+    def replace_inspectee(self, old_inspectee, do):
+        with read_only_set_to(self.view, False):
+            if not isinstance(old_inspectee, ToplevelInspectee):
+                do()
+                return
+
+            new_inspectee, new_region = do()
+
+        assert old_inspectee.module_browser_node is not None
+        assert new_inspectee.module_browser_node is None
+
+        new_inspectee.module_browser_node = old_inspectee.module_browser_node
+        old_inspectee.module_browser_node = None
+
+        # Fix the region
+        module_browser_node = new_inspectee.module_browser_node
+        with hidden_region_list(self.view, module_browser_node._parent_regkey) as regs:
+            regs[module_browser_node.position] = new_region
+
+
+class ToplevelInspectee:
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.module_browser_node = None
+
+    def _get_phantom_contents(self, region):
+        s = '<a href="refresh">\u21bb</a>'
+        return s + ' ' + super()._get_phantom_contents(region)
+
+    @interacts_with_backend(edits_view=lambda self: self.ihost.view)
+    def on_navigate(self, href):
+        yield from self._on_navigate(href)
+
+    def _on_navigate(self, href):
+        if href != 'refresh':
+            yield from super()._on_navigate(href)
+            return
+
+        yield from release_subtree(self.ihost, self, include_self=True)
+
+        mbrowser = self.ihost
+        ws_handler.run_async_op('browseModuleMember', {
+            'mid': mbrowser.module_id,
+            'key': self.module_browser_node.keyval_match.key
+        })
+        member = yield
+
+        with read_only_set_to(mbrowser.view, False):
+            [reg] = mbrowser.view.query_phantom(self.phantom_id)
+            mbrowser.view.erase(edit_for[mbrowser.view], reg)
+
+            cur = StructuredCursor(reg.a, mbrowser.view, depth=0)
+            new_node, new_region = mbrowser._insert_module_member(cur, member)
+
+        mbrowser.root.replace_value_node(self.module_browser_node, new_node, new_region)
+
+
+class ToplevelLeafInspectee(ToplevelInspectee, LeafInspectee):
+    pass
+
+
+class ToplevelExpandedInspectee(ToplevelInspectee, ExpandedInspectee):
+    pass
+
+
+class ToplevelCollapsedInspectee(ToplevelInspectee, CollapsedInspectee):
+    pass
+
+
+class ToplevelFuncExpandedInspectee(ToplevelInspectee, FuncExpandedInspectee):
+    pass
+
+
+class ToplevelFuncCollapsedInspectee(ToplevelInspectee, FuncCollapsedInspectee):
+    pass
+
+
+class ToplevelUnrevealedInspectee(ToplevelInspectee, UnrevealedInspectee):
+    pass
 
 
 class CodeBrowserRegionEditHelper(RegionEditHelper):

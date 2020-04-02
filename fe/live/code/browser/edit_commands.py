@@ -5,6 +5,7 @@ from .command import ModuleBrowserCommandMixin
 from .operations import module_browser_for
 from .operations import module_browser_view_for_module_id
 from .operations import new_module_browser_view
+from live.common.method import method
 from live.projects.datastructures import Module
 from live.projects.operations import project_for_window
 from live.settings import setting
@@ -15,7 +16,6 @@ from live.shared.command import TextCommand
 from live.shared.input_handlers import ModuleInputHandler
 from live.sublime.edit import edit_for
 from live.sublime.selection import set_selection
-from live.common.method import method
 from live.ws_handler import ws_handler
 
 
@@ -30,11 +30,11 @@ class LivejsCbRefresh(BackendInteractingTextCommand, ModuleBrowserCommandMixin):
     @method.primary
     def run(self):
         self.mbrowser.done_editing()
-        ws_handler.run_async_op('getModuleObject', {
+        ws_handler.run_async_op('browseModule', {
             'mid': self.mbrowser.module_id
         })
-        root_object = yield
-        self.mbrowser.refresh(root_object)
+        entries = yield
+        self.mbrowser.refresh(entries)
 
 
 class LivejsBrowseModule(BackendInteractingWindowCommand):
@@ -44,9 +44,9 @@ class LivejsBrowseModule(BackendInteractingWindowCommand):
         view = module_browser_view_for_module_id(self.window, module.id)
         if view is None:
             view = new_module_browser_view(self.window, module)
-            ws_handler.run_async_op('getModuleObject', {'mid': module.id})
-            root_object = yield
-            module_browser_for(view).refresh(root_object)
+            ws_handler.run_async_op('browseModule', {'mid': module.id})
+            entries = yield
+            module_browser_for(view).refresh(entries)
         else:
             module_browser_for(view).focus_view()
 

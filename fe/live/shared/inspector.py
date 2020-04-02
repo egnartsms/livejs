@@ -15,7 +15,6 @@ PHANTOM_HTML_TEMPLATE = '''
 <body id="inspectee">
     <style>
      a {{
-        display: block;
         text-decoration: none;
      }}
     </style>
@@ -29,147 +28,6 @@ def add_inspectee_phantom(view, region, contents, on_navigate):
         '', region, PHANTOM_HTML_TEMPLATE.format(contents=contents),
         sublime.LAYOUT_INLINE, on_navigate
     )
-
-
-def _release_subtree(ihost, inspectee):
-    desc_ids = list(inspectee.descendant_ids(include_self=False))
-    if desc_ids:
-        ws_handler.run_async_op('releaseInspecteeIds', {
-            'spaceId': ihost.inspection_space_id,
-            'inspecteeIds': desc_ids
-        })
-        yield
-
-
-@interacts_with_backend(edits_view=lambda ihost: ihost.view)
-def collapse_inspectee(ihost, inspectee):
-    yield from _release_subtree(ihost, inspectee)
-
-    ihost.replace_inspectee(inspectee, lambda: _collapse_inspectee(ihost, inspectee))
-
-
-def _collapse_inspectee(ihost, inspectee):
-    [reg] = ihost.view.query_phantom(inspectee.phantom_id)
-    ihost.view.erase(edit_for[ihost.view], reg)
-
-    cur = Cursor(reg.a, ihost.view)
-    cur.push()
-    cur.insert(jsval_placeholder(inspectee.type))
-    region = cur.pop_region()
-    collapsed = ihost.make_collapsed_inspectee(
-        js_id=inspectee.id,
-        depth=inspectee.depth,
-        region=region
-    )
-    return collapsed, region
-
-
-@interacts_with_backend(edits_view=lambda ihost: ihost.view)
-def expand_inspectee(ihost, inspectee):
-    ws_handler.run_async_op('reinspectObject', {
-        'spaceId': ihost.inspection_space_id,
-        'inspecteeId': inspectee.id
-    })
-    jsval = yield
-
-    ihost.replace_inspectee(inspectee, lambda: _expand_inspectee(ihost, inspectee, jsval))
-
-
-def _expand_inspectee(ihost, inspectee, jsval):
-    [reg] = ihost.view.query_phantom(inspectee.phantom_id)
-    ihost.view.erase(edit_for[ihost.view], reg)
-
-    cur = StructuredCursor(reg.a, ihost.view, depth=inspectee.depth)
-    cur.push()
-    expanded = insert_js_value(ihost, cur, jsval)
-    return expanded, cur.pop_region()
-
-
-@edits_view(lambda ihost: ihost.view)
-def collapse_function_inspectee(ihost, fn_inspectee):
-    ihost.replace_inspectee(
-        fn_inspectee, lambda: _collapse_function_inspectee(ihost, fn_inspectee)
-    )
-
-
-def _collapse_function_inspectee(ihost, fn_inspectee):
-    [reg] = ihost.view.query_phantom(fn_inspectee.phantom_id)
-    ihost.view.erase(edit_for[ihost.view], reg)
-
-    cur = Cursor(reg.a, ihost.view)
-    cur.push()
-    cur.insert(jsval_placeholder('function'))
-    region = cur.pop_region()
-    new_inspectee = ihost.make_collapsed_function_inspectee(
-        js_id=fn_inspectee.id,
-        source=fn_inspectee.source,
-        depth=fn_inspectee.depth,
-        region=region
-    )
-    return new_inspectee, region
-
-
-@edits_view(lambda ihost: ihost.view)
-def expand_function_inspectee(ihost, fn_inspectee):
-    ihost.replace_inspectee(
-        fn_inspectee, lambda: _expand_function_inspectee(ihost, fn_inspectee)
-    )
-
-
-def _expand_function_inspectee(ihost, fn_inspectee):
-    [reg] = ihost.view.query_phantom(fn_inspectee.phantom_id)
-    ihost.view.erase(edit_for[ihost.view], reg)
-
-    cur = StructuredCursor(reg.a, ihost.view, depth=fn_inspectee.depth)
-    cur.push()
-    cur.insert_function(fn_inspectee.source)
-    region = cur.pop_region()
-    new_inspectee = ihost.make_expanded_function_inspectee(
-        js_id=fn_inspectee.id,
-        source=fn_inspectee.source,
-        depth=fn_inspectee.depth,
-        region=region
-    )
-    return new_inspectee, region
-
-
-@interacts_with_backend(edits_view=lambda ihost: ihost.view)
-def expand_unrevealed_inspectee(ihost, unrevealed):
-    error = jsval = None
-
-    try:
-        ws_handler.run_async_op('inspectGetterValue', {
-            'spaceId': ihost.inspection_space_id,
-            'parentId': unrevealed.parent_id,
-            'prop': unrevealed.prop
-        })
-        jsval = yield
-    except GetterThrewError as e:
-        error = e
-
-    ihost.replace_inspectee(
-        unrevealed,
-        lambda: _expand_unrevealed_inspectee(ihost, unrevealed, jsval, error)
-    )
-
-
-def _expand_unrevealed_inspectee(ihost, unrevealed, jsval, error):
-    [region] = ihost.view.query_phantom(unrevealed.phantom_id)
-    ihost.view.erase(edit_for[ihost.view], region)
-
-    cur = StructuredCursor(region.a, ihost.view, depth=unrevealed.depth)
-    cur.push()
-
-    if jsval is not None:
-        new_node = insert_js_value(ihost, cur, jsval)
-    else:
-        cur.insert("throw new {}({})".format(
-            error.exc_class_name,
-            json.dumps(error.exc_message)
-        ))
-        new_node = None
-
-    return new_node, cur.pop_region()
 
 
 def insert_js_value(ihost, cur, jsval):
@@ -191,8 +49,7 @@ def insert_js_value(ihost, cur, jsval):
                 cur.insert(key)
                 cur.insert_keyval_sep()
                 child_node = insert_any(value)
-                if child_node is not None:
-                    child_nodes.append(child_node)
+                child_nodes.append(child_node)
 
         return ihost.make_expanded_inspectee(
             js_id=jsval['id'],
@@ -218,8 +75,7 @@ def insert_js_value(ihost, cur, jsval):
             for value in jsval['value']:
                 separate()
                 child_node = insert_any(value)
-                if child_node is not None:
-                    child_nodes.append(child_node)
+                child_nodes.append(child_node)
 
         return ihost.make_expanded_inspectee(
             js_id=jsval['id'],
@@ -255,6 +111,11 @@ def insert_js_value(ihost, cur, jsval):
             region=cur.pop_region()
         )
 
+    def insert_leaf(jsval):
+        cur.push()
+        cur.insert(jsval['value'])
+        return ihost.make_leaf_inspectee(depth=cur.depth, region=cur.pop_region())
+
     def insert_any(jsval):
         if jsval['type'] == 'object':
             return insert_object(jsval)
@@ -265,8 +126,7 @@ def insert_js_value(ihost, cur, jsval):
         elif jsval['type'] == 'unrevealed':
             return insert_unrevealed(jsval)
         elif jsval['type'] == 'leaf':
-            cur.insert(jsval['value'])
-            return None
+            return insert_leaf(jsval)
         else:
             raise RuntimeError("Unexpected jsval: {}".format(jsval))
 
@@ -286,7 +146,279 @@ def jsval_placeholder(jsval_type):
         raise RuntimeError
 
 
+def replace_inspectee(ihost, old_node, do):
+    def wrap_do():
+        new_node, new_region = do()
+
+        assert new_node.parent_node is None
+
+        parent = old_node.parent_node
+        if parent is not None:
+            parent.child_nodes.remove(old_node)
+            old_node.parent_node = None
+            parent.child_nodes.add(new_node)
+            new_node.parent_node = parent
+
+        return new_node, new_region
+
+    ihost.replace_inspectee(old_node, wrap_do)
+
+
+def release_subtree(ihost, node, include_self=False):
+    desc_ids = list(descendant_ids(node, include_self))
+    if desc_ids:
+        ws_handler.run_async_op('releaseInspecteeIds', {
+            'spaceId': ihost.inspection_space_id,
+            'inspecteeIds': desc_ids
+        })
+        yield
+
+
+def descendant_ids(node, include_self):
+    if include_self and hasattr(node, 'id'):
+        yield node.id
+
+    child_nodes = getattr(node, 'child_nodes', ())
+    for node in child_nodes:
+        yield from descendant_ids(node, include_self=True)
+
+
+EXPANDED_PHANTOM_CONTENTS = '<a href="collapse/expand">\u2014</a>'
+COLLAPSED_PHANTOM_CONTENTS = '<a href="collapse/expand">+</a>'
+
+
+class Inspectee:
+    def __init__(self, ihost, region):
+        self.ihost = ihost
+        self.parent_node = None
+
+        contents = self._get_phantom_contents(region)
+        if contents:
+            self.phantom_id = add_inspectee_phantom(
+                ihost.view, region, contents, self.on_navigate
+            )
+
+    def on_navigate(self, href):
+        raise NotImplementedError
+
+    def _get_phantom_contents(self, region):
+        return ''
+
+
+class LeafInspectee(Inspectee):
+    def __init__(self, ihost, depth, region):
+        super().__init__(ihost, region)
+
+
+class ExpandedInspectee(Inspectee):
+    def __init__(self, ihost, js_id, js_type, child_nodes, depth, region):
+        super().__init__(ihost, region)
+
+        self.id = js_id
+        self.type = js_type
+        self.depth = depth
+
+        self.child_nodes = set(child_nodes)
+        for child in self.child_nodes:
+            child.parent_node = self
+
+    def _get_phantom_contents(self, region):
+        if is_multiline_region(region,  self.ihost.view):
+            return EXPANDED_PHANTOM_CONTENTS
+        else:
+            return ''
+
+    @interacts_with_backend(edits_view=lambda self: self.ihost.view)
+    def on_navigate(self, href):
+        yield from self._on_navigate(href)
+
+    def _on_navigate(self, href):
+        yield from release_subtree(self.ihost, self)
+        replace_inspectee(self.ihost, self, self._collapse)
+
+    def _collapse(self):
+        [reg] = self.ihost.view.query_phantom(self.phantom_id)
+        self.ihost.view.erase(edit_for[self.ihost.view], reg)
+
+        cur = Cursor(reg.a, self.ihost.view)
+        cur.push()
+        cur.insert(jsval_placeholder(self.type))
+        region = cur.pop_region()
+        collapsed = self.ihost.make_collapsed_inspectee(
+            js_id=self.id, depth=self.depth, region=region
+        )
+        return collapsed, region
+
+
+class CollapsedInspectee(Inspectee):
+    def __init__(self, ihost, js_id, depth, region):
+        super().__init__(ihost, region)
+        self.id = js_id
+        self.depth = depth
+
+    def _get_phantom_contents(self, region):
+        return COLLAPSED_PHANTOM_CONTENTS
+
+    @interacts_with_backend(edits_view=lambda self: self.ihost.view)
+    def on_navigate(self, href):
+        yield from self._on_navigate(href)
+
+    def _on_navigate(self, href):
+        ws_handler.run_async_op('reinspectObject', {
+            'spaceId': self.ihost.inspection_space_id,
+            'inspecteeId': self.id
+        })
+        jsval = yield
+        replace_inspectee(self.ihost, self, lambda: self._expand(jsval))
+
+    def _expand(self, jsval):
+        [reg] = self.ihost.view.query_phantom(self.phantom_id)
+        self.ihost.view.erase(edit_for[self.ihost.view], reg)
+
+        cur = StructuredCursor(reg.a, self.ihost.view, depth=self.depth)
+        cur.push()
+        expanded = insert_js_value(self.ihost, cur, jsval)
+        return expanded, cur.pop_region()
+
+
+class FuncExpandedInspectee(Inspectee):
+    def __init__(self, ihost, js_id, source, depth, region):
+        super().__init__(ihost, region)
+        self.id = js_id
+        self.source = source
+        self.depth = depth
+
+    def _get_phantom_contents(self, region):
+        if is_multiline_region(region,  self.ihost.view):
+            return EXPANDED_PHANTOM_CONTENTS
+        else:
+            return ''
+
+    @edits_view(lambda self: self.ihost.view)
+    def on_navigate(self, href):
+        self._on_navigate(href)
+
+    def _on_navigate(self, href):
+        replace_inspectee(self.ihost, self, self._collapse)
+
+    def _collapse(self):
+        [reg] = self.ihost.view.query_phantom(self.phantom_id)
+        self.ihost.view.erase(edit_for[self.ihost.view], reg)
+
+        cur = Cursor(reg.a, self.ihost.view)
+        cur.push()
+        cur.insert(jsval_placeholder('function'))
+        region = cur.pop_region()
+        new_inspectee = self.ihost.make_collapsed_function_inspectee(
+            js_id=self.id,
+            source=self.source,
+            depth=self.depth,
+            region=region
+        )
+        return new_inspectee, region
+
+
+class FuncCollapsedInspectee(Inspectee):
+    def __init__(self, ihost, js_id, source, depth, region):
+        super().__init__(ihost, region)
+        self.id = js_id
+        self.source = source
+        self.depth = depth
+
+    def _get_phantom_contents(self, region):
+        return COLLAPSED_PHANTOM_CONTENTS
+
+    @edits_view(lambda self: self.ihost.view)
+    def on_navigate(self, href):
+        return self._on_navigate(href)
+
+    def _on_navigate(self, href):
+        replace_inspectee(self.ihost, self, self._expand)
+
+    def _expand(self):
+        [reg] = self.ihost.view.query_phantom(self.phantom_id)
+        self.ihost.view.erase(edit_for[self.ihost.view], reg)
+
+        cur = StructuredCursor(reg.a, self.ihost.view, depth=self.depth)
+        cur.push()
+        cur.insert_function(self.source)
+        region = cur.pop_region()
+        new_inspectee = self.ihost.make_expanded_function_inspectee(
+            js_id=self.id,
+            source=self.source,
+            depth=self.depth,
+            region=region
+        )
+        return new_inspectee, region
+
+
+class UnrevealedInspectee(Inspectee):
+    def __init__(self, ihost, prop, depth, region):
+        super().__init__(ihost, region)
+        self.prop = prop
+        self.depth = depth
+        self.region = region
+
+    def _get_phantom_contents(self, region):
+        return COLLAPSED_PHANTOM_CONTENTS
+
+    @interacts_with_backend(edits_view=lambda self: self.ihost.view)
+    def on_navigate(self, href):
+        yield from self._on_navigate(href)
+
+    def _on_navigate(self, href):
+        error = jsval = None
+
+        try:
+            ws_handler.run_async_op('inspectGetterValue', {
+                'spaceId': self.ihost.inspection_space_id,
+                'parentId': self.parent_node.id,
+                'prop': self.prop
+            })
+            jsval = yield
+        except GetterThrewError as e:
+            error = e
+
+        replace_inspectee(self.ihost, self, lambda: self._expand(jsval, error))
+
+    def _expand(self, jsval, error):
+        [region] = self.ihost.view.query_phantom(self.phantom_id)
+        self.ihost.view.erase(edit_for[self.ihost.view], region)
+
+        cur = StructuredCursor(region.a, self.ihost.view, depth=self.depth)
+        cur.push()
+
+        if jsval is not None:
+            new_inspectee = insert_js_value(self.ihost, cur, jsval)
+        else:
+            cur.insert("throw new {}({})".format(
+                error.exc_class_name,
+                json.dumps(error.exc_message)
+            ))
+            new_inspectee = None
+
+        return new_inspectee, cur.pop_region()
+
+
 class InspectionHostBase:
+    def make_leaf_inspectee(self, depth, region):
+        return LeafInspectee(self, depth, region)
+
+    def make_collapsed_inspectee(self, js_id, depth, region):
+        return CollapsedInspectee(self, js_id, depth, region)
+    
+    def make_expanded_inspectee(self, js_id, js_type, child_nodes, depth, region):
+        return ExpandedInspectee(self, js_id, js_type, child_nodes, depth, region)
+
+    def make_collapsed_function_inspectee(self, js_id, source, depth, region):
+        return FuncCollapsedInspectee(self, js_id, source, depth, region)
+
+    def make_expanded_function_inspectee(self, js_id, source, depth, region):
+        return FuncExpandedInspectee(self, js_id, source, depth, region)
+
+    def make_unrevealed_inspectee(self, prop, depth, region):
+        return UnrevealedInspectee(self, prop, depth, region)
+
     @property
     def view(self):
         raise NotImplementedError
@@ -296,155 +428,4 @@ class InspectionHostBase:
         raise NotImplementedError
 
     def replace_inspectee(self, old_node, do):
-        new_node, new_region = do()
-
-        parent = old_node.parent_node
-        if parent is None:
-            return
-
-        parent.child_nodes.remove(old_node)
-        if new_node is not None:
-            parent.child_nodes.add(new_node)
-
-    def make_collapsed_inspectee(self, js_id, depth, region):
-        return CollapsedInspectee(self, js_id, depth, region)
-
-    def make_expanded_inspectee(self, js_id, js_type, child_nodes, depth, region):
-        if is_multiline_region(region, self.view):
-            return ExpandedInspectee(self, child_nodes, js_id, js_type, depth, region)
-        else:
-            return PhantomlessInspectee(self, child_nodes, js_id)
-
-    def make_collapsed_function_inspectee(self, js_id, source, depth, region):
-        return FuncCollapsedInspectee(self, js_id, source, depth, region)
-
-    def make_expanded_function_inspectee(self, js_id, source, depth, region):
-        if is_multiline_region(region, self.view):
-            return FuncExpandedInspectee(self, js_id, source, depth, region)
-        else:
-            return PhantomlessInspectee(self, [], js_id)
-
-    def make_unrevealed_inspectee(self, prop, depth, region):
-        return UnrevealedInspectee(self, prop, depth, region)
-
-
-class Inspectee:
-    def __init__(self, ihost):
-        self.ihost = ihost
-        self.parent_node = None
-
-
-class ChildfulInspectee(Inspectee):
-    def __init__(self, ihost, child_nodes):
-        super().__init__(ihost)
-        self.child_nodes = set(child_nodes)
-        for child in self.child_nodes:
-            child.parent_node = self
-
-    def descendant_ids(self, include_self):
-        """Generate all the self.child_nodes' IDs and IDs of their descendants.
-
-        Common for several inspectee implementation classes.
-        """
-        if include_self:
-            yield self.id
-
-        for child in self.child_nodes:
-            yield from child.descendant_ids(include_self=True)
-
-
-class ChildlessInspectee(Inspectee):
-    def descendant_ids(self, include_self):
-        if include_self:
-            yield self.id
-
-
-EXPANDED_PHANTOM_CONTENTS = '<a href="collapse/expand">\u2014</a>'
-COLLAPSED_PHANTOM_CONTENTS = '<a href="collapse/expand">+</a>'
-
-
-class PhantomlessInspectee(ChildfulInspectee):
-    def __init__(self, ihost, child_nodes, js_id):
-        super().__init__(ihost, child_nodes)
-        self.id = js_id
-
-
-class ExpandedInspectee(ChildfulInspectee):
-    def __init__(self, ihost, child_nodes, js_id, js_type, depth, region):
-        super().__init__(ihost, child_nodes)
-        self.id = js_id
-        self.type = js_type
-        self.depth = depth
-        self.phantom_id = add_inspectee_phantom(
-            ihost.view, region, EXPANDED_PHANTOM_CONTENTS, self.on_navigate
-        )
-
-    def on_navigate(self, href):
-        if href == 'collapse/expand':
-            collapse_inspectee(self.ihost, self)
-
-
-class CollapsedInspectee(ChildlessInspectee):
-    def __init__(self, ihost, js_id, depth, region):
-        super().__init__(ihost)
-        self.id = js_id
-        self.depth = depth
-        self.phantom_id = add_inspectee_phantom(
-            ihost.view, region, COLLAPSED_PHANTOM_CONTENTS, self.on_navigate
-        )
-
-    def on_navigate(self, href):
-        if href == 'collapse/expand':
-            expand_inspectee(self.ihost, self)
-
-
-class FuncExpandedInspectee(ChildlessInspectee):
-    def __init__(self, ihost, js_id, source, depth, region):
-        super().__init__(ihost)
-        self.id = js_id
-        self.source = source
-        self.depth = depth
-        self.phantom_id = add_inspectee_phantom(
-            ihost.view, region, EXPANDED_PHANTOM_CONTENTS, self.on_navigate
-        )
-
-    def on_navigate(self, href):
-        if href == 'collapse/expand':
-            collapse_function_inspectee(self.ihost, self)
-
-
-class FuncCollapsedInspectee(ChildlessInspectee):
-    def __init__(self, ihost, js_id, source, depth, region):
-        super().__init__(ihost)
-        self.id = js_id
-        self.source = source
-        self.depth = depth
-        self.phantom_id = add_inspectee_phantom(
-            ihost.view, region, COLLAPSED_PHANTOM_CONTENTS, self.on_navigate
-        )
-
-    def on_navigate(self, href):
-        if href == 'collapse/expand':
-            expand_function_inspectee(self.ihost, self)
-
-
-class UnrevealedInspectee(ChildlessInspectee):
-    def __init__(self, ihost, prop, depth, region):
-        super().__init__(ihost)
-        self.prop = prop
-        self.depth = depth
-        self.region = region
-        self.phantom_id = add_inspectee_phantom(
-            ihost.view, region, COLLAPSED_PHANTOM_CONTENTS, self.on_navigate
-        )
-
-    @property
-    def parent_id(self):
-        return self.parent_node.id
-
-    def on_navigate(self, href):
-        if href == 'collapse/expand':
-            expand_unrevealed_inspectee(self.ihost, self)
-
-    def descendant_ids(self, include_self):
-        return ()
+        do()
