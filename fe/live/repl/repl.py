@@ -3,8 +3,8 @@ import sublime
 
 from live.settings import setting
 from live.shared.backend import interacts_with_backend
-from live.shared.inspector import InspectionHostBase
 from live.shared.cursor import Cursor
+from live.shared.inspector import INSPECTEE_CLASS
 from live.sublime.edit import edit_for
 from live.sublime.edit import edits_self_view
 from live.sublime.misc import add_hidden_regions
@@ -45,7 +45,7 @@ class Repl:
         setting.inspection_space_id[self.view] = value
 
     @property
-    def is_ready(self):
+    def is_usable(self):
         return self.reh is not None
 
     @property
@@ -100,7 +100,7 @@ class Repl:
 
     def prepare_for_activation(self):
         """Prepare a pre-existing REPL view to continue functioning"""
-        if self.is_ready:
+        if self.is_usable:
             return
 
         user_io = UserInputOutputInfo(self.view)
@@ -169,21 +169,11 @@ class Repl:
         })
         yield
 
-
-class ReplInspectionHost(InspectionHostBase):
-    def __init__(self, repl):
-        self.repl = repl
-
-    @property
-    def inspection_space_id(self):
-        return self.repl.inspection_space_id
-
-    @property
-    def view(self):
-        return self.repl.view
+    def make_inspectee(self, kind, **kwds):
+        return INSPECTEE_CLASS[kind](self, **kwds)
 
     def replace_inspectee(self, old_node, do):
-        with self.repl.region_editing_off_then_reestablished():
+        with self.region_editing_off_then_reestablished():
             do()
 
 

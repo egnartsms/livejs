@@ -15,6 +15,7 @@ from live.shared.inspector import FuncExpandedInspectee
 from live.shared.inspector import LeafInspectee
 from live.shared.inspector import UnrevealedInspectee
 from live.shared.inspector import release_subtree
+from live.shared.inspector import INSPECTEE_CLASS
 from live.shared.js_cursor import StructuredCursor
 from live.sublime.edit import edit_for
 from live.sublime.edit import edits_self_view
@@ -46,17 +47,13 @@ class ModuleBrowser:
         self.is_pristine = True
 
     @property
-    def is_online(self):
+    def is_usable(self):
         """Whether the module browser displays actual module contents.
 
         In case the BE disconnects, the module browser goes offline: it displays some
         placeholder text.
         """
-        return not self.is_offline
-
-    @property
-    def is_offline(self):
-        return self.root is None
+        return self.root is not None
 
     @property
     def is_editing_new_node(self):
@@ -87,7 +84,7 @@ class ModuleBrowser:
     @edits_self_view
     def prepare_for_activation(self):
         """Invalidate the view before first activating it"""
-        if self.is_offline and self.is_pristine:
+        if not self.is_usable and self.is_pristine:
             with read_only_set_to(self.view, False):
                 self.view.replace(
                     edit_for[self.view],
@@ -335,7 +332,7 @@ class ModuleBrowser:
 
     @edits_self_view
     def refresh(self, entries):
-        if self.is_online:
+        if self.is_usable:
             self.root.put_offline()
             self.root = None
 
@@ -472,58 +469,37 @@ class ModuleBrowser:
     def inspection_space_id(self):
         return self.module_id
 
-    def make_leaf_inspectee(self, depth, region):
-        cls = ToplevelLeafInspectee if depth == 0 else LeafInspectee
-        return cls(self, depth, region)
+    def make_inspectee(self, kind, depth, **kwds):
+        where = TOPLEVEL_INSPECTEE_CLASS if depth == 0 else INSPECTEE_CLASS
+        return where[kind](self, depth=depth, **kwds)
 
-    def make_collapsed_inspectee(self, js_id, depth, region):
-        cls = ToplevelCollapsedInspectee if depth == 0 else CollapsedInspectee
-        return cls(self, js_id, depth, region)
-
-    def make_expanded_inspectee(self, js_id, js_type, child_nodes, depth, region):
-        cls = ToplevelExpandedInspectee if depth == 0 else ExpandedInspectee
-        return cls(self, js_id, js_type, child_nodes, depth, region)
-
-    def make_collapsed_function_inspectee(self, js_id, source, depth, region):
-        cls = ToplevelFuncCollapsedInspectee if depth == 0 else FuncCollapsedInspectee
-        return cls(self, js_id, source, depth, region)
-
-    def make_expanded_function_inspectee(self, js_id, source, depth, region):
-        cls = ToplevelFuncExpandedInspectee if depth == 0 else FuncExpandedInspectee
-        return cls(self, js_id, source, depth, region)
-
-    def make_unrevealed_inspectee(self, prop, depth, region):
-        cls = ToplevelUnrevealedInspectee if depth == 0 else UnrevealedInspectee
-        return cls(self, prop, depth, region)
-
-    def replace_inspectee(self, old_inspectee, do):
+    def replace_inspectee(self, old_insp, do):
         with read_only_set_to(self.view, False):
-            if not isinstance(old_inspectee, ToplevelInspectee):
+            if not isinstance(old_insp, ToplevelInspectee):
                 do()
                 return
 
-            new_inspectee, new_region = do()
+            new_insp, new_region = do()
 
-        assert old_inspectee.module_browser_node is not None
-        assert new_inspectee.module_browser_node is None
+        assert old_insp.module_browser_node is not None
+        assert new_insp.module_browser_node is None
 
-        new_inspectee.module_browser_node = old_inspectee.module_browser_node
-        old_inspectee.module_browser_node = None
+        new_insp.module_browser_node = old_insp.module_browser_node
+        old_insp.module_browser_node = None
 
         # Fix the region
-        module_browser_node = new_inspectee.module_browser_node
+        module_browser_node = new_insp.module_browser_node
         with hidden_region_list(self.view, module_browser_node._parent_regkey) as regs:
             regs[module_browser_node.position] = new_region
 
 
 class ToplevelInspectee:
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.module_browser_node = None
+    module_browser_node = None
 
-    def _get_phantom_contents(self, region):
-        s = '<a href="refresh">\u21bb</a>'
-        return s + ' ' + super()._get_phantom_contents(region)
+    @classmethod
+    def _get_phantom_pieces(cls, mbrowser, region):
+        yield '<a href="refresh">\u21bb</a>'
+        yield from super()._get_phantom_pieces(mbrowser, region)
 
     @interacts_with_backend(edits_view=lambda self: self.ihost.view)
     def on_navigate(self, href):
@@ -550,31 +526,19 @@ class ToplevelInspectee:
             cur = StructuredCursor(reg.a, mbrowser.view, depth=0)
             new_node, new_region = mbrowser._insert_module_member(cur, member)
 
-        mbrowser.root.replace_value_node(self.module_browser_node, new_node, new_region)
+        mbrowser.root.replace_value_node_at(
+            self.module_browser_node.position, new_node, new_region
+        )
 
 
-class ToplevelLeafInspectee(ToplevelInspectee, LeafInspectee):
-    pass
-
-
-class ToplevelExpandedInspectee(ToplevelInspectee, ExpandedInspectee):
-    pass
-
-
-class ToplevelCollapsedInspectee(ToplevelInspectee, CollapsedInspectee):
-    pass
-
-
-class ToplevelFuncExpandedInspectee(ToplevelInspectee, FuncExpandedInspectee):
-    pass
-
-
-class ToplevelFuncCollapsedInspectee(ToplevelInspectee, FuncCollapsedInspectee):
-    pass
-
-
-class ToplevelUnrevealedInspectee(ToplevelInspectee, UnrevealedInspectee):
-    pass
+TOPLEVEL_INSPECTEE_CLASS = {
+    kind: type(
+        'Toplevel{}'.format(cls.__name__),
+        (ToplevelInspectee, cls),
+        {}
+    )
+    for kind, cls in INSPECTEE_CLASS.items()
+}
 
 
 class CodeBrowserRegionEditHelper(RegionEditHelper):
