@@ -1,6 +1,6 @@
 import sublime
 
-from live.code.browser.command import ModuleBrowserCommandMixin
+from live.browser.command import ModuleBrowserCommandMixin
 from live.shared.command import TextCommand
 from live.sublime.selection import set_selection
 from live.common.method import method

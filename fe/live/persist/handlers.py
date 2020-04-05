@@ -2,14 +2,14 @@ import os
 import sublime
 
 from functools import wraps
-
-from .browser.operations import module_browser_for
-from .browser.operations import module_browser_view_for_module_id
-from .persist import operations as persist
+from live.browser.operations import module_browser_for
+from live.browser.operations import module_browser_view_for_module_id
+from live.persist import operations as persist
 from live.projects.operations import project_by_id
 from live.projects.operations import window_for_project_id
-from live.sublime.on_view_loaded import on_load
 from live.sublime.misc import open_filepath
+from live.sublime.on_view_loaded import on_load
+
 
 persist_handlers = {}
 

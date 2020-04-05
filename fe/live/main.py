@@ -6,9 +6,9 @@ import traceback
 
 # Import all commands, listeners and other things that need to be visible at module level
 # by Sublime
-from live.code.browser.edit_commands import *  # noqa
-from live.code.browser.listener import *  # noqa
-from live.code.browser.sel_commands import *  # noqa
+from live.browser.edit_commands import *  # noqa
+from live.browser.listener import *  # noqa
+from live.browser.sel_commands import *  # noqa
 from live.projects.commands import *  # noqa
 from live.repl.commands import *  # noqa
 from live.repl.listener import *  # noqa
@@ -16,7 +16,7 @@ from live.sublime.edit import *  # noqa
 from live.sublime.on_view_loaded import *  # noqa
 from live.sublime.view_info import *  # noqa
 
-from live.code.persist_handlers import persist_handlers
+from live.persist.handlers import persist_handlers
 from live.gstate import config
 from live.gstate import fe_projects
 from live.lowlvl.eventloop import EventLoop
