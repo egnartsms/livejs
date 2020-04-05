@@ -16,7 +16,7 @@ from live.sublime.edit import *  # noqa
 from live.sublime.on_view_loaded import *  # noqa
 from live.sublime.view_info import *  # noqa
 
-from live.persist.handlers import persist_handlers
+from live.persist.handler import persist_handlers
 from live.gstate import config
 from live.gstate import fe_projects
 from live.lowlvl.eventloop import EventLoop

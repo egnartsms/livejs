@@ -4,7 +4,7 @@ import sublime
 from functools import wraps
 from live.browser.operations import module_browser_for
 from live.browser.operations import module_browser_view_for_module_id
-from live.persist import operations as persist
+from live.persist import operations as op
 from live.projects.operations import project_by_id
 from live.projects.operations import window_for_project_id
 from live.sublime.misc import open_filepath
@@ -44,7 +44,7 @@ def persist_handler(fn):
 @persist_handler
 def replace(desc, mbrowser, view_source):
     mbrowser.replace_value_node(desc['path'], desc['newValue'])
-    persist.replace_value(
+    op.replace_value(
         view_source,
         path=desc['path'], new_value=desc['newValue']
     )
@@ -54,7 +54,7 @@ def replace(desc, mbrowser, view_source):
 def rename_key(desc, mbrowser, view_source):
     mbrowser.replace_key_node(desc['path'], desc['newName'])
 
-    persist.rename_key(
+    op.rename_key(
         view_source,
         path=desc['path'], new_name=desc['newName']
     )
@@ -64,14 +64,14 @@ def rename_key(desc, mbrowser, view_source):
 def delete(desc, mbrowser, view_source):
     mbrowser.delete_node(desc['path'])
 
-    persist.delete(view_source, path=desc['path'])
+    op.delete(view_source, path=desc['path'])
 
 
 @persist_handler
 def insert(desc, mbrowser, view_source):
     mbrowser.insert_node(desc['path'], desc['key'], desc['value'])
 
-    persist.insert(
+    op.insert(
         view_source,
         path=desc['path'], key=desc['key'], value=desc['value']
     )

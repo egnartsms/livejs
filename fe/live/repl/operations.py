@@ -1,6 +1,6 @@
-from .repl import Repl
 from live.common.misc import first_or_none
 from live.common.misc import gen_uid
+from live.repl.repl import Repl
 from live.settings import setting
 from live.sublime.view_info import view_info_getter
 

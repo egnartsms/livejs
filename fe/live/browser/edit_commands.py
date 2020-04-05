@@ -1,10 +1,10 @@
 import re
 import sublime
 
-from .command import ModuleBrowserCommandMixin
-from .operations import module_browser_for
-from .operations import module_browser_view_for_module_id
-from .operations import new_module_browser_view
+from live.browser.command import ModuleBrowserCommandMixin
+from live.browser.operation import module_browser_for
+from live.browser.operation import module_browser_view_for_module_id
+from live.browser.operation import new_module_browser_view
 from live.common.method import method
 from live.projects.datastructures import Module
 from live.projects.operations import project_for_window

@@ -1,8 +1,8 @@
+import http.client
 import mmap
 import os
-import http.client
 
-from .sockutil import send_buffer
+from live.lowlvl.sockutil import send_buffer
 
 
 class Request:

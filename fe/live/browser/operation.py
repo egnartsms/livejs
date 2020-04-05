@@ -1,7 +1,7 @@
-from .module_browser import ModuleBrowser
+from live.browser.module_browser import ModuleBrowser
+from live.common.misc import first_or_none
 from live.settings import setting
 from live.sublime.view_info import view_info_getter
-from live.common.misc import first_or_none
 
 
 def is_view_module_browser(view):

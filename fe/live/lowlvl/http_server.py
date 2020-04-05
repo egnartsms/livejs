@@ -4,11 +4,11 @@ It serves some static files and websocket requests. Websocket is where all the F
 communication is done."""
 import socket
 
-from .eventloop import Fd
-from .eventloop import get_event_loop
-from .http import Request
-from .sockutil import SocketClosedPrematurely
-from .sockutil import recv_up_to_delimiter
+from live.lowlvl.eventloop import Fd
+from live.lowlvl.eventloop import get_event_loop
+from live.lowlvl.http import Request
+from live.lowlvl.sockutil import SocketClosedPrematurely
+from live.lowlvl.sockutil import recv_up_to_delimiter
 
 
 def serve(port, request_handler):

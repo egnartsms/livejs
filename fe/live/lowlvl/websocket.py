@@ -1,16 +1,18 @@
 """Websocket server/client implementation (not intended for reuse)"""
 
-import struct
-import http.client as httpcli
-import hashlib
 import base64
+import hashlib
+import http.client as httpcli
+import struct
 import traceback
 
 from live.common.misc import take_over_list_items
-from .sockutil import recv_next, recv_next_as_buf, send_buffer
-from .http import Response
-from .eventloop import Fd
-from .eventfd import EventFd
+from live.lowlvl.eventfd import EventFd
+from live.lowlvl.eventloop import Fd
+from live.lowlvl.http import Response
+from live.lowlvl.sockutil import recv_next
+from live.lowlvl.sockutil import recv_next_as_buf
+from live.lowlvl.sockutil import send_buffer
 
 
 class OpCode:

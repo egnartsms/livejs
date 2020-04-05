@@ -1,6 +1,6 @@
 import re
 
-from .eventloop import Fd
+from live.lowlvl.eventloop import Fd
 
 
 SOCKET_READ_PORTION = 4096

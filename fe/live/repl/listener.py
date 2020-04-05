@@ -2,8 +2,8 @@ import operator as pyop
 import sublime
 import sublime_plugin
 
-from .operations import is_view_repl
-from .operations import repl_for
+from live.repl.operations import is_view_repl
+from live.repl.operations import repl_for
 
 
 __all__ = ['ReplEventListener']

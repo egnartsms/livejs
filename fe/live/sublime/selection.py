@@ -1,7 +1,7 @@
 import contextlib
 import sublime
 
-from .misc import is_point_inside
+from live.sublime.misc import is_point_inside
 
 
 def set_selection(view, to=None, to_all=None, show=False):

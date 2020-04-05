@@ -1,4 +1,4 @@
-from .operations import module_browser_for
+from live.browser.operation import module_browser_for
 
 
 class ModuleBrowserCommandMixin:

@@ -2,8 +2,8 @@ import operator as pyop
 import sublime
 import sublime_plugin
 
-from .operations import is_view_module_browser
-from .operations import module_browser_for
+from live.browser.operation import is_view_module_browser
+from live.browser.operation import module_browser_for
 
 
 __all__ = ['CodeBrowserEventListener']
