@@ -1,9 +1,9 @@
 import sublime
 
-from live.browser.nodes import JsArray
-from live.browser.nodes import JsKey
-from live.browser.nodes import JsLeaf
-from live.browser.nodes import JsObject
+from live.browser.node import JsArray
+from live.browser.node import JsKey
+from live.browser.node import JsLeaf
+from live.browser.node import JsObject
 from live.settings import setting
 from live.shared import inspector
 from live.shared.backend import interacts_with_backend

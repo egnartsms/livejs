@@ -10,9 +10,9 @@ from live.common.misc import file_contents
 from live.common.misc import gen_uid
 from live.gstate import config
 from live.gstate import fe_projects
-from live.projects.datastructures import Project
-from live.projects.operations import project_for_window
-from live.projects.operations import read_project_file_at
+from live.project.datastructure import Project
+from live.project.operation import project_for_window
+from live.project.operation import read_project_file_at
 from live.settings import setting
 from live.shared.backend import BackendInteractingWindowCommand
 from live.shared.backend import is_interaction_possible

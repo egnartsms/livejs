@@ -2,14 +2,14 @@ import sublime
 import sublime_plugin
 
 from live.common.method import method
-from live.projects.datastructures import Module
-from live.repl.operations import find_repl_view
-from live.repl.operations import new_repl_view
-from live.repl.operations import repl_for
+from live.project.datastructure import Module
+from live.repl.operation import find_repl_view
+from live.repl.operation import new_repl_view
+from live.repl.operation import repl_for
 from live.settings import setting
 from live.shared.backend import BackendInteractingTextCommand
 from live.shared.command import TextCommand
-from live.shared.input_handlers import ModuleInputHandler
+from live.shared.input_handler import ModuleInputHandler
 from live.shared.inspector import insert_js_value
 from live.shared.js_cursor import StructuredCursor
 from live.sublime.misc import read_only_set_to

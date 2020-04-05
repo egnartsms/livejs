@@ -17,13 +17,13 @@
                sources,
                project['projectId']
             );
-
+      
          // The bootstrapper needs to be added to this array manually
          modules.push(Object.assign({}, bootstrapper, {
             projectId: project['projectId'],
             value: $,
          }));
-
+      
          $.projects = {
             [project['projectId']]: {
                id: project['projectId'],
@@ -43,7 +43,6 @@
          // This is just to be able to access things in Chrome console
          window.live = $;
       },
-
       byId: function (things) {
          let res = {};
          for (let thing of things) {
@@ -51,7 +50,6 @@
          }
          return res;
       },
-
       onSocketOpen: function () {
          console.log("Connected to LiveJS FE");
       },
@@ -152,13 +150,11 @@
       keys: function (obj) {
          return $.orderedKeysMap.get(obj) || Object.keys(obj);
       },
-
       entries: function* (obj) {
          for (let key of $.keys(obj)) {
             yield [key, obj[key]];
          }
       },
-
       deleteProp: function (obj, prop) {
          let ordkeys = $.orderedKeysMap.get(obj);
          if (ordkeys) {

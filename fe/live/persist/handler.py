@@ -2,11 +2,11 @@ import os
 import sublime
 
 from functools import wraps
-from live.browser.operations import module_browser_for
-from live.browser.operations import module_browser_view_for_module_id
-from live.persist import operations as op
-from live.projects.operations import project_by_id
-from live.projects.operations import window_for_project_id
+from live.browser.operation import module_browser_for
+from live.browser.operation import module_browser_view_for_module_id
+from live.persist import operation as op
+from live.project.operation import project_by_id
+from live.project.operation import window_for_project_id
 from live.sublime.misc import open_filepath
 from live.sublime.on_view_loaded import on_load
 

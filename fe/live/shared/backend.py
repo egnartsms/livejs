@@ -7,7 +7,7 @@ from live.common.method import method
 from live.common.misc import args_extractor
 from live.common.misc import wrap_gtor
 from live.coroutine import co_driver
-from live.projects.operations import validate_window_project_loaded
+from live.project.operation import validate_window_project_loaded
 from live.shared.command import TextCommand
 from live.sublime.edit import call_ensuring_edit_for
 from live.ws_handler import MAIN_CHANNEL

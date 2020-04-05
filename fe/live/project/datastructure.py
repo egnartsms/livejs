@@ -2,9 +2,9 @@ import os.path
 import re
 
 from collections import namedtuple
-from live.projects.operations import read_project_file_at
 from live.common.misc import file_contents
 from live.gstate import config
+from live.project.operation import read_project_file_at
 
 
 Module = namedtuple('Module', 'id name')

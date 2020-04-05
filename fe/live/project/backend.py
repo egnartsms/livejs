@@ -2,8 +2,8 @@ import sublime
 
 from live.gstate import config
 from live.gstate import fe_projects
-from live.projects.datastructures import Project
-from live.projects.operations import assign_window_for_livejs_project
+from live.project.datastructure import Project
+from live.project.operation import assign_window_for_livejs_project
 from live.shared.backend import interacts_with_backend
 from live.ws_handler import ws_handler
 

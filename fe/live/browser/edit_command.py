@@ -6,14 +6,14 @@ from live.browser.operation import module_browser_for
 from live.browser.operation import module_browser_view_for_module_id
 from live.browser.operation import new_module_browser_view
 from live.common.method import method
-from live.projects.datastructures import Module
-from live.projects.operations import project_for_window
+from live.project.datastructure import Module
+from live.project.operation import project_for_window
 from live.settings import setting
 from live.shared.backend import BackendInteractingTextCommand
 from live.shared.backend import BackendInteractingWindowCommand
 from live.shared.backend import is_interaction_possible
 from live.shared.command import TextCommand
-from live.shared.input_handlers import ModuleInputHandler
+from live.shared.input_handler import ModuleInputHandler
 from live.sublime.edit import edit_for
 from live.sublime.selection import set_selection
 from live.ws_handler import ws_handler
